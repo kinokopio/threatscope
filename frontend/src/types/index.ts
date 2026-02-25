@@ -1,5 +1,6 @@
 export interface AnalysisTask {
-  id: string;
+  id?: string;
+  task_id?: string;  // API returns task_id
   status: TaskStatus;
   file_name?: string;
   result?: AnalysisResult;

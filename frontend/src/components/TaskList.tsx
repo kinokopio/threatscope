@@ -74,7 +74,7 @@ export function TaskList({ tasks, onSelectTask, onDeleteTask, selectedTaskId }: 
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  onDeleteTask(task.id);
+                  if (task.id) onDeleteTask(task.id);
                 }}
                 className="p-1.5 rounded opacity-0 group-hover:opacity-100 hover:bg-cyber-600 transition-all"
               >

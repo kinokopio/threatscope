@@ -77,7 +77,12 @@ export async function uploadFileSync(
 
 export async function getTask(taskId: string): Promise<AnalysisTask> {
   const response = await api.get(`/tasks/${taskId}`);
-  return response.data;
+  const data = response.data;
+  // Normalize: API returns task_id, but we use id internally
+  return {
+    ...data,
+    id: data.task_id || data.id,
+  };
 }
 
 export async function getTasks(): Promise<TaskListResponse> {
