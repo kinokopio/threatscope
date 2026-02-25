@@ -1,0 +1,52 @@
+# ThreatScope Ghidra Service Dockerfile
+# Based on blacktop/ghidra with Python + pyghidra
+
+FROM blacktop/ghidra:12 AS base
+
+USER root
+
+# Install Python and build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    python3-dev \
+    gcc \
+    g++ \
+    make \
+    libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Create virtual environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/app/venv"
+
+# Set Ghidra installation directory
+ENV GHIDRA_INSTALL_DIR=/ghidra
+
+# Install Python dependencies
+COPY docker/requirements-ghidra.txt /app/
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements-ghidra.txt
+
+# Copy Ghidra service code
+COPY ghidra_service /app/ghidra_service
+
+# Create data directories
+RUN mkdir -p /app/data/uploads /app/data/projects
+
+# Environment variables
+ENV GHIDRA_UPLOAD_DIR=/app/data/uploads
+ENV GHIDRA_HTTP_PORT=8000
+ENV GHIDRA_MCP_PORT=9000
+ENV GHIDRA_HTTP_URL=http://localhost:8000
+
+# Expose ports
+EXPOSE 8000 9000
+
+# Run both HTTP and MCP servers
+CMD ["bash", "-lc", "python -m ghidra_service.http_server & python -m ghidra_service.mcp_server"]

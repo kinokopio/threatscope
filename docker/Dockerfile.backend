@@ -1,0 +1,28 @@
+# ThreatScope Backend Dockerfile
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . /app/
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV THREATSCOPE_GHIDRA_URL=http://ghidra:8000
+ENV THREATSCOPE_MCP_URL=http://ghidra:9000/mcp
+
+# Expose API port
+EXPOSE 8001
+
+# Run the API server
+CMD ["python", "-m", "uvicorn", "api.rest:app", "--host", "0.0.0.0", "--port", "8001"]

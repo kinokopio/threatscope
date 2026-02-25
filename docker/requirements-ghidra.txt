@@ -1,0 +1,6 @@
+# Ghidra service dependencies
+pyghidra>=1.3.0
+fastapi>=0.100.0
+uvicorn>=0.23.0
+httpx>=0.24.0
+fastmcp>=0.1.0
