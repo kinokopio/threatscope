@@ -160,9 +160,7 @@ class ProcessMonitor:
                         }
                         # Deduplicate
                         key = f"{pid}:{conn.raddr.ip}:{conn.raddr.port}"
-                        if not any(
-                            c.get("_key") == key for c in self._result.network_connections
-                        ):
+                        if not any(c.get("_key") == key for c in self._result.network_connections):
                             conn_info["_key"] = key
                             self._result.network_connections.append(conn_info)
                             if on_event:
@@ -261,8 +259,7 @@ class DynamicAnalyzer:
                 for c in result.network_connections
             ],
             "open_files": [
-                {k: v for k, v in f.items() if not k.startswith("_")}
-                for f in result.open_files
+                {k: v for k, v in f.items() if not k.startswith("_")} for f in result.open_files
             ],
             "duration_seconds": result.duration_seconds,
             "error": result.error,

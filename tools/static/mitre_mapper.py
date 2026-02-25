@@ -75,14 +75,16 @@ class MitreMapper(BaseTool):
                 matched = func_set & api_list
 
                 if matched:
-                    results.append({
-                        "tactic": tactic,
-                        "technique": technique_name,
-                        "matched_apis": sorted(matched),
-                        "match_count": len(matched),
-                        "total_apis": len(api_list),
-                        "confidence": round(len(matched) / len(api_list), 2) if api_list else 0,
-                    })
+                    results.append(
+                        {
+                            "tactic": tactic,
+                            "technique": technique_name,
+                            "matched_apis": sorted(matched),
+                            "match_count": len(matched),
+                            "total_apis": len(api_list),
+                            "confidence": round(len(matched) / len(api_list), 2) if api_list else 0,
+                        }
+                    )
 
         # Sort by match count descending
         results.sort(key=lambda x: x["match_count"], reverse=True)

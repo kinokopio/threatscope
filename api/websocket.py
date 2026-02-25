@@ -31,12 +31,14 @@ class ProgressMessage:
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
     def to_json(self) -> str:
-        return json.dumps({
-            "task_id": self.task_id,
-            "event": self.event,
-            "data": self.data,
-            "timestamp": self.timestamp,
-        })
+        return json.dumps(
+            {
+                "task_id": self.task_id,
+                "event": self.event,
+                "data": self.data,
+                "timestamp": self.timestamp,
+            }
+        )
 
 
 class ConnectionManager:
@@ -194,17 +196,23 @@ async def websocket_progress(websocket: WebSocket):
 
             if action == "subscribe" and task_id:
                 await manager.subscribe_task(websocket, task_id)
-                await manager.send_personal(websocket, {
-                    "status": "subscribed",
-                    "task_id": task_id,
-                })
+                await manager.send_personal(
+                    websocket,
+                    {
+                        "status": "subscribed",
+                        "task_id": task_id,
+                    },
+                )
 
             elif action == "unsubscribe" and task_id:
                 await manager.unsubscribe_task(websocket, task_id)
-                await manager.send_personal(websocket, {
-                    "status": "unsubscribed",
-                    "task_id": task_id,
-                })
+                await manager.send_personal(
+                    websocket,
+                    {
+                        "status": "unsubscribed",
+                        "task_id": task_id,
+                    },
+                )
 
             elif action == "ping":
                 await manager.send_personal(websocket, {"status": "pong"})

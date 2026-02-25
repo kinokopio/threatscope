@@ -20,9 +20,7 @@ DOMAIN_PATTERN = re.compile(
     r"(?:com|net|org|io|ru|cn|de|uk|info|biz|xyz|top|cc|tk|ml|ga|cf|gq)\b",
     re.IGNORECASE,
 )
-EMAIL_PATTERN = re.compile(
-    r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b"
-)
+EMAIL_PATTERN = re.compile(r"\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b")
 
 # Suspicious patterns
 SUSPICIOUS_PATTERNS = [

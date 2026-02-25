@@ -1,12 +1,11 @@
 """Tests for static analysis tools."""
 
-import asyncio
 import tempfile
 from pathlib import Path
 
 import pytest
 
-from tools.static import HashCalculator, StringExtractor, FunctionClassifier, MitreMapper
+from tools.static import FunctionClassifier, HashCalculator, MitreMapper
 
 
 class TestHashCalculator:

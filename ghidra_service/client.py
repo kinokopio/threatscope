@@ -78,9 +78,7 @@ class GhidraClient:
 
     def list_functions(self, offset: int = 0, limit: int = 100) -> list[dict]:
         """Get function list."""
-        return self._request(
-            "GET", "/functions", params={"offset": offset, "limit": limit}
-        )
+        return self._request("GET", "/functions", params={"offset": offset, "limit": limit})
 
     def get_function_details(self, target: str) -> dict:
         """Get function details."""
@@ -90,9 +88,7 @@ class GhidraClient:
         """Decompile a function."""
         return self._request("GET", f"/functions/{target}/decompile")
 
-    def disassemble_function(
-        self, target: str, max_instructions: int = 100
-    ) -> dict:
+    def disassemble_function(self, target: str, max_instructions: int = 100) -> dict:
         """Get assembly for a function."""
         return self._request(
             "GET",

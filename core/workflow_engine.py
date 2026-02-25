@@ -184,17 +184,12 @@ class WorkflowEngine:
                 raise RuntimeError(f"Circular dependency detected: {remaining}")
 
             # Check for parallel groups
-            parallel_batch = self._get_parallel_batch(
-                ready_steps, workflow.parallel_groups
-            )
+            parallel_batch = self._get_parallel_batch(ready_steps, workflow.parallel_groups)
 
             # Execute batch (parallel or sequential)
             if len(parallel_batch) > 1:
                 results = await asyncio.gather(
-                    *[
-                        self._execute_step(step, progress_callback)
-                        for step in parallel_batch
-                    ],
+                    *[self._execute_step(step, progress_callback) for step in parallel_batch],
                     return_exceptions=True,
                 )
                 for step, result in zip(parallel_batch, results):
@@ -422,8 +417,8 @@ def create_default_tools_registry() -> dict[str, Callable]:
     Returns:
         Dictionary mapping tool names to functions.
     """
-    from tools.static.analyzer import StaticAnalyzer
     from clients.threat_intel import ThreatIntelClient
+    from tools.static.analyzer import StaticAnalyzer
 
     registry = {}
 

@@ -137,17 +137,23 @@ def create_pre_compact_hook(memory_store: MemoryStore):
 
     async def pre_compact_hook(input_data, tool_use_id, context):
         """Hook called before context compression."""
-        trigger = input_data.get("trigger", "auto")
+        _ = input_data.get("trigger", "auto")  # Available for future use
 
         # Get current findings and cached functions
         findings = memory_store.get_findings()
         cached_functions = memory_store.list_cached_functions()
 
         # Build findings summary
-        findings_summary = "\n".join([
-            f"- [{f.get('severity', 'unknown')}] {f.get('type', 'unknown')}: {f.get('summary', '')}"
-            for f in findings[:10]
-        ]) if findings else "No findings yet"
+        findings_summary = (
+            "\n".join(
+                [
+                    f"- [{f.get('severity', 'unknown')}] {f.get('type', 'unknown')}: {f.get('summary', '')}"
+                    for f in findings[:10]
+                ]
+            )
+            if findings
+            else "No findings yet"
+        )
 
         return {
             "hookSpecificOutput": {
@@ -159,19 +165,18 @@ When compressing context, please preserve:
 {findings_summary}
 
 ## Analyzed Functions ({len(cached_functions)} total)
-{', '.join(cached_functions[:20])}
+{", ".join(cached_functions[:20])}
 
 ## Compression Guidelines
 1. Preserve all ATT&CK technique mappings
 2. Preserve key IoCs (domains, IPs, URLs)
 3. Preserve current analysis path and next steps
 4. Decompiled code can be discarded (recoverable from memory)
-"""
+""",
             }
         }
 
     return pre_compact_hook
-
 
 
 class GhidraAgent(BaseAgent):
@@ -276,9 +281,7 @@ class GhidraAgent(BaseAgent):
             except Exception as e:
                 logger.error(f"AI analysis failed: {e}")
                 # Fall back to rule-based analysis
-                return await self._fallback_analysis(
-                    static_results, cached_functions, ghidra_info
-                )
+                return await self._fallback_analysis(static_results, cached_functions, ghidra_info)
 
         # Ghidra not available - return ready status
         return AgentResult(
@@ -513,38 +516,44 @@ class GhidraAgent(BaseAgent):
         ]
 
         if cached_functions:
-            parts.extend([
-                f"## Previously Analyzed Functions ({len(cached_functions)})",
-                "Check memory_get_function before re-analyzing these:",
-                ", ".join(cached_functions[:30]),
-                "",
-            ])
+            parts.extend(
+                [
+                    f"## Previously Analyzed Functions ({len(cached_functions)})",
+                    "Check memory_get_function before re-analyzing these:",
+                    ", ".join(cached_functions[:30]),
+                    "",
+                ]
+            )
 
         if previous_findings:
-            findings_summary = "\n".join([
-                f"- [{f.get('severity', 'unknown')}] {f.get('type', 'unknown')}: {f.get('summary', '')}"
-                for f in previous_findings[:10]
-            ])
-            parts.extend([
-                "## Previous Findings",
-                findings_summary,
-                "",
-            ])
+            findings_summary = "\n".join(
+                [
+                    f"- [{f.get('severity', 'unknown')}] {f.get('type', 'unknown')}: {f.get('summary', '')}"
+                    for f in previous_findings[:10]
+                ]
+            )
+            parts.extend(
+                [
+                    "## Previous Findings",
+                    findings_summary,
+                    "",
+                ]
+            )
 
-        parts.extend([
-            "## Instructions",
-            "1. Use memory_get_function to check if a function was already analyzed",
-            "2. Use memory_save_finding to save important discoveries",
-            "3. Use memory_cache_function after analyzing each function",
-            "4. Focus on suspicious functions identified in static analysis",
-            "5. Output final results as JSON with: analyzed_functions, callgraph, analysis_path, key_findings",
-        ])
+        parts.extend(
+            [
+                "## Instructions",
+                "1. Use memory_get_function to check if a function was already analyzed",
+                "2. Use memory_save_finding to save important discoveries",
+                "3. Use memory_cache_function after analyzing each function",
+                "4. Focus on suspicious functions identified in static analysis",
+                "5. Output final results as JSON with: analyzed_functions, callgraph, analysis_path, key_findings",
+            ]
+        )
 
         return "\n".join(parts)
 
-    def _identify_targets(
-        self, static_results: dict, functions: list[dict]
-    ) -> list[str]:
+    def _identify_targets(self, static_results: dict, functions: list[dict]) -> list[str]:
         """Identify interesting functions to analyze."""
         targets = []
 
@@ -575,9 +584,7 @@ class GhidraAgent(BaseAgent):
 
         return targets
 
-    def _find_suspicious(
-        self, analyzed: list[dict], static_results: dict
-    ) -> list[dict]:
+    def _find_suspicious(self, analyzed: list[dict], static_results: dict) -> list[dict]:
         """Find suspicious patterns in analyzed functions."""
         suspicious = []
 
@@ -608,11 +615,13 @@ class GhidraAgent(BaseAgent):
                     break
 
             if reasons:
-                suspicious.append({
-                    "name": func.get("name"),
-                    "address": func.get("address"),
-                    "reasons": reasons,
-                })
+                suspicious.append(
+                    {
+                        "name": func.get("name"),
+                        "address": func.get("address"),
+                        "reasons": reasons,
+                    }
+                )
 
         return suspicious
 

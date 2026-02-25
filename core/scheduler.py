@@ -65,9 +65,7 @@ class TaskScheduler:
         self._tasks: dict[str, AnalysisTask] = {}
 
         # Queues
-        self._pending_queue: asyncio.Queue[str] = asyncio.Queue(
-            maxsize=self.config.max_queue_size
-        )
+        self._pending_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=self.config.max_queue_size)
         self._ghidra_queue: asyncio.Queue[str] = asyncio.Queue()
         self._report_queue: asyncio.Queue[str] = asyncio.Queue()
 
@@ -187,12 +185,8 @@ class TaskScheduler:
             "ghidra_waiting": self._ghidra_queue.qsize(),
             "report_waiting": self._report_queue.qsize(),
             "total_tasks": len(self._tasks),
-            "completed": sum(
-                1 for t in self._tasks.values() if t.status == TaskStatus.COMPLETED
-            ),
-            "failed": sum(
-                1 for t in self._tasks.values() if t.status == TaskStatus.FAILED
-            ),
+            "completed": sum(1 for t in self._tasks.values() if t.status == TaskStatus.COMPLETED),
+            "failed": sum(1 for t in self._tasks.values() if t.status == TaskStatus.FAILED),
         }
 
     # --- Processors ---
@@ -201,9 +195,7 @@ class TaskScheduler:
         """Process Stage 1-4 tasks (parallel)."""
         while self._running:
             try:
-                task_id = await asyncio.wait_for(
-                    self._pending_queue.get(), timeout=1.0
-                )
+                task_id = await asyncio.wait_for(self._pending_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
 
@@ -238,9 +230,7 @@ class TaskScheduler:
         """Process Ghidra tasks (limited by pool)."""
         while self._running:
             try:
-                task_id = await asyncio.wait_for(
-                    self._ghidra_queue.get(), timeout=1.0
-                )
+                task_id = await asyncio.wait_for(self._ghidra_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
 
@@ -274,9 +264,7 @@ class TaskScheduler:
         """Process Stage 6 tasks (parallel)."""
         while self._running:
             try:
-                task_id = await asyncio.wait_for(
-                    self._report_queue.get(), timeout=1.0
-                )
+                task_id = await asyncio.wait_for(self._report_queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
 
@@ -314,9 +302,7 @@ class TaskScheduler:
 
         if task.retry_count < self.config.retry_count:
             # Retry by putting back in pending queue
-            logger.warning(
-                f"Task {task.id} failed (attempt {task.retry_count}), retrying: {error}"
-            )
+            logger.warning(f"Task {task.id} failed (attempt {task.retry_count}), retrying: {error}")
             task.update_status(TaskStatus.PENDING)
             asyncio.create_task(self._pending_queue.put(task.id))
         else:

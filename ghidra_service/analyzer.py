@@ -9,7 +9,6 @@ import logging
 import os
 import shutil
 import tempfile
-from datetime import datetime, timezone
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,7 @@ def _ensure_ghidra_started():
     pyghidra.start()
 
     # Import Ghidra Java classes via JPype bridge
-    from ghidra.app.decompiler import DecompInterface, DecompileOptions
+    from ghidra.app.decompiler import DecompileOptions, DecompInterface
     from ghidra.program.model.data import StringDataInstance
     from ghidra.util.task import ConsoleTaskMonitor
 
@@ -122,17 +121,17 @@ class GhidraAnalyzer:
 
                 entry = func.getEntryPoint()
                 body = func.getBody()
-                functions.append({
-                    "name": func.getName(),
-                    "address": str(entry) if entry else "",
-                    "offset": entry.getOffset() if entry else 0,
-                    "size": body.getNumAddresses() if body else 0,
-                    "signature": (
-                        func.getSignature().getPrototypeString()
-                        if func.getSignature()
-                        else ""
-                    ),
-                })
+                functions.append(
+                    {
+                        "name": func.getName(),
+                        "address": str(entry) if entry else "",
+                        "offset": entry.getOffset() if entry else 0,
+                        "size": body.getNumAddresses() if body else 0,
+                        "signature": (
+                            func.getSignature().getPrototypeString() if func.getSignature() else ""
+                        ),
+                    }
+                )
 
             logger.info(f"Found {len(functions)} functions (offset={offset})")
             return functions
@@ -158,9 +157,7 @@ class GhidraAnalyzer:
                 "offset": entry.getOffset() if entry else 0,
                 "size": body.getNumAddresses() if body else 0,
                 "signature": (
-                    func.getSignature().getPrototypeString()
-                    if func.getSignature()
-                    else ""
+                    func.getSignature().getPrototypeString() if func.getSignature() else ""
                 ),
                 "calling_convention": str(func.getCallingConventionName()),
                 "is_thunk": func.isThunk(),
@@ -191,13 +188,15 @@ class GhidraAnalyzer:
                     continue
 
                 addr = data.getAddress()
-                strings.append({
-                    "address": str(addr) if addr else "",
-                    "offset": addr.getOffset() if addr else 0,
-                    "value": str_value,
-                    "type": type_name,
-                    "length": len(str_value),
-                })
+                strings.append(
+                    {
+                        "address": str(addr) if addr else "",
+                        "offset": addr.getOffset() if addr else 0,
+                        "value": str_value,
+                        "type": type_name,
+                        "length": len(str_value),
+                    }
+                )
 
             logger.info(f"Found {len(strings)} strings")
             return strings
@@ -229,10 +228,12 @@ class GhidraAnalyzer:
                 str_value = self._safe_string_value(data)
                 if str_value and regex.search(str_value):
                     addr = data.getAddress()
-                    results.append({
-                        "address": str(addr) if addr else "",
-                        "value": str_value,
-                    })
+                    results.append(
+                        {
+                            "address": str(addr) if addr else "",
+                            "value": str_value,
+                        }
+                    )
 
             return results
 
@@ -286,11 +287,13 @@ class GhidraAnalyzer:
                 if decomp_results and decomp_results.decompileCompleted():
                     decomp_func = decomp_results.getDecompiledFunction()
                     if decomp_func and decomp_func.getC():
-                        results.append({
-                            "name": func.getName(),
-                            "address": str(func.getEntryPoint()),
-                            "code": decomp_func.getC(),
-                        })
+                        results.append(
+                            {
+                                "name": func.getName(),
+                                "address": str(func.getEntryPoint()),
+                                "code": decomp_func.getC(),
+                            }
+                        )
 
             except Exception as e:
                 logger.warning(f"Error decompiling {target}: {e}")
@@ -315,12 +318,14 @@ class GhidraAnalyzer:
                     break
 
                 instr_bytes = instr.getBytes()
-                instructions.append({
-                    "address": str(instr.getAddress()),
-                    "mnemonic": instr.getMnemonicString(),
-                    "operands": str(instr),
-                    "bytes": instr_bytes.hex() if instr_bytes else "",
-                })
+                instructions.append(
+                    {
+                        "address": str(instr.getAddress()),
+                        "mnemonic": instr.getMnemonicString(),
+                        "operands": str(instr),
+                        "bytes": instr_bytes.hex() if instr_bytes else "",
+                    }
+                )
 
             return {
                 "name": func.getName(),
@@ -379,9 +384,7 @@ class GhidraAnalyzer:
                     for ref in self._iter_call_refs(body, ref_manager):
                         callee = func_manager.getFunctionAt(ref.getToAddress())
                         if callee and callee.getName() not in visited:
-                            result[callee.getName()] = build_graph(
-                                callee, depth - 1, visited
-                            )
+                            result[callee.getName()] = build_graph(callee, depth - 1, visited)
                 return result
 
             visited = set()
@@ -412,11 +415,13 @@ class GhidraAnalyzer:
             for idx, func in enumerate(func_manager.getFunctions(True)):
                 name = func.getName()
                 entry = func.getEntryPoint()
-                nodes.append({
-                    "id": idx,
-                    "name": name,
-                    "offset": entry.getOffset() if entry else 0,
-                })
+                nodes.append(
+                    {
+                        "id": idx,
+                        "name": name,
+                        "offset": entry.getOffset() if entry else 0,
+                    }
+                )
                 func_map[name] = idx
 
             # Collect edges
@@ -437,10 +442,12 @@ class GhidraAnalyzer:
 
                 for callee_name in called:
                     if callee_name in func_map:
-                        edges.append({
-                            "from": func_map[caller_name],
-                            "to": func_map[callee_name],
-                        })
+                        edges.append(
+                            {
+                                "from": func_map[caller_name],
+                                "to": func_map[callee_name],
+                            }
+                        )
 
             logger.info(f"Call graph: {len(nodes)} nodes, {len(edges)} edges")
             return {"nodes": nodes, "edges": edges}
@@ -465,9 +472,7 @@ class GhidraAnalyzer:
                 "address": address,
                 "length": bytes_read,
                 "hex": data[:bytes_read].hex(),
-                "ascii": "".join(
-                    chr(b) if 32 <= b < 127 else "." for b in data[:bytes_read]
-                ),
+                "ascii": "".join(chr(b) if 32 <= b < 127 else "." for b in data[:bytes_read]),
             }
 
         except Exception as e:
@@ -484,11 +489,13 @@ class GhidraAnalyzer:
             func_manager = self._program.getFunctionManager()
             for func in func_manager.getExternalFunctions():
                 ext_loc = func.getExternalLocation()
-                imports.append({
-                    "name": func.getName(),
-                    "address": str(func.getEntryPoint()),
-                    "library": str(ext_loc.getLibraryName()) if ext_loc else "",
-                })
+                imports.append(
+                    {
+                        "name": func.getName(),
+                        "address": str(func.getEntryPoint()),
+                        "library": str(ext_loc.getLibraryName()) if ext_loc else "",
+                    }
+                )
             return imports
 
         except Exception as e:
@@ -505,10 +512,12 @@ class GhidraAnalyzer:
             symbol_table = self._program.getSymbolTable()
             for symbol in symbol_table.getAllSymbols(True):
                 if symbol.isExternalEntryPoint():
-                    exports.append({
-                        "name": symbol.getName(),
-                        "address": str(symbol.getAddress()),
-                    })
+                    exports.append(
+                        {
+                            "name": symbol.getName(),
+                            "address": str(symbol.getAddress()),
+                        }
+                    )
             return exports
 
         except Exception as e:
@@ -524,18 +533,20 @@ class GhidraAnalyzer:
         try:
             memory = self._program.getMemory()
             for block in memory.getBlocks():
-                sections.append({
-                    "name": block.getName(),
-                    "start": str(block.getStart()),
-                    "end": str(block.getEnd()),
-                    "size": block.getSize(),
-                    "permissions": {
-                        "read": block.isRead(),
-                        "write": block.isWrite(),
-                        "execute": block.isExecute(),
-                    },
-                    "initialized": block.isInitialized(),
-                })
+                sections.append(
+                    {
+                        "name": block.getName(),
+                        "start": str(block.getStart()),
+                        "end": str(block.getEnd()),
+                        "size": block.getSize(),
+                        "permissions": {
+                            "read": block.isRead(),
+                            "write": block.isWrite(),
+                            "execute": block.isExecute(),
+                        },
+                        "initialized": block.isInitialized(),
+                    }
+                )
             return sections
 
         except Exception as e:
@@ -670,10 +681,12 @@ class GhidraAnalyzer:
             if callee and callee.getName() not in seen:
                 seen.add(callee.getName())
                 entry = callee.getEntryPoint()
-                callees.append({
-                    "name": callee.getName(),
-                    "offset": entry.getOffset() if entry else 0,
-                })
+                callees.append(
+                    {
+                        "name": callee.getName(),
+                        "offset": entry.getOffset() if entry else 0,
+                    }
+                )
 
         return callees
 
@@ -698,10 +711,12 @@ class GhidraAnalyzer:
             if caller and caller.getName() not in seen:
                 seen.add(caller.getName())
                 caller_entry = caller.getEntryPoint()
-                callers.append({
-                    "name": caller.getName(),
-                    "offset": caller_entry.getOffset() if caller_entry else 0,
-                })
+                callers.append(
+                    {
+                        "name": caller.getName(),
+                        "offset": caller_entry.getOffset() if caller_entry else 0,
+                    }
+                )
 
         return callers
 

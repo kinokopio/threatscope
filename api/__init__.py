@@ -1,7 +1,7 @@
 """API module - REST API, WebSocket, and MCP Server."""
 
-from api.rest import app, create_app
 from api.mcp_server import ThreatScopeMCPServer, get_mcp_server
+from api.rest import app, create_app
 from api.websocket import (
     ConnectionManager,
     ProgressMessage,
@@ -11,6 +11,8 @@ from api.websocket import (
     notify_step_started,
     notify_task_completed,
     notify_task_started,
+)
+from api.websocket import (
     router as websocket_router,
 )
 

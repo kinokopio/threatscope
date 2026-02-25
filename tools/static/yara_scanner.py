@@ -6,6 +6,7 @@ from tools.base import AnalysisResult, BaseTool
 
 try:
     import yara
+
     YARA_AVAILABLE = True
 except ImportError:
     YARA_AVAILABLE = False
@@ -84,12 +85,14 @@ class YaraScanner(BaseTool):
             matches = []
             for rules in self._compiled_rules:
                 for match in rules.match(str(file_path)):
-                    matches.append({
-                        "rule": match.rule,
-                        "namespace": match.namespace,
-                        "tags": list(match.tags),
-                        "meta": dict(match.meta) if match.meta else {},
-                    })
+                    matches.append(
+                        {
+                            "rule": match.rule,
+                            "namespace": match.namespace,
+                            "tags": list(match.tags),
+                            "meta": dict(match.meta) if match.meta else {},
+                        }
+                    )
 
             return AnalysisResult(
                 success=True,

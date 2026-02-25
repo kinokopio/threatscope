@@ -54,8 +54,7 @@ class StaticAnalyzer:
         yara_task = self.yara_scanner.analyze(file_path)
 
         results = await asyncio.gather(
-            hash_task, string_task, elf_task, yara_task,
-            return_exceptions=True
+            hash_task, string_task, elf_task, yara_task, return_exceptions=True
         )
 
         # Process results
@@ -84,7 +83,9 @@ class StaticAnalyzer:
             # Run function classification and MITRE mapping on imports
             imports = results[2].data.get("imports", [])
             if imports:
-                output["function_categories"] = self.function_classifier.get_category_summary(imports)
+                output["function_categories"] = self.function_classifier.get_category_summary(
+                    imports
+                )
                 output["mitre_mapping"] = self.mitre_mapper.get_mapping_summary(imports)
         else:
             output["elf"] = {"error": str(results[2])}

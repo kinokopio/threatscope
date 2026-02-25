@@ -24,6 +24,7 @@ class GhidraConfig:
     startup_timeout: int = 60
     base_url: str = "http://localhost:8000"
 
+
 @dataclass
 class ThreatIntelSourceConfig:
     enabled: bool = True
@@ -33,9 +34,7 @@ class ThreatIntelSourceConfig:
 @dataclass
 class ThreatIntelConfig:
     malwarebazaar: ThreatIntelSourceConfig = field(
-        default_factory=lambda: ThreatIntelSourceConfig(
-            base_url="https://mb-api.abuse.ch/api/v1/"
-        )
+        default_factory=lambda: ThreatIntelSourceConfig(base_url="https://mb-api.abuse.ch/api/v1/")
     )
     threatfox: ThreatIntelSourceConfig = field(
         default_factory=lambda: ThreatIntelSourceConfig(
@@ -43,9 +42,7 @@ class ThreatIntelConfig:
         )
     )
     urlhaus: ThreatIntelSourceConfig = field(
-        default_factory=lambda: ThreatIntelSourceConfig(
-            base_url="https://urlhaus-api.abuse.ch/v1/"
-        )
+        default_factory=lambda: ThreatIntelSourceConfig(base_url="https://urlhaus-api.abuse.ch/v1/")
     )
 
 
@@ -58,14 +55,10 @@ class AgentConfig:
 @dataclass
 class AgentsConfig:
     ghidra_agent: AgentConfig = field(
-        default_factory=lambda: AgentConfig(
-            system_prompt_path="ai/prompts/ghidra_agent.txt"
-        )
+        default_factory=lambda: AgentConfig(system_prompt_path="ai/prompts/ghidra_agent.txt")
     )
     malware_analysis: AgentConfig = field(
-        default_factory=lambda: AgentConfig(
-            system_prompt_path="ai/prompts/malware_analysis.txt"
-        )
+        default_factory=lambda: AgentConfig(system_prompt_path="ai/prompts/malware_analysis.txt")
     )
 
 

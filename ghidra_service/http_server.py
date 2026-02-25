@@ -44,9 +44,7 @@ def _safe_path(filename: str) -> str:
 def require_analyzer() -> GhidraAnalyzer:
     """Get current analyzer or raise error."""
     if analyzer is None:
-        raise HTTPException(
-            status_code=409, detail="No binary loaded. POST /upload first."
-        )
+        raise HTTPException(status_code=409, detail="No binary loaded. POST /upload first.")
     return analyzer
 
 

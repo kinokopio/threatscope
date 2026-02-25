@@ -11,8 +11,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 try:
-    import docker
     from docker.models.containers import Container
+
+    import docker
 except ImportError:
     docker = None
     Container = None
@@ -146,9 +147,7 @@ class GhidraInstancePool:
         """
         try:
             if timeout:
-                instance_id = await asyncio.wait_for(
-                    self._available.get(), timeout=timeout
-                )
+                instance_id = await asyncio.wait_for(self._available.get(), timeout=timeout)
             else:
                 instance_id = await self._available.get()
 

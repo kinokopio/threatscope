@@ -8,6 +8,7 @@ from typing import Any
 @dataclass
 class AgentConfig:
     """Configuration for an AI agent."""
+
     system_prompt_path: str = ""
     max_iterations: int = 20
     model: str = "claude-sonnet-4-20250514"
@@ -16,6 +17,7 @@ class AgentConfig:
 @dataclass
 class AgentResult:
     """Result from an AI agent."""
+
     success: bool = True
     error: str | None = None
     data: dict[str, Any] = field(default_factory=dict)

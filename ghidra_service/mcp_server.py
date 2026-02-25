@@ -27,15 +27,11 @@ ALLOW_ORIGINS = os.getenv("GHIDRA_MCP_ALLOW_ORIGINS", "*")
 mcp = FastMCP("ThreatScope Ghidra MCP")
 
 
-def _request(
-    method: str, path: str, params: dict | None = None, json: Any = None
-) -> Any:
+def _request(method: str, path: str, params: dict | None = None, json: Any = None) -> Any:
     """Make request to Ghidra HTTP service."""
     url = f"{GHIDRA_HTTP_URL}{path}"
     try:
-        response = httpx.request(
-            method, url, params=params, json=json, timeout=REQUEST_TIMEOUT
-        )
+        response = httpx.request(method, url, params=params, json=json, timeout=REQUEST_TIMEOUT)
     except httpx.HTTPError as e:
         raise RuntimeError(f"Failed to reach Ghidra service at {url}: {e}") from e
 
@@ -134,9 +130,7 @@ def get_callgraph(target: str, max_depth: int = 3) -> dict[str, Any]:
     Returns:
         Hierarchical call graph structure
     """
-    return _request(
-        "GET", f"/functions/{target}/callgraph", params={"max_depth": max_depth}
-    )
+    return _request("GET", f"/functions/{target}/callgraph", params={"max_depth": max_depth})
 
 
 # --- String Tools ---

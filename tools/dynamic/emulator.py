@@ -5,10 +5,8 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
 import time
 from dataclasses import dataclass, field
-from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +104,7 @@ class BinaryEmulator:
             EmulationResult with syscalls and execution info.
         """
         if not os.path.exists(binary_path):
-            return EmulationResult(
-                success=False, error=f"Binary not found: {binary_path}"
-            )
+            return EmulationResult(success=False, error=f"Binary not found: {binary_path}")
 
         abs_path = os.path.abspath(binary_path)
         arch_lower = arch.lower()
@@ -138,9 +134,7 @@ class BinaryEmulator:
         try:
             # Ensure image exists
             if not self._ensure_docker_image():
-                return EmulationResult(
-                    success=False, error="Failed to build Docker image"
-                )
+                return EmulationResult(success=False, error="Failed to build Docker image")
 
             basename = os.path.basename(binary_path)
             qemu_bin = f"qemu-{arch}-static"
@@ -332,9 +326,9 @@ class BinaryEmulator:
                 timeout=self.timeout,
             )
 
-            output = result.stdout.decode(
+            output = result.stdout.decode("utf-8", errors="replace") + result.stderr.decode(
                 "utf-8", errors="replace"
-            ) + result.stderr.decode("utf-8", errors="replace")
+            )
             syscalls = self._parse_strace_output(output)
 
             return EmulationResult(

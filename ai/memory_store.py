@@ -3,7 +3,6 @@
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 
 class MemoryStore:
@@ -156,5 +155,6 @@ class MemoryStore:
     def clear(self) -> None:
         """Clear all stored data for this sample."""
         import shutil
+
         if self.base_path.exists():
             shutil.rmtree(self.base_path)

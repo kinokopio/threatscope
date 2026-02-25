@@ -6,7 +6,9 @@ from pathlib import Path
 from tools.base import AnalysisResult, BaseTool
 
 # Default path to function categories
-DEFAULT_CATEGORIES_PATH = Path(__file__).parent.parent.parent / "data" / "linux_func_categories.json"
+DEFAULT_CATEGORIES_PATH = (
+    Path(__file__).parent.parent.parent / "data" / "linux_func_categories.json"
+)
 
 
 class FunctionClassifier(BaseTool):

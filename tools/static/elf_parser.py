@@ -6,6 +6,7 @@ from tools.base import AnalysisResult, BaseTool
 
 try:
     import lief
+
     LIEF_AVAILABLE = True
 except ImportError:
     LIEF_AVAILABLE = False
@@ -44,7 +45,9 @@ class ELFParser(BaseTool):
                 "format": "ELF",
                 "arch": str(header.machine_type).split(".")[-1],
                 "bits": 64 if header.identity_class == lief.ELF.Header.CLASS.ELF64 else 32,
-                "endian": "little" if header.identity_data == lief.ELF.Header.ELF_DATA.LSB else "big",
+                "endian": "little"
+                if header.identity_data == lief.ELF.Header.ELF_DATA.LSB
+                else "big",
                 "type": str(header.file_type).split(".")[-1],
                 "entry_point": hex(binary.entrypoint),
             }
@@ -52,24 +55,28 @@ class ELFParser(BaseTool):
             # Sections
             sections = []
             for section in binary.sections:
-                sections.append({
-                    "name": section.name,
-                    "type": str(section.type).split(".")[-1],
-                    "size": section.size,
-                    "entropy": round(section.entropy, 2),
-                    "flags": [str(f).split(".")[-1] for f in section.flags_list],
-                })
+                sections.append(
+                    {
+                        "name": section.name,
+                        "type": str(section.type).split(".")[-1],
+                        "size": section.size,
+                        "entropy": round(section.entropy, 2),
+                        "flags": [str(f).split(".")[-1] for f in section.flags_list],
+                    }
+                )
             data["sections"] = sections
 
             # Segments
             segments = []
             for segment in binary.segments:
-                segments.append({
-                    "type": str(segment.type).split(".")[-1],
-                    "flags": str(segment.flags).split(".")[-1],
-                    "file_size": segment.physical_size,
-                    "mem_size": segment.virtual_size,
-                })
+                segments.append(
+                    {
+                        "type": str(segment.type).split(".")[-1],
+                        "flags": str(segment.flags).split(".")[-1],
+                        "file_size": segment.physical_size,
+                        "mem_size": segment.virtual_size,
+                    }
+                )
             data["segments"] = segments
 
             # Imported functions

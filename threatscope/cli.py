@@ -25,12 +25,14 @@ def main():
         help="Disable Ghidra deep analysis",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         help="Output file for JSON report",
     )
     parser.add_argument(
-        "--quiet", "-q",
+        "--quiet",
+        "-q",
         action="store_true",
         help="Suppress progress output",
     )

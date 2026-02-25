@@ -10,6 +10,7 @@ import httpx
 @dataclass
 class ThreatIntelResult:
     """Result from threat intelligence query."""
+
     source: str
     found: bool
     data: dict[str, Any]

@@ -145,8 +145,7 @@ class ThreatScopeMCPServer:
         if "hash" in args:
             hash_results = await self.coordinator.threat_intel.query_hash(args["hash"])
             results["hash_lookup"] = {
-                source: {"found": r.found, "data": r.data}
-                for source, r in hash_results.items()
+                source: {"found": r.found, "data": r.data} for source, r in hash_results.items()
             }
 
         if any(k in args for k in ["domain", "ip", "url"]):

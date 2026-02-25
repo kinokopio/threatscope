@@ -9,6 +9,7 @@ from typing import Any
 
 class FileType(Enum):
     """Supported file types."""
+
     ELF = "elf"
     PE = "pe"
     MACHO = "macho"
@@ -19,6 +20,7 @@ class FileType(Enum):
 @dataclass
 class AnalysisResult:
     """Base result for all analysis tools."""
+
     success: bool = True
     error: str | None = None
     data: dict[str, Any] = field(default_factory=dict)

@@ -174,16 +174,12 @@ class AnalysisCoordinator:
         # Stage 3: Threat intel (parallel with dynamic)
         threat_intel_task = None
         if enable_threat_intel:
-            threat_intel_task = asyncio.create_task(
-                self._query_threat_intel(static_results)
-            )
+            threat_intel_task = asyncio.create_task(self._query_threat_intel(static_results))
 
         # Stage 4: Dynamic analysis
         dynamic_results = {}
         if enable_dynamic:
-            dynamic_results = await self._run_dynamic_analysis(
-                file_path, static_results
-            )
+            dynamic_results = await self._run_dynamic_analysis(file_path, static_results)
 
         # Wait for threat intel
         if threat_intel_task:
@@ -289,10 +285,7 @@ class AnalysisCoordinator:
                 urls=urls[:5],
             )
             results["ioc_lookup"] = {
-                ioc_type: [
-                    {"found": r.found, "data": r.data, "error": r.error}
-                    for r in ioc_list
-                ]
+                ioc_type: [{"found": r.found, "data": r.data, "error": r.error} for r in ioc_list]
                 for ioc_type, ioc_list in ioc_results.items()
             }
 
@@ -314,11 +307,13 @@ class AnalysisCoordinator:
         """
         sample_hash = static_results.get("hashes", {}).get("sha256", "")
 
-        result = await self.ghidra_agent.analyze({
-            "static_results": static_results,
-            "file_path": str(file_path),
-            "sample_hash": sample_hash,
-        })
+        result = await self.ghidra_agent.analyze(
+            {
+                "static_results": static_results,
+                "file_path": str(file_path),
+                "sample_hash": sample_hash,
+            }
+        )
 
         return result.data if result.success else {"error": result.error}
 
@@ -340,12 +335,14 @@ class AnalysisCoordinator:
         threat_intel = static_results.get("threat_intel", {})
         dynamic_results = static_results.get("dynamic_analysis", {})
 
-        result = await self.malware_agent.analyze({
-            "static_results": static_results,
-            "ghidra_analysis": ghidra_results,
-            "threat_intel": threat_intel,
-            "dynamic_results": dynamic_results,
-        })
+        result = await self.malware_agent.analyze(
+            {
+                "static_results": static_results,
+                "ghidra_analysis": ghidra_results,
+                "threat_intel": threat_intel,
+                "dynamic_results": dynamic_results,
+            }
+        )
 
         return result.data if result.success else {"error": result.error}
 

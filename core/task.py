@@ -1,19 +1,20 @@
 """Task model for analysis jobs."""
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
-import uuid
 
 
 class TaskStatus(Enum):
     """Task status states."""
+
     PENDING = "pending"
     STAGE_1_4 = "stage_1_4"  # Static + Threat Intel + Dynamic
-    QUEUED = "queued"        # Waiting for Ghidra instance
-    STAGE_5 = "stage_5"      # Ghidra analysis
-    STAGE_6 = "stage_6"      # Report generation
+    QUEUED = "queued"  # Waiting for Ghidra instance
+    STAGE_5 = "stage_5"  # Ghidra analysis
+    STAGE_6 = "stage_6"  # Report generation
     COMPLETED = "completed"
     FAILED = "failed"
 

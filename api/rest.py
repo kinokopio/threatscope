@@ -1,13 +1,11 @@
 """REST API for ThreatScope."""
 
-import asyncio
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from core import (
