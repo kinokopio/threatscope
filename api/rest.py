@@ -188,50 +188,58 @@ async def run_analysis_task(
         await notify_task_started(task_id, str(file_path))
         logger.info(f"Task {task_id}: Starting analysis for {file_path}")
         
-        # Stage 1: Static analysis
-        db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
-        await notify_step_started(task_id, "static", "Static Analysis (hashes, strings, ELF parsing)")
-        
         coordinator = get_coordinator()
         
-        # Run the full analysis pipeline
-        await notify_step_started(task_id, "stage_1_4", "Running analysis pipeline...")
-        result = await coordinator.analyze(
+        # ========== Stage 1-4: Static + Threat Intel + Dynamic ==========
+        db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
+        await notify_step_started(task_id, "stage_1_4", "Static Analysis, Threat Intel, Dynamic Analysis")
+        
+        stage_1_4_results = await coordinator.run_stage_1_4(
             file_path=file_path,
-            enable_ghidra=enable_ghidra,
             enable_dynamic=enable_dynamic,
             enable_threat_intel=enable_threat_intel,
         )
-        logger.info(f"Task {task_id}: Analysis completed, result keys: {result.keys()}")
         
-        # Check for errors in result
-        if result.get("error"):
-            raise Exception(result["error"])
-        
-        # Save static analysis results
-        if result.get("static_analysis"):
-            db.update_task_result(task_id, "stage_1_4_results", result["static_analysis"])
-            await notify_step_completed(task_id, "static", "completed")
-        
-        # Save Ghidra results
-        if result.get("ghidra_analysis"):
-            db.update_task_result(task_id, "ghidra_results", result["ghidra_analysis"])
-            await notify_step_completed(task_id, "ghidra", "completed")
-        
-        # Save report (note: coordinator returns 'report' not 'malware_report')
-        if result.get("report"):
-            db.update_task_result(task_id, "report", result["report"])
-            await notify_step_completed(task_id, "report", "completed")
-        
+        # Save Stage 1-4 results immediately
+        db.update_task_result(task_id, "stage_1_4_results", stage_1_4_results)
         await notify_step_completed(task_id, "stage_1_4", "completed")
+        logger.info(f"Task {task_id}: Stage 1-4 completed")
         
-        # Mark completed
+        # ========== Stage 5: Ghidra Analysis ==========
+        ghidra_results = {}
+        if enable_ghidra:
+            db.update_task_status(task_id, TaskStatus.STAGE_5.value)
+            await notify_step_started(task_id, "stage_5", "Ghidra Deep Analysis (AI-driven)")
+            
+            ghidra_results = await coordinator.run_stage_5(
+                static_results=stage_1_4_results,
+                file_path=file_path,
+            )
+            
+            # Save Ghidra results immediately
+            db.update_task_result(task_id, "ghidra_results", ghidra_results)
+            await notify_step_completed(task_id, "stage_5", "completed")
+            logger.info(f"Task {task_id}: Stage 5 (Ghidra) completed")
+        
+        # ========== Stage 6: Report Generation ==========
+        db.update_task_status(task_id, TaskStatus.STAGE_6.value)
+        await notify_step_started(task_id, "stage_6", "AI Report Generation")
+        
+        report_result = await coordinator.run_stage_6(
+            static_results=stage_1_4_results,
+            ghidra_results=ghidra_results,
+        )
+        
+        # Save report immediately
+        report = report_result.get("report", report_result)
+        db.update_task_result(task_id, "report", report)
+        await notify_step_completed(task_id, "stage_6", "completed")
+        logger.info(f"Task {task_id}: Stage 6 (Report) completed")
+        
+        # ========== Mark Completed ==========
         db.update_task_status(task_id, TaskStatus.COMPLETED.value)
         
-        verdict = "unknown"
-        if result.get("report"):
-            verdict = result["report"].get("verdict", "unknown")
-        
+        verdict = report.get("verdict", "unknown")
         await notify_task_completed(task_id, "completed", {"verdict": verdict})
         logger.info(f"Task {task_id}: Completed with verdict: {verdict}")
 

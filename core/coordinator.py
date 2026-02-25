@@ -150,7 +150,7 @@ class AnalysisCoordinator:
                 "error": str(e),
             }
 
-    async def _run_stage_1_4(
+    async def run_stage_1_4(
         self,
         file_path: Path,
         enable_dynamic: bool,
@@ -291,7 +291,7 @@ class AnalysisCoordinator:
 
         return results
 
-    async def _run_stage_5(
+    async def run_stage_5(
         self,
         static_results: dict[str, Any],
         file_path: Path,
@@ -317,7 +317,7 @@ class AnalysisCoordinator:
 
         return result.data if result.success else {"error": result.error}
 
-    async def _run_stage_6(
+    async def run_stage_6(
         self,
         static_results: dict[str, Any],
         ghidra_results: dict[str, Any],
