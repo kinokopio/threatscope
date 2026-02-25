@@ -34,7 +34,7 @@ api = [
     "uvicorn>=0.23.0",
 ]
 ai = [
-    "anthropic>=0.18.0",
+    "claude-agent-sdk>=0.1.40",
 ]
 ghidra = [
     "pyghidra>=1.0.0",
