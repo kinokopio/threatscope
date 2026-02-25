@@ -6,19 +6,32 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from api.websocket import (
+    router as websocket_router,
+    notify_step_started,
+    notify_step_completed,
+    notify_task_started,
+    notify_task_completed,
+)
 from core import (
     AnalysisCoordinator,
     ScheduledCoordinator,
     SchedulerConfig,
     TaskStatus,
+    TaskProgress,
 )
+from core.database import get_database, TaskDatabase
 
-_tasks: dict[str, dict[str, Any]] = {}
 _coordinator: AnalysisCoordinator | None = None
 _scheduled_coordinator: ScheduledCoordinator | None = None
 
+
+def get_db() -> TaskDatabase:
+    """Get database instance."""
+    return get_database()
 
 def get_coordinator() -> AnalysisCoordinator:
     global _coordinator
@@ -84,6 +97,17 @@ app = FastAPI(
     version="0.2.0",
 )
 
+# CORS middleware - allow frontend to access API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Register WebSocket router
+app.include_router(websocket_router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -119,19 +143,18 @@ async def analyze_file(
     content = await file.read()
     file_path.write_bytes(content)
 
-    _tasks[task_id] = {
-        "id": task_id,
-        "status": TaskStatus.PENDING.value,
-        "file_path": str(file_path),
-        "file_name": file.filename,
-        "options": {
+    # Save to database
+    db = get_db()
+    db.create_task(
+        task_id=task_id,
+        file_path=str(file_path),
+        file_name=file.filename,
+        options={
             "enable_ghidra": enable_ghidra,
             "enable_dynamic": enable_dynamic,
             "enable_threat_intel": enable_threat_intel,
         },
-        "result": None,
-        "error": None,
-    }
+    )
 
     background_tasks.add_task(
         run_analysis_task,
@@ -156,23 +179,68 @@ async def run_analysis_task(
     enable_dynamic: bool,
     enable_threat_intel: bool,
 ):
+    db = get_db()
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
-        _tasks[task_id]["status"] = TaskStatus.STAGE_1_4.value
-
+        # Notify task started
+        await notify_task_started(task_id, str(file_path))
+        logger.info(f"Task {task_id}: Starting analysis for {file_path}")
+        
+        # Stage 1: Static analysis
+        db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
+        await notify_step_started(task_id, "static", "Static Analysis (hashes, strings, ELF parsing)")
+        
         coordinator = get_coordinator()
+        
+        # Run the full analysis pipeline
+        await notify_step_started(task_id, "stage_1_4", "Running analysis pipeline...")
         result = await coordinator.analyze(
             file_path=file_path,
             enable_ghidra=enable_ghidra,
             enable_dynamic=enable_dynamic,
             enable_threat_intel=enable_threat_intel,
         )
-
-        _tasks[task_id]["status"] = TaskStatus.COMPLETED.value
-        _tasks[task_id]["result"] = result
+        logger.info(f"Task {task_id}: Analysis completed, result keys: {result.keys()}")
+        
+        # Check for errors in result
+        if result.get("error"):
+            raise Exception(result["error"])
+        
+        # Save static analysis results
+        if result.get("static_analysis"):
+            db.update_task_result(task_id, "stage_1_4_results", result["static_analysis"])
+            await notify_step_completed(task_id, "static", "completed")
+        
+        # Save Ghidra results
+        if result.get("ghidra_analysis"):
+            db.update_task_result(task_id, "ghidra_results", result["ghidra_analysis"])
+            await notify_step_completed(task_id, "ghidra", "completed")
+        
+        # Save report (note: coordinator returns 'report' not 'malware_report')
+        if result.get("report"):
+            db.update_task_result(task_id, "report", result["report"])
+            await notify_step_completed(task_id, "report", "completed")
+        
+        await notify_step_completed(task_id, "stage_1_4", "completed")
+        
+        # Mark completed
+        db.update_task_status(task_id, TaskStatus.COMPLETED.value)
+        
+        verdict = "unknown"
+        if result.get("report"):
+            verdict = result["report"].get("verdict", "unknown")
+        
+        await notify_task_completed(task_id, "completed", {"verdict": verdict})
+        logger.info(f"Task {task_id}: Completed with verdict: {verdict}")
 
     except Exception as e:
-        _tasks[task_id]["status"] = TaskStatus.FAILED.value
-        _tasks[task_id]["error"] = str(e)
+        import traceback
+        logger.error(f"Task {task_id}: Failed with error: {e}")
+        logger.error(traceback.format_exc())
+        db.update_task_status(task_id, TaskStatus.FAILED.value, error=str(e))
+        await notify_task_completed(task_id, "failed", {"error": str(e)})
 
     finally:
         try:
@@ -183,7 +251,11 @@ async def run_analysis_task(
 
 @app.get("/tasks/{task_id}", response_model=AnalysisResponse)
 async def get_task_status(task_id: str):
-    if task_id not in _tasks:
+    db = get_db()
+    task = db.get_task(task_id)
+    
+    if not task:
+        # Try scheduled coordinator
         scheduled = get_scheduled_coordinator()
         task_status = scheduled.get_task_status(task_id)
         if task_status:
@@ -195,7 +267,6 @@ async def get_task_status(task_id: str):
             )
         raise HTTPException(status_code=404, detail="Task not found")
 
-    task = _tasks[task_id]
     return AnalysisResponse(
         task_id=task_id,
         status=task["status"],
@@ -206,8 +277,19 @@ async def get_task_status(task_id: str):
 
 @app.get("/tasks")
 async def list_tasks():
-    scheduled = get_scheduled_coordinator()
-    queue_stats = scheduled.get_queue_stats()
+    db = get_db()
+    tasks = db.get_all_tasks(limit=100)
+    stats = db.get_stats()
+    
+    # Map stats to expected format
+    queue_stats = {
+        "pending": stats.get("pending", 0),
+        "ghidra_waiting": stats.get("queued", 0),
+        "report_waiting": stats.get("stage_6", 0),
+        "total_tasks": stats.get("total", 0),
+        "completed": stats.get("completed", 0),
+        "failed": stats.get("failed", 0),
+    }
 
     return {
         "tasks": [
@@ -216,7 +298,7 @@ async def list_tasks():
                 "status": t["status"],
                 "file_name": t.get("file_name"),
             }
-            for t in _tasks.values()
+            for t in tasks
         ],
         "queue_stats": queue_stats,
     }
@@ -224,10 +306,9 @@ async def list_tasks():
 
 @app.delete("/tasks/{task_id}")
 async def delete_task(task_id: str):
-    if task_id not in _tasks:
+    db = get_db()
+    if not db.delete_task(task_id):
         raise HTTPException(status_code=404, detail="Task not found")
-
-    del _tasks[task_id]
     return {"message": "Task deleted"}
 
 

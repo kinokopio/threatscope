@@ -3,7 +3,8 @@
 from core.config import Config, load_config
 from core.coordinator import AnalysisCoordinator
 from core.ghidra_pool import GhidraInstance, GhidraInstancePool, SingleInstancePool
-from core.scheduler import ScheduledCoordinator, SchedulerConfig, TaskScheduler
+from core.database import TaskDatabase, get_database
+from core.scheduler import ScheduledCoordinator, SchedulerConfig, TaskScheduler, TaskProgress
 from core.task import AnalysisTask, TaskStatus
 from core.workflow_engine import (
     StepResult,
@@ -31,5 +32,8 @@ __all__ = [
     "WorkflowStep",
     "StepResult",
     "StepStatus",
+    "TaskProgress",
+    "TaskDatabase",
+    "get_database",
     "create_default_tools_registry",
 ]

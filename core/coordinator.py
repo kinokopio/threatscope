@@ -206,8 +206,8 @@ class AnalysisCoordinator:
             Dynamic analysis results.
         """
         # Get architecture from static analysis
-        elf_info = static_results.get("elf_info", {})
-        arch = elf_info.get("machine", "").lower()
+        elf_info = static_results.get("elf", {})
+        arch = elf_info.get("arch", "").lower()
 
         # Map common architecture names
         arch_mapping = {

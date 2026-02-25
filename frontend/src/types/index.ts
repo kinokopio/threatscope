@@ -143,3 +143,19 @@ export interface TaskListResponse {
   tasks: AnalysisTask[];
   queue_stats: QueueStats;
 }
+
+// WebSocket progress message
+export interface ProgressMessage {
+  task_id: string;
+  event: 'task_started' | 'step_started' | 'step_completed' | 'task_completed' | 'error';
+  data: {
+    file_path?: string;
+    step_id?: string;
+    step_name?: string;
+    status?: string;
+    duration_ms?: number;
+    error?: string;
+    result_summary?: Record<string, unknown>;
+  };
+  timestamp: string;
+}

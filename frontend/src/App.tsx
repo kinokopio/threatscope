@@ -1,186 +1,90 @@
-import { useState, useEffect, useCallback } from 'react';
-import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Shield, RefreshCw, Github } from 'lucide-react';
-import { FileUpload } from './components/FileUpload';
-import { TaskList } from './components/TaskList';
-import { StatsCards } from './components/StatsCards';
-import { AnalysisResultView } from './components/AnalysisResultView';
-import { getTasks, getTask, uploadFile, deleteTask } from './api/client';
-import type { AnalysisTask } from './types';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchInterval: 3000, // Poll every 3 seconds
-      staleTime: 1000,
-    },
-  },
-});
-
-function Dashboard() {
-  const queryClientHook = useQueryClient();
-  const [selectedTask, setSelectedTask] = useState<AnalysisTask | null>(null);
-
-  // Fetch tasks
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks'],
-    queryFn: getTasks,
-  });
-
-  // Fetch selected task details
-  const { data: taskDetails, isLoading: taskLoading } = useQuery({
-    queryKey: ['task', selectedTask?.id],
-    queryFn: () => selectedTask ? getTask(selectedTask.id) : null,
-    enabled: !!selectedTask,
-    refetchInterval: selectedTask?.status !== 'completed' && selectedTask?.status !== 'failed' ? 2000 : false,
-  });
-
-  // Upload mutation
-  const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadFile(file),
-    onSuccess: () => {
-      queryClientHook.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: deleteTask,
-    onSuccess: () => {
-      queryClientHook.invalidateQueries({ queryKey: ['tasks'] });
-      if (selectedTask) {
-        setSelectedTask(null);
-      }
-    },
-  });
-
-  const handleUpload = useCallback((file: File) => {
-    uploadMutation.mutate(file);
-  }, [uploadMutation]);
-
-  const handleSelectTask = useCallback((task: AnalysisTask) => {
-    setSelectedTask(task);
-  }, []);
-
-  const handleDeleteTask = useCallback((taskId: string) => {
-    deleteMutation.mutate(taskId);
-  }, [deleteMutation]);
-
-  // Update selected task when details change
-  useEffect(() => {
-    if (taskDetails && selectedTask) {
-      setSelectedTask(taskDetails);
-    }
-  }, [taskDetails]);
-
-  const tasks = tasksData?.tasks || [];
-  const stats = tasksData?.queue_stats || null;
-
-  return (
-    <div className="min-h-screen bg-cyber-900">
-      {/* Header */}
-      <header className="bg-cyber-800 border-b border-cyber-700">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Shield className="w-8 h-8 text-accent-cyan" />
-              <div>
-                <h1 className="text-xl font-bold text-gray-100">ThreatScope</h1>
-                <p className="text-xs text-gray-500">AI-Powered Malware Analysis</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => queryClientHook.invalidateQueries({ queryKey: ['tasks'] })}
-                className="p-2 rounded-lg hover:bg-cyber-700 transition-colors"
-                title="Refresh"
-              >
-                <RefreshCw className="w-5 h-5 text-gray-400" />
-              </button>
-              <a
-                href="https://github.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2 rounded-lg hover:bg-cyber-700 transition-colors"
-              >
-                <Github className="w-5 h-5 text-gray-400" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        {/* Stats */}
-        <div className="mb-6">
-          <StatsCards stats={stats} isLoading={tasksLoading} />
-        </div>
-
-        {/* Main Grid */}
-        <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Panel - Upload & Tasks */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Upload */}
-            <div className="bg-cyber-800 rounded-xl p-6 border border-cyber-700">
-              <h2 className="text-lg font-semibold text-gray-200 mb-4">Upload Sample</h2>
-              <FileUpload 
-                onUpload={handleUpload} 
-                isUploading={uploadMutation.isPending} 
-              />
-            </div>
-
-            {/* Task List */}
-            <div className="bg-cyber-800 rounded-xl p-6 border border-cyber-700">
-              <h2 className="text-lg font-semibold text-gray-200 mb-4">
-                Analysis Tasks
-                {tasks.length > 0 && (
-                  <span className="ml-2 text-sm font-normal text-gray-500">
-                    ({tasks.length})
-                  </span>
-                )}
-              </h2>
-              <TaskList
-                tasks={tasks}
-                onSelectTask={handleSelectTask}
-                onDeleteTask={handleDeleteTask}
-                selectedTaskId={selectedTask?.id}
-              />
-            </div>
-          </div>
-
-          {/* Right Panel - Results */}
-          <div className="lg:col-span-2">
-            <div className="bg-cyber-800 rounded-xl p-6 border border-cyber-700 min-h-[600px]">
-              <h2 className="text-lg font-semibold text-gray-200 mb-4">Analysis Results</h2>
-              <AnalysisResultView
-                result={selectedTask?.result || null}
-                status={selectedTask?.status || 'pending'}
-                error={selectedTask?.error}
-                isLoading={taskLoading}
-              />
-            </div>
-          </div>
-        </div>
-      </main>
-
-      {/* Footer */}
-      <footer className="bg-cyber-800 border-t border-cyber-700 mt-12">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <p className="text-center text-sm text-gray-500">
-            ThreatScope © 2024 - AI-Driven Malware Analysis Framework
-          </p>
-        </div>
-      </footer>
-    </div>
-  );
-}
+import { useState, useEffect } from 'react';
+import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Home as HomeIcon, Clock, Shield } from 'lucide-react';
+import Home from './pages/Home';
+import History from './pages/History';
+import TaskDetail from './pages/TaskDetail';
 
 function App() {
+  const location = useLocation();
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY;
+      setIsScrolled(currentScrollY > 20);
+      
+      if (currentScrollY > lastScrollY && currentScrollY > 100) {
+        setIsVisible(false);
+      } else {
+        setIsVisible(true);
+      }
+      
+      setLastScrollY(currentScrollY);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [lastScrollY]);
+
+  const isActive = (path: string) => {
+    return location.pathname === path;
+  };
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <Dashboard />
-    </QueryClientProvider>
+    <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-cyan-500/30">
+      {/* Floating Navbar */}
+      <nav className={`fixed left-0 right-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 shadow-2xl flex items-center justify-between transition-all duration-300 ${
+        isVisible ? 'translate-y-0' : '-translate-y-full'
+      } ${
+        isScrolled ? 'py-2' : 'py-4'
+      }`}>
+        <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <Link to="/" className="flex items-center space-x-3">
+            <Shield className="w-8 h-8 text-emerald-400" />
+            <span className="text-xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-cyan-500">
+              ThreatScope
+            </span>
+          </Link>
+          
+          <div className="flex items-center space-x-1 bg-slate-800/50 p-1 rounded-xl border border-slate-700/50">
+            <Link 
+              to="/" 
+              className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
+                isActive('/') 
+                  ? 'bg-slate-700 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <HomeIcon className="w-4 h-4 mr-2" />
+              Home
+            </Link>
+            <Link 
+              to="/history" 
+              className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
+                isActive('/history') 
+                  ? 'bg-slate-700 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              History
+            </Link>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Content Area with padding for fixed navbar */}
+      <main className="pt-28 pb-12 px-4 sm:px-6 lg:px-8">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/history" element={<History />} />
+          <Route path="/task/:taskId" element={<TaskDetail />} />
+        </Routes>
+      </main>
+    </div>
   );
 }
 
