@@ -1,0 +1,173 @@
+# ELF Deep Reverse Engineering Workflow
+# Comprehensive analysis with extended Ghidra analysis
+
+name: elf_deep_reverse
+description: Deep reverse engineering workflow with extended Ghidra analysis
+version: "1.0.0"
+
+metadata:
+  author: ThreatScope
+  file_types: [elf]
+  estimated_time: 900  # seconds
+  requires_ghidra: true
+
+parallel_groups:
+  - [hash_calc, string_extract, elf_parse]
+  - [yara_scan, func_classify]
+  - [malwarebazaar, threatfox, urlhaus]
+
+steps:
+  # Stage 1: Basic Information (Parallel)
+  - id: hash_calc
+    name: Calculate File Hashes
+    tool: hash_calculator
+    params:
+      file_path: $file_path
+    timeout: 30
+
+  - id: string_extract
+    name: Extract Strings (Extended)
+    tool: string_extractor
+    params:
+      file_path: $file_path
+      min_length: 4
+      extract_unicode: true
+    timeout: 120
+
+  - id: elf_parse
+    name: Parse ELF Structure
+    tool: elf_parser
+    params:
+      file_path: $file_path
+      include_symbols: true
+      include_relocations: true
+    timeout: 60
+
+  # Stage 2: Feature Analysis (Parallel)
+  - id: yara_scan
+    name: YARA Rule Scanning
+    tool: yara_scanner
+    params:
+      file_path: $file_path
+    depends_on: [hash_calc]
+    timeout: 180
+
+  - id: func_classify
+    name: Function Classification
+    tool: function_classifier
+    params:
+      imports: $results.elf_parse.imports
+    depends_on: [elf_parse]
+    timeout: 60
+
+  - id: mitre_map
+    name: MITRE ATT&CK Mapping
+    tool: mitre_mapper
+    params:
+      functions: $results.func_classify
+    depends_on: [func_classify]
+    timeout: 60
+
+  # Stage 3: Threat Intelligence (Parallel)
+  - id: malwarebazaar
+    name: MalwareBazaar Lookup
+    tool: threat_intel
+    params:
+      service: malwarebazaar
+      hashes: $results.hash_calc
+    depends_on: [hash_calc]
+    timeout: 30
+    on_error: continue
+
+  - id: threatfox
+    name: ThreatFox Lookup
+    tool: threat_intel
+    params:
+      service: threatfox
+      hashes: $results.hash_calc
+    depends_on: [hash_calc]
+    timeout: 30
+    on_error: continue
+
+  - id: urlhaus
+    name: URLhaus Lookup
+    tool: threat_intel
+    params:
+      service: urlhaus
+      urls: $results.string_extract.urls
+    depends_on: [string_extract]
+    timeout: 30
+    on_error: continue
+
+  # Stage 4: Dynamic Analysis
+  - id: dynamic_analysis
+    name: Dynamic Analysis
+    tool: dynamic_analyzer
+    params:
+      file_path: $file_path
+      timeout: 180
+      capture_network: true
+      capture_files: true
+    depends_on: [elf_parse]
+    timeout: 300
+    on_error: continue
+    condition: results.elf_parse.executable
+
+  # Stage 5: Ghidra Deep Analysis (Extended)
+  - id: ghidra_analysis
+    name: Ghidra Deep Analysis
+    tool: ghidra_agent
+    params:
+      file_path: $file_path
+      max_iterations: 30  # Extended iterations
+      analyze_all_functions: true
+      static_results:
+        hashes: $results.hash_calc
+        strings: $results.string_extract
+        elf: $results.elf_parse
+        yara: $results.yara_scan
+        functions: $results.func_classify
+        mitre: $results.mitre_map
+      threat_intel:
+        malwarebazaar: $results.malwarebazaar
+        threatfox: $results.threatfox
+    depends_on: [yara_scan, func_classify, mitre_map, malwarebazaar, threatfox]
+    timeout: 900
+    retries: 1
+    on_error: continue
+
+  # Stage 6: Secondary Ghidra Analysis (if needed)
+  - id: ghidra_followup
+    name: Ghidra Follow-up Analysis
+    tool: ghidra_agent
+    params:
+      file_path: $file_path
+      focus_on_findings: true
+      previous_analysis: $results.ghidra_analysis
+    depends_on: [ghidra_analysis]
+    timeout: 600
+    condition: results.ghidra_analysis.needs_followup
+    on_error: continue
+
+  # Stage 7: Comprehensive Report
+  - id: report_generation
+    name: Generate Comprehensive Report
+    tool: malware_agent
+    params:
+      report_type: comprehensive
+      static_results:
+        hashes: $results.hash_calc
+        strings: $results.string_extract
+        elf: $results.elf_parse
+        yara: $results.yara_scan
+        functions: $results.func_classify
+        mitre: $results.mitre_map
+      threat_intel:
+        malwarebazaar: $results.malwarebazaar
+        threatfox: $results.threatfox
+        urlhaus: $results.urlhaus
+      dynamic_results: $results.dynamic_analysis
+      ghidra_analysis: $results.ghidra_analysis
+      ghidra_followup: $results.ghidra_followup
+    depends_on: [ghidra_analysis, dynamic_analysis]
+    timeout: 180

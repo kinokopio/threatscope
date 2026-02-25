@@ -1,0 +1,147 @@
+# ELF Standard Analysis Workflow
+# Full analysis pipeline for Linux ELF binaries
+
+name: elf_standard
+description: Standard analysis workflow for Linux ELF binaries
+version: "1.0.0"
+
+metadata:
+  author: ThreatScope
+  file_types: [elf]
+  estimated_time: 300  # seconds
+
+# Define which steps can run in parallel
+parallel_groups:
+  - [hash_calc, string_extract, elf_parse]
+  - [yara_scan, func_classify]
+  - [malwarebazaar, threatfox, urlhaus]
+
+steps:
+  # Stage 1: Basic Information Collection (Parallel)
+  - id: hash_calc
+    name: Calculate File Hashes
+    tool: hash_calculator
+    params:
+      file_path: $file_path
+    timeout: 30
+
+  - id: string_extract
+    name: Extract Strings
+    tool: string_extractor
+    params:
+      file_path: $file_path
+      min_length: 4
+    timeout: 60
+
+  - id: elf_parse
+    name: Parse ELF Structure
+    tool: elf_parser
+    params:
+      file_path: $file_path
+    timeout: 30
+
+  # Stage 2: Feature Analysis (Parallel, depends on Stage 1)
+  - id: yara_scan
+    name: YARA Rule Scanning
+    tool: yara_scanner
+    params:
+      file_path: $file_path
+    depends_on: [hash_calc]
+    timeout: 120
+
+  - id: func_classify
+    name: Function Classification
+    tool: function_classifier
+    params:
+      imports: $results.elf_parse.imports
+    depends_on: [elf_parse]
+    timeout: 30
+
+  - id: mitre_map
+    name: MITRE ATT&CK Mapping
+    tool: mitre_mapper
+    params:
+      functions: $results.func_classify
+    depends_on: [func_classify]
+    timeout: 30
+
+  # Stage 3: Threat Intelligence (Parallel, depends on hashes)
+  - id: malwarebazaar
+    name: MalwareBazaar Lookup
+    tool: threat_intel
+    params:
+      service: malwarebazaar
+      hashes: $results.hash_calc
+    depends_on: [hash_calc]
+    timeout: 30
+    on_error: continue
+
+  - id: threatfox
+    name: ThreatFox Lookup
+    tool: threat_intel
+    params:
+      service: threatfox
+      hashes: $results.hash_calc
+    depends_on: [hash_calc]
+    timeout: 30
+    on_error: continue
+
+  - id: urlhaus
+    name: URLhaus Lookup
+    tool: threat_intel
+    params:
+      service: urlhaus
+      urls: $results.string_extract.urls
+    depends_on: [string_extract]
+    timeout: 30
+    on_error: continue
+
+  # Stage 4: Dynamic Analysis (Optional, depends on static)
+  - id: dynamic_analysis
+    name: Dynamic Analysis
+    tool: dynamic_analyzer
+    params:
+      file_path: $file_path
+      timeout: 120
+    depends_on: [elf_parse]
+    timeout: 180
+    on_error: continue
+    condition: results.elf_parse.executable
+
+  # Stage 5: Ghidra Deep Analysis (depends on all static)
+  - id: ghidra_analysis
+    name: Ghidra Deep Analysis
+    tool: ghidra_agent
+    params:
+      file_path: $file_path
+      static_results:
+        hashes: $results.hash_calc
+        strings: $results.string_extract
+        elf: $results.elf_parse
+        yara: $results.yara_scan
+        functions: $results.func_classify
+        mitre: $results.mitre_map
+    depends_on: [yara_scan, func_classify, mitre_map]
+    timeout: 600
+    on_error: continue
+
+  # Stage 6: Report Generation (Final step)
+  - id: report_generation
+    name: Generate Analysis Report
+    tool: malware_agent
+    params:
+      static_results:
+        hashes: $results.hash_calc
+        strings: $results.string_extract
+        elf: $results.elf_parse
+        yara: $results.yara_scan
+        functions: $results.func_classify
+        mitre: $results.mitre_map
+      threat_intel:
+        malwarebazaar: $results.malwarebazaar
+        threatfox: $results.threatfox
+        urlhaus: $results.urlhaus
+      dynamic_results: $results.dynamic_analysis
+      ghidra_analysis: $results.ghidra_analysis
+    depends_on: [ghidra_analysis, malwarebazaar, threatfox, urlhaus]
+    timeout: 120

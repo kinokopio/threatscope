@@ -9,6 +9,7 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    HookMatcher,
     TextBlock,
     create_sdk_mcp_server,
     tool,
@@ -119,6 +120,58 @@ def create_memory_tools_server(memory_store: MemoryStore):
             restore_checkpoint,
         ],
     )
+
+
+def create_pre_compact_hook(memory_store: MemoryStore):
+    """Create PreCompact hook for context compression.
+
+    This hook is called before Claude compresses context, allowing us to
+    save critical findings and provide guidance on what to preserve.
+
+    Args:
+        memory_store: MemoryStore instance for persistence.
+
+    Returns:
+        Async hook function.
+    """
+
+    async def pre_compact_hook(input_data, tool_use_id, context):
+        """Hook called before context compression."""
+        trigger = input_data.get("trigger", "auto")
+
+        # Get current findings and cached functions
+        findings = memory_store.get_findings()
+        cached_functions = memory_store.list_cached_functions()
+
+        # Build findings summary
+        findings_summary = "\n".join([
+            f"- [{f.get('severity', 'unknown')}] {f.get('type', 'unknown')}: {f.get('summary', '')}"
+            for f in findings[:10]
+        ]) if findings else "No findings yet"
+
+        return {
+            "hookSpecificOutput": {
+                "hookEventName": "PreCompact",
+                "additionalContext": f"""
+When compressing context, please preserve:
+
+## Key Findings (from local memory)
+{findings_summary}
+
+## Analyzed Functions ({len(cached_functions)} total)
+{', '.join(cached_functions[:20])}
+
+## Compression Guidelines
+1. Preserve all ATT&CK technique mappings
+2. Preserve key IoCs (domains, IPs, URLs)
+3. Preserve current analysis path and next steps
+4. Decompiled code can be discarded (recoverable from memory)
+"""
+            }
+        }
+
+    return pre_compact_hook
+
 
 
 class GhidraAgent(BaseAgent):
@@ -320,6 +373,11 @@ class GhidraAgent(BaseAgent):
                 "mcp__memory__memory_restore_checkpoint",
             ],
             max_turns=self.config.max_iterations,
+            hooks={
+                "PreCompact": [
+                    HookMatcher(matcher=None, hooks=[create_pre_compact_hook(self.memory_store)])
+                ]
+            },
         )
 
         # Run the agent

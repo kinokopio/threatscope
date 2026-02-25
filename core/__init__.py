@@ -5,6 +5,14 @@ from core.coordinator import AnalysisCoordinator
 from core.ghidra_pool import GhidraInstance, GhidraInstancePool, SingleInstancePool
 from core.scheduler import ScheduledCoordinator, SchedulerConfig, TaskScheduler
 from core.task import AnalysisTask, TaskStatus
+from core.workflow_engine import (
+    StepResult,
+    StepStatus,
+    WorkflowDefinition,
+    WorkflowEngine,
+    WorkflowStep,
+    create_default_tools_registry,
+)
 
 __all__ = [
     "Config",
@@ -18,4 +26,10 @@ __all__ = [
     "GhidraInstancePool",
     "GhidraInstance",
     "SingleInstancePool",
+    "WorkflowEngine",
+    "WorkflowDefinition",
+    "WorkflowStep",
+    "StepResult",
+    "StepStatus",
+    "create_default_tools_registry",
 ]
