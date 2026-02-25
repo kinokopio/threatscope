@@ -16,16 +16,42 @@ export type TaskStatus =
   | 'failed';
 
 export interface AnalysisResult {
-  metadata: {
-    file_name: string;
-    hashes: {
-      md5: string;
-      sha256: string;
+  metadata?: {
+    file_name?: string;
+    hashes?: {
+      md5?: string;
+      sha256?: string;
     };
   };
-  static_analysis?: StaticAnalysis;
+  // Direct fields (from stage_1_4_results)
+  hashes?: {
+    md5?: string;
+    sha1?: string;
+    sha256?: string;
+  };
+  strings?: {
+    urls?: string[];
+    ips?: string[];
+    domains?: string[];
+    suspicious?: string[];
+  };
+  elf?: {
+    format?: string;
+    arch?: string;
+    entry_point?: string;
+    imports?: string[];
+  };
+  yara?: {
+    matches?: string[];
+  };
+  function_categories?: Record<string, string[]>;
+  mitre_mapping?: {
+    techniques?: MitreMapping[];
+  };
   threat_intel?: ThreatIntel;
   dynamic_analysis?: DynamicAnalysis;
+  // Nested fields
+  static_analysis?: StaticAnalysis;
   ghidra_analysis?: GhidraAnalysis;
   malware_report?: MalwareReport;
 }

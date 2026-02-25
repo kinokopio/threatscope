@@ -155,6 +155,7 @@ class AnalysisCoordinator:
         file_path: Path,
         enable_dynamic: bool,
         enable_threat_intel: bool,
+        progress_callback: Any = None,
     ) -> dict[str, Any]:
         """Run Stage 1-4: Static analysis, threat intel, and dynamic analysis.
 
@@ -162,29 +163,43 @@ class AnalysisCoordinator:
             file_path: Path to the file.
             enable_dynamic: Whether to run dynamic analysis.
             enable_threat_intel: Whether to query threat intel.
+            progress_callback: Optional callback for progress updates.
 
         Returns:
             Combined results from all Stage 1-4 analyses.
         """
-        # Stage 1-2: Static analysis
-        static_results = await self.static_analyzer.analyze(file_path)
+        # Stage 1-2: Static analysis (with progress callback)
+        static_results = await self.static_analyzer.analyze(file_path, progress_callback)
         if not isinstance(static_results, dict):
             static_results = {}
 
-        # Stage 3: Threat intel (parallel with dynamic)
-        threat_intel_task = None
+        # Stage 3: Threat intel
         if enable_threat_intel:
-            threat_intel_task = asyncio.create_task(self._query_threat_intel(static_results))
+            if progress_callback:
+                await progress_callback("threat_intel", "Threat Intelligence Query", "running", None)
+            threat_intel_results = await self._query_threat_intel(static_results)
+            static_results["threat_intel"] = threat_intel_results
+            if progress_callback:
+                found_count = sum(
+                    1 for source in threat_intel_results.get("hash_lookup", {}).values()
+                    if isinstance(source, dict) and source.get("found")
+                )
+                await progress_callback("threat_intel", "Threat Intelligence Query", "completed", {
+                    "sources_found": found_count,
+                })
 
         # Stage 4: Dynamic analysis
         dynamic_results = {}
         if enable_dynamic:
+            if progress_callback:
+                await progress_callback("dynamic", "Dynamic Analysis (Emulation)", "running", None)
             dynamic_results = await self._run_dynamic_analysis(file_path, static_results)
-
-        # Wait for threat intel
-        if threat_intel_task:
-            threat_intel_results = await threat_intel_task
-            static_results["threat_intel"] = threat_intel_results
+            if progress_callback:
+                syscalls = dynamic_results.get("syscalls", [])
+                await progress_callback("dynamic", "Dynamic Analysis (Emulation)", "completed", {
+                    "syscalls": len(syscalls) if isinstance(syscalls, list) else 0,
+                    "success": dynamic_results.get("success", False),
+                })
 
         # Add dynamic results
         static_results["dynamic_analysis"] = dynamic_results

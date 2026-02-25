@@ -13,6 +13,7 @@ from api.websocket import (
     router as websocket_router,
     notify_step_started,
     notify_step_completed,
+    notify_step_progress,
     notify_task_started,
     notify_task_completed,
 )
@@ -183,6 +184,11 @@ async def run_analysis_task(
     import logging
     logger = logging.getLogger(__name__)
     
+    # Progress callback for detailed step updates
+    async def progress_callback(step_id: str, step_name: str, status: str, preview: dict | None):
+        await notify_step_progress(task_id, step_id, step_name, status, preview)
+        logger.debug(f"Task {task_id}: Step {step_id} ({step_name}) - {status}")
+    
     try:
         # Notify task started
         await notify_task_started(task_id, str(file_path))
@@ -198,6 +204,7 @@ async def run_analysis_task(
             file_path=file_path,
             enable_dynamic=enable_dynamic,
             enable_threat_intel=enable_threat_intel,
+            progress_callback=progress_callback,
         )
         
         # Save Stage 1-4 results immediately
@@ -209,7 +216,7 @@ async def run_analysis_task(
         ghidra_results = {}
         if enable_ghidra:
             db.update_task_status(task_id, TaskStatus.STAGE_5.value)
-            await notify_step_started(task_id, "stage_5", "Ghidra Deep Analysis (AI-driven)")
+            await notify_step_progress(task_id, "ghidra", "Ghidra Deep Analysis", "running", None)
             
             ghidra_results = await coordinator.run_stage_5(
                 static_results=stage_1_4_results,
@@ -218,12 +225,18 @@ async def run_analysis_task(
             
             # Save Ghidra results immediately
             db.update_task_result(task_id, "ghidra_results", ghidra_results)
-            await notify_step_completed(task_id, "stage_5", "completed")
+            ai_analysis = ghidra_results.get("ai_analysis", {})
+            await notify_step_progress(task_id, "ghidra", "Ghidra Deep Analysis", "completed", {
+                "functions_analyzed": len(ai_analysis.get("analyzed_functions", [])),
+                "key_findings": len(ai_analysis.get("key_findings", [])),
+            })
             logger.info(f"Task {task_id}: Stage 5 (Ghidra) completed")
+        else:
+            await notify_step_progress(task_id, "ghidra", "Ghidra Deep Analysis", "skipped", None)
         
         # ========== Stage 6: Report Generation ==========
         db.update_task_status(task_id, TaskStatus.STAGE_6.value)
-        await notify_step_started(task_id, "stage_6", "AI Report Generation")
+        await notify_step_progress(task_id, "report", "AI Report Generation", "running", None)
         
         report_result = await coordinator.run_stage_6(
             static_results=stage_1_4_results,
@@ -233,7 +246,10 @@ async def run_analysis_task(
         # Save report immediately
         report = report_result.get("report", report_result)
         db.update_task_result(task_id, "report", report)
-        await notify_step_completed(task_id, "stage_6", "completed")
+        await notify_step_progress(task_id, "report", "AI Report Generation", "completed", {
+            "verdict": report.get("verdict", "unknown"),
+            "confidence": report.get("confidence", 0),
+        })
         logger.info(f"Task {task_id}: Stage 6 (Report) completed")
         
         # ========== Mark Completed ==========

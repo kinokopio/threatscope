@@ -352,6 +352,37 @@ async def notify_error(task_id: str, error: str, step_id: str | None = None) -> 
     await manager.send_to_task_subscribers(message)
 
 
+async def notify_step_progress(
+    task_id: str,
+    step_id: str,
+    step_name: str,
+    status: str,
+    result_preview: dict | None = None,
+) -> None:
+    """Notify step progress with optional result preview.
+
+    Args:
+        task_id: Task ID.
+        step_id: Step ID.
+        step_name: Human-readable step name.
+        status: Step status (running, completed, failed).
+        result_preview: Optional preview of step results.
+    """
+    message = ProgressMessage(
+        task_id=task_id,
+        event="step_progress",
+        data={
+            "step_id": step_id,
+            "step_name": step_name,
+            "status": status,
+            "result_preview": result_preview or {},
+        },
+    )
+    await manager.send_to_task_subscribers(message)
+    # Also broadcast to all connections for real-time updates
+    await manager.broadcast(message)
+
+
 def get_connection_manager() -> ConnectionManager:
     """Get the global connection manager.
 

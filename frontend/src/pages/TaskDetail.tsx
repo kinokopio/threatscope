@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   AlertCircle, 
@@ -6,252 +6,99 @@ import {
   ArrowLeft, 
   CheckCircle2, 
   Circle,
-  FileSearch,
+  Hash,
+  FileText,
+  Code,
   Shield,
   Brain,
-  FileText
+  Globe,
+  Activity,
+  Search,
+  Target,
+  SkipForward
 } from 'lucide-react';
 import { getTask } from '../api/client';
 import type { AnalysisTask, TaskStatus } from '../types';
 import ReportView from '../components/ReportView';
 
-// Type for analyzed function in stage 5
-interface AnalyzedFunctionPreview {
-  name: string;
-  behavior?: {
-    risk_level: string;
-  };
-}
-
 const POLL_INTERVAL_MS = 2000;
 
-// Stage definitions with icons and descriptions
-const STAGES = [
-  { 
-    id: 'stage_1_4', 
-    label: 'Static Analysis', 
-    description: 'Hashes, strings, ELF parsing, threat intel, dynamic analysis',
-    icon: FileSearch,
-    resultKey: 'static_analysis'
-  },
-  { 
-    id: 'stage_5', 
-    label: 'Ghidra Analysis', 
-    description: 'AI-driven deep binary analysis',
-    icon: Brain,
-    resultKey: 'ghidra_analysis'
-  },
-  { 
-    id: 'stage_6', 
-    label: 'Report Generation', 
-    description: 'AI malware analysis report',
-    icon: FileText,
-    resultKey: 'malware_report'
-  },
+// Complete analysis steps
+const ANALYSIS_STEPS = [
+  { id: 'hash', name: 'Hash Calculation', description: 'MD5, SHA1, SHA256', icon: Hash, group: 'static' },
+  { id: 'strings', name: 'String Extraction', description: 'URLs, IPs, Domains, Suspicious strings', icon: FileText, group: 'static' },
+  { id: 'elf', name: 'ELF Parsing', description: 'Architecture, Entry point, Imports', icon: Code, group: 'static' },
+  { id: 'func_class', name: 'Function Classification', description: '9 categories analysis', icon: Shield, group: 'static' },
+  { id: 'mitre', name: 'MITRE ATT&CK Mapping', description: 'Tactics and techniques', icon: Target, group: 'static' },
+  { id: 'yara', name: 'YARA Scanning', description: 'Rule matching', icon: Search, group: 'static' },
+  { id: 'threat_intel', name: 'Threat Intelligence', description: 'MalwareBazaar, ThreatFox, URLhaus', icon: Globe, group: 'intel' },
+  { id: 'dynamic', name: 'Dynamic Analysis', description: 'Emulation and syscall tracing', icon: Activity, group: 'dynamic' },
+  { id: 'ghidra', name: 'Ghidra Deep Analysis', description: 'AI-driven reverse engineering', icon: Brain, group: 'ghidra' },
+  { id: 'report', name: 'AI Report Generation', description: 'Final malware analysis report', icon: FileText, group: 'report' },
 ];
 
+// Step status type
+type StepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
+
+interface StepState {
+  status: StepStatus;
+  preview?: Record<string, unknown>;
+}
+
 // Status display mapping
-const STATUS_DISPLAY: Record<TaskStatus, { label: string; color: string; stageIndex: number }> = {
-  pending: { label: 'Pending', color: 'text-slate-400', stageIndex: -1 },
-  stage_1_4: { label: 'Static Analysis', color: 'text-cyan-400', stageIndex: 0 },
-  queued: { label: 'Waiting for Ghidra', color: 'text-yellow-400', stageIndex: 0 },
-  stage_5: { label: 'Ghidra Analysis', color: 'text-purple-400', stageIndex: 1 },
-  stage_6: { label: 'Report Generation', color: 'text-emerald-400', stageIndex: 2 },
-  completed: { label: 'Completed', color: 'text-green-400', stageIndex: 3 },
-  failed: { label: 'Failed', color: 'text-red-400', stageIndex: -1 },
+const STATUS_DISPLAY: Record<TaskStatus, { label: string; color: string }> = {
+  pending: { label: 'Pending', color: 'text-slate-400' },
+  stage_1_4: { label: 'Static Analysis', color: 'text-cyan-400' },
+  queued: { label: 'Waiting for Ghidra', color: 'text-yellow-400' },
+  stage_5: { label: 'Ghidra Analysis', color: 'text-purple-400' },
+  stage_6: { label: 'Report Generation', color: 'text-emerald-400' },
+  completed: { label: 'Completed', color: 'text-green-400' },
+  failed: { label: 'Failed', color: 'text-red-400' },
 };
 
 function isInProgress(status: TaskStatus): boolean {
   return ['pending', 'stage_1_4', 'queued', 'stage_5', 'stage_6'].includes(status);
 }
 
-// Component to display stage results preview
-function StageResultPreview({ stage, result }: { stage: typeof STAGES[0]; result: Record<string, unknown> | undefined }) {
-  if (!result) return null;
+// Get status icon component
+function StepStatusIcon({ status }: { status: StepStatus }) {
+  switch (status) {
+    case 'completed':
+      return <CheckCircle2 className="w-5 h-5 text-emerald-400" />;
+    case 'running':
+      return <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />;
+    case 'failed':
+      return <AlertCircle className="w-5 h-5 text-red-400" />;
+    case 'skipped':
+      return <SkipForward className="w-5 h-5 text-slate-500" />;
+    default:
+      return <Circle className="w-5 h-5 text-slate-600" />;
+  }
+}
 
-  const renderPreviewContent = () => {
-    switch (stage.id) {
-      case 'stage_1_4': {
-        const hashes = result.hashes as Record<string, string> | undefined;
-        const strings = result.strings as Record<string, string[]> | undefined;
-        const elf = result.elf as Record<string, string> | undefined;
-        const yaraMatches = (result.yara as Record<string, string[]> | undefined)?.matches || [];
-        
-        return (
-          <div className="space-y-3">
-            {/* Hashes */}
-            {hashes && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">Hashes</div>
-                <div className="font-mono text-[10px] text-slate-300 break-all">
-                  <div>MD5: {hashes.md5}</div>
-                  <div>SHA256: {hashes.sha256}</div>
-                </div>
-              </div>
-            )}
-            
-            {/* ELF Info */}
-            {elf && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">Binary Info</div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="px-2 py-0.5 bg-slate-700 rounded text-xs text-cyan-300">
-                    {elf.format || 'Unknown'}
-                  </span>
-                  <span className="px-2 py-0.5 bg-slate-700 rounded text-xs text-purple-300">
-                    {elf.arch || 'Unknown'}
-                  </span>
-                </div>
-              </div>
-            )}
-            
-            {/* Strings Summary */}
-            {strings && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">Extracted Strings</div>
-                <div className="flex flex-wrap gap-2 text-xs">
-                  {strings.urls?.length > 0 && (
-                    <span className="px-2 py-0.5 bg-red-900/50 rounded text-red-300">
-                      {strings.urls.length} URLs
-                    </span>
-                  )}
-                  {strings.ips?.length > 0 && (
-                    <span className="px-2 py-0.5 bg-orange-900/50 rounded text-orange-300">
-                      {strings.ips.length} IPs
-                    </span>
-                  )}
-                  {strings.domains?.length > 0 && (
-                    <span className="px-2 py-0.5 bg-yellow-900/50 rounded text-yellow-300">
-                      {strings.domains.length} Domains
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {/* YARA Matches */}
-            {yaraMatches.length > 0 && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">YARA Matches</div>
-                <div className="flex flex-wrap gap-1">
-                  {yaraMatches.slice(0, 5).map((match, idx) => (
-                    <span key={idx} className="px-2 py-0.5 bg-red-900/50 rounded text-xs text-red-300">
-                      {match}
-                    </span>
-                  ))}
-                  {yaraMatches.length > 5 && (
-                    <span className="text-xs text-slate-500">+{yaraMatches.length - 5} more</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-      
-      case 'stage_5': {
-        const aiAnalysis = result.ai_analysis as Record<string, unknown> | undefined;
-        const analyzedFunctions = (aiAnalysis?.analyzed_functions as AnalyzedFunctionPreview[]) || [];
-        const keyFindings = (aiAnalysis?.key_findings as string[]) || [];
-        
-        return (
-          <div className="space-y-3">
-            {analyzedFunctions.length > 0 && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">
-                  Analyzed Functions ({analyzedFunctions.length})
-                </div>
-                <div className="space-y-1">
-                  {analyzedFunctions.slice(0, 3).map((func, idx) => (
-                    <div key={idx} className="text-xs">
-                      <span className="font-mono text-cyan-300">{func.name}</span>
-                      {func.behavior?.risk_level && (
-                        <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] ${
-                          func.behavior.risk_level === 'high' 
-                            ? 'bg-red-900/50 text-red-300' 
-                            : 'bg-slate-700 text-slate-300'
-                        }`}>
-                          {func.behavior.risk_level}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                  {analyzedFunctions.length > 3 && (
-                    <div className="text-xs text-slate-500">+{analyzedFunctions.length - 3} more</div>
-                  )}
-                </div>
-              </div>
-            )}
-            
-            {keyFindings.length > 0 && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">Key Findings</div>
-                <ul className="text-xs text-slate-300 space-y-1">
-                  {keyFindings.slice(0, 3).map((finding, idx) => (
-                    <li key={idx} className="truncate">• {finding}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        );
-      }
-      
-      case 'stage_6': {
-        const verdict = result.verdict as string;
-        const confidence = result.confidence as number;
-        const family = result.family as string;
-        const capabilities = result.capabilities as string[];
-        
-        return (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${
-                verdict === 'malicious' ? 'bg-red-900 text-red-100' :
-                verdict === 'suspicious' ? 'bg-orange-800 text-orange-100' :
-                'bg-green-900 text-green-100'
-              }`}>
-                {verdict}
-              </span>
-              {confidence && (
-                <span className="px-2 py-1 rounded text-xs bg-slate-700 text-slate-200">
-                  {(confidence * 100).toFixed(0)}% confidence
-                </span>
-              )}
-              {family && (
-                <span className="px-2 py-1 rounded text-xs bg-cyan-900/50 text-cyan-300">
-                  {family}
-                </span>
-              )}
-            </div>
-            
-            {capabilities && capabilities.length > 0 && (
-              <div>
-                <div className="text-xs text-slate-400 mb-1">Capabilities</div>
-                <div className="flex flex-wrap gap-1">
-                  {capabilities.slice(0, 4).map((cap, idx) => (
-                    <span key={idx} className="px-2 py-0.5 bg-purple-900/50 rounded text-xs text-purple-300">
-                      {cap}
-                    </span>
-                  ))}
-                  {capabilities.length > 4 && (
-                    <span className="text-xs text-slate-500">+{capabilities.length - 4} more</span>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
-      
-      default:
-        return null;
-    }
-  };
+// Format preview value for display
+function formatPreviewValue(value: unknown): string {
+  if (typeof value === 'number') return value.toString();
+  if (typeof value === 'string') return value;
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (Array.isArray(value)) return value.slice(0, 3).join(', ') + (value.length > 3 ? '...' : '');
+  return JSON.stringify(value);
+}
+
+// Step preview component
+function StepPreview({ preview }: { preview?: Record<string, unknown> }) {
+  if (!preview || Object.keys(preview).length === 0) return null;
 
   return (
-    <div className="mt-3 p-3 bg-slate-900/50 rounded-lg border border-slate-700/50">
-      {renderPreviewContent()}
+    <div className="mt-2 flex flex-wrap gap-2">
+      {Object.entries(preview).map(([key, value]) => (
+        <span 
+          key={key} 
+          className="text-[10px] px-2 py-0.5 bg-slate-700/50 rounded text-slate-300"
+        >
+          {key}: <span className="text-cyan-300">{formatPreviewValue(value)}</span>
+        </span>
+      ))}
     </div>
   );
 }
@@ -262,8 +109,66 @@ export default function TaskDetail() {
   const [task, setTask] = useState<AnalysisTask | null>(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [stepStates, setStepStates] = useState<Record<string, StepState>>({});
+  const [wsConnected, setWsConnected] = useState(false);
 
-  const fetchTaskStatus = async (id: string) => {
+  // WebSocket connection for real-time updates
+  useEffect(() => {
+    if (!taskId) return;
+
+    const wsUrl = `${import.meta.env.VITE_API_URL?.replace('http', 'ws') || 'ws://localhost:8000'}/ws/progress`;
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: ReturnType<typeof setTimeout>;
+
+    const connect = () => {
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          setWsConnected(true);
+          // Subscribe to task updates
+          ws?.send(JSON.stringify({ action: 'subscribe', task_id: taskId }));
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            
+            if (message.event === 'step_progress' && message.task_id === taskId) {
+              const { step_id, status, result_preview } = message.data;
+              setStepStates(prev => ({
+                ...prev,
+                [step_id]: { status, preview: result_preview }
+              }));
+            }
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+
+        ws.onclose = () => {
+          setWsConnected(false);
+          // Reconnect after 3 seconds
+          reconnectTimeout = setTimeout(connect, 3000);
+        };
+
+        ws.onerror = () => {
+          ws?.close();
+        };
+      } catch (e) {
+        console.error('WebSocket connection failed:', e);
+      }
+    };
+
+    connect();
+
+    return () => {
+      clearTimeout(reconnectTimeout);
+      ws?.close();
+    };
+  }, [taskId]);
+
+  const fetchTaskStatus = useCallback(async (id: string) => {
     try {
       const data = await getTask(id);
       setTask(data);
@@ -271,6 +176,68 @@ export default function TaskDetail() {
       
       if (data.status === 'failed' && data.error) {
         setErrorMessage(data.error);
+      }
+
+      // Infer step states from task result if WebSocket didn't provide them
+      if (data.result) {
+        setStepStates(prev => {
+          const newStates = { ...prev };
+          
+          // Static analysis steps - check if we have the data
+          if (data.result?.hashes && !newStates.hash?.status) {
+            newStates.hash = { status: 'completed', preview: { md5: String(data.result.hashes?.md5 || '').slice(0, 8) + '...' } };
+          }
+          if (data.result?.strings && !newStates.strings?.status) {
+            const strings = data.result.strings as Record<string, string[]>;
+            newStates.strings = { 
+              status: 'completed', 
+              preview: { 
+                urls: strings?.urls?.length || 0,
+                ips: strings?.ips?.length || 0,
+              } 
+            };
+          }
+          if (data.result?.elf && !newStates.elf?.status) {
+            const elf = data.result.elf as Record<string, unknown>;
+            newStates.elf = { status: 'completed', preview: { arch: String(elf?.arch || ''), format: String(elf?.format || '') } };
+          }
+          if (data.result?.function_categories && !newStates.func_class?.status) {
+            newStates.func_class = { status: 'completed' };
+          }
+          if (data.result?.mitre_mapping && !newStates.mitre?.status) {
+            newStates.mitre = { status: 'completed' };
+          }
+          if (data.result?.yara && !newStates.yara?.status) {
+            const yara = data.result.yara as Record<string, string[]>;
+            newStates.yara = { status: 'completed', preview: { matches: yara?.matches?.length || 0 } };
+          }
+          if (data.result?.threat_intel && !newStates.threat_intel?.status) {
+            newStates.threat_intel = { status: 'completed' };
+          }
+          if (data.result?.dynamic_analysis && !newStates.dynamic?.status) {
+            newStates.dynamic = { status: 'completed' };
+          }
+          
+          // Ghidra
+          if (data.result?.ghidra_analysis && !newStates.ghidra?.status) {
+            const ghidra = data.result.ghidra_analysis;
+            newStates.ghidra = { 
+              status: 'completed',
+              preview: { functions: ghidra?.ai_analysis?.analyzed_functions?.length || 0 }
+            };
+          }
+          
+          // Report
+          if (data.result?.malware_report && !newStates.report?.status) {
+            const report = data.result.malware_report;
+            newStates.report = { 
+              status: 'completed',
+              preview: { verdict: report?.verdict || '', confidence: report?.confidence }
+            };
+          }
+          
+          return newStates;
+        });
       }
     } catch (err: unknown) {
       console.error('Failed to fetch task:', err);
@@ -282,7 +249,7 @@ export default function TaskDetail() {
       }
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!taskId) return;
@@ -303,26 +270,44 @@ export default function TaskDetail() {
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(interval);
-  }, [taskId]);
+  }, [taskId, fetchTaskStatus]);
 
   const currentStatus = task?.status || 'pending';
   const statusInfo = STATUS_DISPLAY[currentStatus] || STATUS_DISPLAY.pending;
 
-  // Get stage completion status
-  const getStageStatus = (stageIndex: number): 'completed' | 'current' | 'pending' => {
-    if (currentStatus === 'failed') return 'pending';
-    if (currentStatus === 'completed') return 'completed';
-    
-    const currentStageIndex = statusInfo.stageIndex;
-    if (stageIndex < currentStageIndex) return 'completed';
-    if (stageIndex === currentStageIndex) return 'current';
-    return 'pending';
-  };
+  // Determine which steps should be shown as running based on current status
+  const getEffectiveStepStatus = (stepId: string): StepStatus => {
+    // If we have explicit state from WebSocket or inferred from result, use it
+    if (stepStates[stepId]?.status) {
+      return stepStates[stepId].status;
+    }
 
-  // Get result for a stage
-  const getStageResult = (stage: typeof STAGES[0]): Record<string, unknown> | undefined => {
-    if (!task?.result) return undefined;
-    return task.result[stage.resultKey as keyof typeof task.result] as Record<string, unknown> | undefined;
+    // Otherwise infer from task status
+    const step = ANALYSIS_STEPS.find(s => s.id === stepId);
+    if (!step) return 'pending';
+
+    if (currentStatus === 'completed') return 'completed';
+    if (currentStatus === 'failed') return 'pending';
+
+    // Infer based on group and current stage
+    if (currentStatus === 'stage_1_4') {
+      if (step.group === 'static' || step.group === 'intel' || step.group === 'dynamic') {
+        // Show first uncompleted step as running
+        const groupSteps = ANALYSIS_STEPS.filter(s => 
+          s.group === 'static' || s.group === 'intel' || s.group === 'dynamic'
+        );
+        for (const gs of groupSteps) {
+          if (!stepStates[gs.id]?.status || stepStates[gs.id]?.status === 'pending') {
+            if (gs.id === stepId) return 'running';
+            break;
+          }
+        }
+      }
+    }
+    if (currentStatus === 'stage_5' && step.group === 'ghidra') return 'running';
+    if (currentStatus === 'stage_6' && step.group === 'report') return 'running';
+
+    return 'pending';
   };
 
   return (
@@ -355,7 +340,7 @@ export default function TaskDetail() {
       {/* Task Content */}
       {!loading && task && (
         <div className="animate-in fade-in duration-500">
-          {/* In Progress State - Show stages with results */}
+          {/* In Progress State - Show all steps */}
           {isInProgress(task.status) && (
             <div className="space-y-4">
               {/* Header */}
@@ -372,85 +357,90 @@ export default function TaskDetail() {
                       </p>
                     )}
                   </div>
-                  <Loader2 className="animate-spin w-8 h-8 text-cyan-400" />
+                  <div className="flex items-center gap-3">
+                    {wsConnected && (
+                      <span className="text-xs text-emerald-400 flex items-center">
+                        <span className="w-2 h-2 bg-emerald-400 rounded-full mr-1 animate-pulse" />
+                        Live
+                      </span>
+                    )}
+                    <Loader2 className="animate-spin w-8 h-8 text-cyan-400" />
+                  </div>
                 </div>
                 
-                <p className="text-slate-400">
-                  AI Agents are analyzing the binary. Results will appear as each stage completes.
-                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400">Current Stage:</span>
+                  <span className={`font-semibold ${statusInfo.color}`}>{statusInfo.label}</span>
+                </div>
               </div>
 
-              {/* Stages */}
-              <div className="space-y-3">
-                {STAGES.map((stage, index) => {
-                  const stageStatus = getStageStatus(index);
-                  const stageResult = getStageResult(stage);
-                  const Icon = stage.icon;
+              {/* Analysis Steps Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {ANALYSIS_STEPS.map((step) => {
+                  const effectiveStatus = getEffectiveStepStatus(step.id);
+                  const stepState = stepStates[step.id];
+                  const Icon = step.icon;
                   
                   return (
                     <div 
-                      key={stage.id}
+                      key={step.id}
                       className={`bg-slate-800 p-4 rounded-xl border transition-all duration-300 ${
-                        stageStatus === 'current' 
+                        effectiveStatus === 'running' 
                           ? 'border-cyan-500/50 shadow-lg shadow-cyan-500/10' 
-                          : stageStatus === 'completed'
+                          : effectiveStatus === 'completed'
                           ? 'border-emerald-500/30'
-                          : 'border-slate-700'
+                          : effectiveStatus === 'failed'
+                          ? 'border-red-500/30'
+                          : 'border-slate-700/50'
                       }`}
                     >
-                      <div className="flex items-start gap-4">
+                      <div className="flex items-start gap-3">
                         {/* Status Icon */}
-                        <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center ${
-                          stageStatus === 'completed' 
+                        <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
+                          effectiveStatus === 'completed' 
                             ? 'bg-emerald-500/20' 
-                            : stageStatus === 'current'
+                            : effectiveStatus === 'running'
                             ? 'bg-cyan-500/20'
-                            : 'bg-slate-700/50'
+                            : effectiveStatus === 'failed'
+                            ? 'bg-red-500/20'
+                            : 'bg-slate-700/30'
                         }`}>
-                          {stageStatus === 'completed' ? (
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                          ) : stageStatus === 'current' ? (
-                            <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />
-                          ) : (
-                            <Circle className="w-5 h-5 text-slate-500" />
-                          )}
+                          <StepStatusIcon status={effectiveStatus} />
                         </div>
                         
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <Icon className={`w-4 h-4 ${
-                              stageStatus === 'completed' 
+                              effectiveStatus === 'completed' 
                                 ? 'text-emerald-400' 
-                                : stageStatus === 'current'
+                                : effectiveStatus === 'running'
                                 ? 'text-cyan-400'
+                                : effectiveStatus === 'failed'
+                                ? 'text-red-400'
                                 : 'text-slate-500'
                             }`} />
-                            <h3 className={`font-semibold ${
-                              stageStatus === 'completed' 
+                            <h3 className={`font-medium text-sm ${
+                              effectiveStatus === 'completed' 
                                 ? 'text-emerald-400' 
-                                : stageStatus === 'current'
+                                : effectiveStatus === 'running'
                                 ? 'text-cyan-400'
+                                : effectiveStatus === 'failed'
+                                ? 'text-red-400'
                                 : 'text-slate-500'
                             }`}>
-                              {stage.label}
+                              {step.name}
                             </h3>
-                            {stageStatus === 'completed' && (
-                              <span className="text-xs text-emerald-400/70">✓ Complete</span>
-                            )}
-                            {stageStatus === 'current' && (
-                              <span className="text-xs text-cyan-400/70">Processing...</span>
-                            )}
                           </div>
-                          <p className={`text-sm mt-1 ${
-                            stageStatus === 'pending' ? 'text-slate-600' : 'text-slate-400'
+                          <p className={`text-xs mt-0.5 ${
+                            effectiveStatus === 'pending' ? 'text-slate-600' : 'text-slate-400'
                           }`}>
-                            {stage.description}
+                            {step.description}
                           </p>
                           
-                          {/* Stage Result Preview */}
-                          {stageStatus === 'completed' && stageResult && (
-                            <StageResultPreview stage={stage} result={stageResult} />
+                          {/* Step Preview */}
+                          {effectiveStatus === 'completed' && stepState?.preview && (
+                            <StepPreview preview={stepState.preview} />
                           )}
                         </div>
                       </div>
