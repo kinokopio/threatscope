@@ -374,8 +374,8 @@ export default function TaskDetail() {
                 </div>
               </div>
 
-              {/* Analysis Steps Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Analysis Steps - Vertical Layout */}
+              <div className="space-y-2">
                 {ANALYSIS_STEPS.map((step) => {
                   const effectiveStatus = getEffectiveStepStatus(step.id);
                   const stepState = stepStates[step.id];
