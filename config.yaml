@@ -1,0 +1,50 @@
+# ThreatScope AI 框架配置
+
+# 并行处理配置
+workers:
+  stage_1_4: 4          # Stage 1-4 并行度
+  stage_6: 4            # Stage 6 并行度
+  dynamic_analysis: 2   # 动态分析并行度
+
+# Ghidra 实例池配置
+ghidra:
+  pool_size: 1          # 默认单实例
+  docker_image: "threatscope/ghidra:latest"
+  memory_limit: "4g"
+  base_http_port: 8000
+  base_mcp_port: 9000
+  startup_timeout: 60
+
+# 威胁情报配置
+threat_intel:
+  malwarebazaar:
+    enabled: true
+    base_url: "https://mb-api.abuse.ch/api/v1/"
+  threatfox:
+    enabled: true
+    base_url: "https://threatfox-api.abuse.ch/api/v1/"
+  urlhaus:
+    enabled: true
+    base_url: "https://urlhaus-api.abuse.ch/v1/"
+
+# Agent 配置
+agents:
+  ghidra_agent:
+    system_prompt_path: "ai/prompts/ghidra_agent.txt"
+    max_iterations: 20
+
+  malware_analysis:
+    system_prompt_path: "ai/prompts/malware_analysis.txt"
+
+# 分析选项默认值
+analysis:
+  default_timeout: 300
+  enable_dynamic_analysis: true
+  enable_ghidra_analysis: true
+  yara_rules_path: "rules/yara"
+
+# 任务管理
+tasks:
+  max_queue_size: 100
+  result_ttl: 86400
+  retry_count: 3
