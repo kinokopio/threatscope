@@ -1,7 +1,9 @@
 """GhidraAgent - AI-driven deep reverse engineering analysis using claude-agent-sdk."""
 
+import asyncio
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +11,11 @@ from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
     ClaudeSDKClient,
+    ClaudeSDKError,
+    CLIConnectionError,
+    CLINotFoundError,
     HookMatcher,
+    ProcessError,
     TextBlock,
     create_sdk_mcp_server,
     tool,
@@ -21,6 +27,9 @@ from ai.utils_tools import create_utils_mcp_server
 from ghidra_service.client import GhidraClient
 
 logger = logging.getLogger(__name__)
+
+# Default timeout for AI analysis (5 minutes for complex binary analysis)
+DEFAULT_AI_TIMEOUT = 300
 
 
 def create_memory_tools_server(memory_store: MemoryStore):
@@ -192,6 +201,7 @@ class GhidraAgent(BaseAgent):
         config: AgentConfig,
         project_dir: str | Path = ".",
         ghidra_url: str = "http://localhost:8000",
+        ai_timeout: int = DEFAULT_AI_TIMEOUT,
     ):
         """Initialize GhidraAgent.
 
@@ -199,10 +209,12 @@ class GhidraAgent(BaseAgent):
             config: Agent configuration.
             project_dir: Project directory for memory storage.
             ghidra_url: URL of Ghidra HTTP service.
+            ai_timeout: Timeout in seconds for AI analysis (default: 300s).
         """
         super().__init__(config)
         self.project_dir = Path(project_dir)
         self.ghidra_url = ghidra_url
+        self.ai_timeout = ai_timeout
         self.memory_store: MemoryStore | None = None
         self.ghidra_client: GhidraClient | None = None
 
@@ -278,10 +290,36 @@ class GhidraAgent(BaseAgent):
                         "findings_count": len(self.memory_store.get_findings()),
                     },
                 )
+            except asyncio.TimeoutError:
+                logger.error(f"AI analysis timed out after {self.ai_timeout}s")
+                return await self._fallback_analysis(
+                    static_results, cached_functions, ghidra_info, "AI analysis timed out"
+                )
+            except (CLINotFoundError, CLIConnectionError) as e:
+                logger.error(f"Claude SDK not available: {e}")
+                return await self._fallback_analysis(
+                    static_results, cached_functions, ghidra_info, f"Claude SDK error: {e}"
+                )
+            except ProcessError as e:
+                logger.error(f"Claude process error (exit {e.exit_code}): {e}")
+                return await self._fallback_analysis(
+                    static_results, cached_functions, ghidra_info, f"Process error: {e}"
+                )
+            except ClaudeSDKError as e:
+                logger.error(f"Claude SDK error: {e}")
+                return await self._fallback_analysis(
+                    static_results, cached_functions, ghidra_info, f"SDK error: {e}"
+                )
+            except ValueError as e:
+                logger.error(f"Configuration error: {e}")
+                return await self._fallback_analysis(
+                    static_results, cached_functions, ghidra_info, f"Config error: {e}"
+                )
             except Exception as e:
                 logger.error(f"AI analysis failed: {e}")
-                # Fall back to rule-based analysis
-                return await self._fallback_analysis(static_results, cached_functions, ghidra_info)
+                return await self._fallback_analysis(
+                    static_results, cached_functions, ghidra_info, str(e)
+                )
 
         # Ghidra not available - return ready status
         return AgentResult(
@@ -314,7 +352,16 @@ class GhidraAgent(BaseAgent):
 
         Returns:
             AI analysis results.
+
+        Raises:
+            ValueError: If ANTHROPIC_API_KEY is not set.
+            asyncio.TimeoutError: If analysis times out.
+            ClaudeSDKError: If SDK encounters an error.
         """
+        # Check for API key first to fail fast
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+
         # Build the analysis prompt
         prompt = self._build_analysis_prompt(
             static_results=static_results,
@@ -334,6 +381,7 @@ class GhidraAgent(BaseAgent):
         # Configure agent options
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
+            model="claude-sonnet-4-20250514",
             mcp_servers={
                 "ghidra": {
                     "type": "http",
@@ -383,44 +431,49 @@ class GhidraAgent(BaseAgent):
             },
         )
 
-        # Run the agent
-        result_text = ""
-        async with ClaudeSDKClient(options=options) as client:
-            await client.query(prompt)
-            async for msg in client.receive_response():
-                if isinstance(msg, AssistantMessage):
-                    for block in msg.content:
-                        if isinstance(block, TextBlock):
-                            result_text = block.text
+        async def _call_ai() -> dict[str, Any]:
+            """Inner function for AI call."""
+            result_text = ""
+            async with ClaudeSDKClient(options=options) as client:
+                await client.query(prompt)
+                async for msg in client.receive_response():
+                    if isinstance(msg, AssistantMessage):
+                        for block in msg.content:
+                            if isinstance(block, TextBlock):
+                                result_text = block.text
 
-        # Parse JSON result
-        try:
-            # Extract JSON from response
-            if "```json" in result_text:
-                start = result_text.find("```json") + 7
-                end = result_text.find("```", start)
-                if end > start:
-                    result_text = result_text[start:end].strip()
-            elif "```" in result_text:
-                start = result_text.find("```") + 3
-                end = result_text.find("```", start)
-                if end > start:
-                    result_text = result_text[start:end].strip()
+            # Parse JSON result
+            try:
+                # Extract JSON from response
+                if "```json" in result_text:
+                    start = result_text.find("```json") + 7
+                    end = result_text.find("```", start)
+                    if end > start:
+                        result_text = result_text[start:end].strip()
+                elif "```" in result_text:
+                    start = result_text.find("```") + 3
+                    end = result_text.find("```", start)
+                    if end > start:
+                        result_text = result_text[start:end].strip()
 
-            return json.loads(result_text)
-        except json.JSONDecodeError:
-            # Return raw text if not valid JSON
-            return {
-                "raw_analysis": result_text,
-                "analyzed_functions": [],
-                "key_findings": self.memory_store.get_findings(),
-            }
+                return json.loads(result_text)
+            except json.JSONDecodeError:
+                # Return raw text if not valid JSON
+                return {
+                    "raw_analysis": result_text,
+                    "analyzed_functions": [],
+                    "key_findings": self.memory_store.get_findings(),
+                }
+
+        # Run with timeout
+        return await asyncio.wait_for(_call_ai(), timeout=self.ai_timeout)
 
     async def _fallback_analysis(
         self,
         static_results: dict,
         cached_functions: list[str],
         ghidra_info: dict,
+        error_message: str = "AI analysis unavailable",
     ) -> AgentResult:
         """Fallback to rule-based analysis when AI is unavailable.
 
@@ -428,6 +481,7 @@ class GhidraAgent(BaseAgent):
             static_results: Static analysis results.
             cached_functions: Previously analyzed functions.
             ghidra_info: Ghidra binary info.
+            error_message: Reason for fallback.
 
         Returns:
             AgentResult with rule-based analysis.
@@ -489,7 +543,7 @@ class GhidraAgent(BaseAgent):
                 "ghidra_available": True,
                 "ghidra_info": ghidra_info,
                 "analysis_results": results,
-                "message": "AI analysis unavailable, used rule-based fallback.",
+                "message": f"Used rule-based fallback: {error_message}",
             },
         )
 
