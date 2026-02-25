@@ -1,6 +1,7 @@
 """AnalysisCoordinator - Pipeline orchestration for malware analysis."""
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -9,13 +10,18 @@ from clients import ThreatIntelClient
 from core.config import Config, load_config
 from core.task import AnalysisTask, TaskStatus
 from tools import StaticAnalyzer
+from tools.dynamic import DynamicAnalyzer
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisCoordinator:
     """Orchestrates the complete malware analysis pipeline.
 
     Pipeline stages:
-    - Stage 1-4: Static analysis, feature extraction, threat intel, dynamic analysis
+    - Stage 1-2: Static analysis, feature extraction
+    - Stage 3: Threat intelligence queries
+    - Stage 4: Dynamic analysis (emulation)
     - Stage 5: Ghidra deep analysis (AI-driven)
     - Stage 6: Final report generation (AI-driven)
     """
@@ -39,6 +45,11 @@ class AnalysisCoordinator:
             yara_rules_path=self.config.analysis.yara_rules_path,
         )
 
+        # Initialize dynamic analyzer
+        self.dynamic_analyzer = DynamicAnalyzer(
+            emulation_timeout=self.config.analysis.default_timeout,
+        )
+
         # Initialize threat intel client
         self.threat_intel = ThreatIntelClient(
             malwarebazaar_url=self.config.threat_intel.malwarebazaar.base_url,
@@ -51,7 +62,11 @@ class AnalysisCoordinator:
             system_prompt_path=self.config.agents.ghidra_agent.system_prompt_path,
             max_iterations=self.config.agents.ghidra_agent.max_iterations,
         )
-        self.ghidra_agent = GhidraAgent(ghidra_config, self.project_dir)
+        self.ghidra_agent = GhidraAgent(
+            ghidra_config,
+            self.project_dir,
+            ghidra_url=self.config.ghidra.base_url,
+        )
 
         malware_config = AgentConfig(
             system_prompt_path=self.config.agents.malware_analysis.system_prompt_path,
@@ -90,7 +105,7 @@ class AnalysisCoordinator:
             enable_dynamic = self.config.analysis.enable_dynamic_analysis
 
         try:
-            # Stage 1-4: Static analysis (parallel where possible)
+            # Stage 1-4: Static + Threat Intel + Dynamic (parallel where possible)
             task.update_status(TaskStatus.STAGE_1_4)
             stage_1_4_results = await self._run_stage_1_4(
                 file_path, enable_dynamic, enable_threat_intel
@@ -121,11 +136,13 @@ class AnalysisCoordinator:
                     "file_size": file_path.stat().st_size,
                 },
                 "static_analysis": stage_1_4_results,
+                "dynamic_analysis": stage_1_4_results.get("dynamic_analysis"),
                 "ghidra_analysis": ghidra_results if enable_ghidra else None,
                 "report": report.get("report", {}),
             }
 
         except Exception as e:
+            logger.exception(f"Analysis failed for {file_path}")
             task.set_error(str(e))
             return {
                 "task_id": task.id,
@@ -139,7 +156,7 @@ class AnalysisCoordinator:
         enable_dynamic: bool,
         enable_threat_intel: bool,
     ) -> dict[str, Any]:
-        """Run Stage 1-4: Static analysis and feature extraction.
+        """Run Stage 1-4: Static analysis, threat intel, and dynamic analysis.
 
         Args:
             file_path: Path to the file.
@@ -149,23 +166,90 @@ class AnalysisCoordinator:
         Returns:
             Combined results from all Stage 1-4 analyses.
         """
-        # Run static analysis and threat intel in parallel
-        tasks = [self.static_analyzer.analyze(file_path)]
+        # Stage 1-2: Static analysis
+        static_results = await self.static_analyzer.analyze(file_path)
+        if not isinstance(static_results, dict):
+            static_results = {}
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # Process static results
-        static_results = results[0] if isinstance(results[0], dict) else {}
-
-        # Query threat intel if enabled
-        threat_intel_results = {}
+        # Stage 3: Threat intel (parallel with dynamic)
+        threat_intel_task = None
         if enable_threat_intel:
-            threat_intel_results = await self._query_threat_intel(static_results)
+            threat_intel_task = asyncio.create_task(
+                self._query_threat_intel(static_results)
+            )
 
-        # Merge results
-        static_results["threat_intel"] = threat_intel_results
+        # Stage 4: Dynamic analysis
+        dynamic_results = {}
+        if enable_dynamic:
+            dynamic_results = await self._run_dynamic_analysis(
+                file_path, static_results
+            )
+
+        # Wait for threat intel
+        if threat_intel_task:
+            threat_intel_results = await threat_intel_task
+            static_results["threat_intel"] = threat_intel_results
+
+        # Add dynamic results
+        static_results["dynamic_analysis"] = dynamic_results
 
         return static_results
+
+    async def _run_dynamic_analysis(
+        self,
+        file_path: Path,
+        static_results: dict,
+    ) -> dict[str, Any]:
+        """Run dynamic analysis (binary emulation).
+
+        Args:
+            file_path: Path to the binary.
+            static_results: Static analysis results (for architecture info).
+
+        Returns:
+            Dynamic analysis results.
+        """
+        # Get architecture from static analysis
+        elf_info = static_results.get("elf_info", {})
+        arch = elf_info.get("machine", "").lower()
+
+        # Map common architecture names
+        arch_mapping = {
+            "x86_64": "x86_64",
+            "amd64": "x86_64",
+            "i386": "i386",
+            "i686": "i386",
+            "arm": "arm",
+            "aarch64": "aarch64",
+            "mips": "mips",
+            "mipsel": "mipsel",
+        }
+
+        # Try to determine architecture
+        target_arch = None
+        for key, value in arch_mapping.items():
+            if key in arch:
+                target_arch = value
+                break
+
+        if not target_arch:
+            logger.warning(f"Unknown architecture: {arch}, skipping dynamic analysis")
+            return {
+                "success": False,
+                "error": f"Unsupported architecture: {arch}",
+                "skipped": True,
+            }
+
+        # Run emulation
+        try:
+            result = self.dynamic_analyzer.emulate(str(file_path), target_arch)
+            return result
+        except Exception as e:
+            logger.warning(f"Dynamic analysis failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+            }
 
     async def _query_threat_intel(self, static_results: dict) -> dict[str, Any]:
         """Query threat intelligence services.
@@ -252,14 +336,15 @@ class AnalysisCoordinator:
         Returns:
             Final analysis report.
         """
-        # Extract threat intel for report
+        # Extract results for report
         threat_intel = static_results.get("threat_intel", {})
+        dynamic_results = static_results.get("dynamic_analysis", {})
 
         result = await self.malware_agent.analyze({
             "static_results": static_results,
             "ghidra_analysis": ghidra_results,
             "threat_intel": threat_intel,
-            "dynamic_results": {},  # TODO: Add dynamic analysis
+            "dynamic_results": dynamic_results,
         })
 
         return result.data if result.success else {"error": result.error}

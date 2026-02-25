@@ -22,7 +22,7 @@ class GhidraConfig:
     base_http_port: int = 8000
     base_mcp_port: int = 9000
     startup_timeout: int = 60
-
+    base_url: str = "http://localhost:8000"
 
 @dataclass
 class ThreatIntelSourceConfig:
