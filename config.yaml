@@ -48,3 +48,15 @@ tasks:
   max_queue_size: 100
   result_ttl: 86400
   retry_count: 3
+
+# LLM 配置 (AI 分析)
+llm:
+  # API Key - 也可通过环境变量 ANTHROPIC_API_KEY 设置
+  api_key: ""
+  # Base URL - 用于代理或自托管服务 (可选)
+  # 也可通过环境变量 ANTHROPIC_BASE_URL 设置
+  base_url: ""
+  # 默认模型
+  model: "claude-sonnet-4-20250514"
+  # 请求超时 (秒)
+  timeout: 60

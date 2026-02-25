@@ -78,6 +78,16 @@ class TasksConfig:
 
 
 @dataclass
+class LLMConfig:
+    """LLM configuration for AI agents."""
+
+    api_key: str = ""  # ANTHROPIC_API_KEY
+    base_url: str = ""  # ANTHROPIC_BASE_URL (for proxy/self-hosted)
+    model: str = "claude-sonnet-4-20250514"  # Default model
+    timeout: int = 60  # Request timeout in seconds
+
+
+@dataclass
 class Config:
     workers: WorkersConfig = field(default_factory=WorkersConfig)
     ghidra: GhidraConfig = field(default_factory=GhidraConfig)
@@ -85,6 +95,7 @@ class Config:
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
     tasks: TasksConfig = field(default_factory=TasksConfig)
+    llm: LLMConfig = field(default_factory=LLMConfig)
 
 
 def _dict_to_dataclass(cls: type, data: dict[str, Any]) -> Any:
@@ -116,6 +127,8 @@ def load_config(config_path: str | Path | None = None) -> Config:
     Returns:
         Config object with loaded settings.
     """
+    import os
+
     if config_path is None:
         config_path = Path("config.yaml")
     else:
@@ -127,4 +140,12 @@ def load_config(config_path: str | Path | None = None) -> Config:
     with open(config_path) as f:
         data = yaml.safe_load(f) or {}
 
-    return _dict_to_dataclass(Config, data)
+    config = _dict_to_dataclass(Config, data)
+
+    # Set LLM environment variables from config (if not already set)
+    if config.llm.api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = config.llm.api_key
+    if config.llm.base_url and not os.environ.get("ANTHROPIC_BASE_URL"):
+        os.environ["ANTHROPIC_BASE_URL"] = config.llm.base_url
+
+    return config
