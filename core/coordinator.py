@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from ai import AgentConfig, GhidraAgent, MalwareAnalysisAgent
+from clients import ThreatIntelClient
 from core.config import Config, load_config
 from core.task import AnalysisTask, TaskStatus
 from tools import StaticAnalyzer
@@ -38,6 +39,13 @@ class AnalysisCoordinator:
             yara_rules_path=self.config.analysis.yara_rules_path,
         )
 
+        # Initialize threat intel client
+        self.threat_intel = ThreatIntelClient(
+            malwarebazaar_url=self.config.threat_intel.malwarebazaar.base_url,
+            threatfox_url=self.config.threat_intel.threatfox.base_url,
+            urlhaus_url=self.config.threat_intel.urlhaus.base_url,
+        )
+
         # Initialize agents
         ghidra_config = AgentConfig(
             system_prompt_path=self.config.agents.ghidra_agent.system_prompt_path,
@@ -55,6 +63,7 @@ class AnalysisCoordinator:
         file_path: str | Path,
         enable_ghidra: bool | None = None,
         enable_dynamic: bool | None = None,
+        enable_threat_intel: bool = True,
     ) -> dict[str, Any]:
         """Run complete analysis pipeline on a file.
 
@@ -62,6 +71,7 @@ class AnalysisCoordinator:
             file_path: Path to the file to analyze.
             enable_ghidra: Enable Ghidra analysis. Defaults to config setting.
             enable_dynamic: Enable dynamic analysis. Defaults to config setting.
+            enable_threat_intel: Enable threat intelligence queries.
 
         Returns:
             Complete analysis results dictionary.
@@ -82,7 +92,9 @@ class AnalysisCoordinator:
         try:
             # Stage 1-4: Static analysis (parallel where possible)
             task.update_status(TaskStatus.STAGE_1_4)
-            stage_1_4_results = await self._run_stage_1_4(file_path, enable_dynamic)
+            stage_1_4_results = await self._run_stage_1_4(
+                file_path, enable_dynamic, enable_threat_intel
+            )
             task.stage_1_4_results = stage_1_4_results
 
             # Stage 5: Ghidra analysis (if enabled)
@@ -125,23 +137,82 @@ class AnalysisCoordinator:
         self,
         file_path: Path,
         enable_dynamic: bool,
+        enable_threat_intel: bool,
     ) -> dict[str, Any]:
         """Run Stage 1-4: Static analysis and feature extraction.
 
         Args:
             file_path: Path to the file.
             enable_dynamic: Whether to run dynamic analysis.
+            enable_threat_intel: Whether to query threat intel.
 
         Returns:
             Combined results from all Stage 1-4 analyses.
         """
-        # Run static analysis
-        static_results = await self.static_analyzer.analyze(file_path)
+        # Run static analysis and threat intel in parallel
+        tasks = [self.static_analyzer.analyze(file_path)]
 
-        # TODO: Add threat intelligence queries (Phase 5)
-        # TODO: Add dynamic analysis (future)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process static results
+        static_results = results[0] if isinstance(results[0], dict) else {}
+
+        # Query threat intel if enabled
+        threat_intel_results = {}
+        if enable_threat_intel:
+            threat_intel_results = await self._query_threat_intel(static_results)
+
+        # Merge results
+        static_results["threat_intel"] = threat_intel_results
 
         return static_results
+
+    async def _query_threat_intel(self, static_results: dict) -> dict[str, Any]:
+        """Query threat intelligence services.
+
+        Args:
+            static_results: Static analysis results containing hashes and IoCs.
+
+        Returns:
+            Threat intelligence results.
+        """
+        results = {}
+
+        # Query by hash
+        hashes = static_results.get("hashes", {})
+        sha256 = hashes.get("sha256")
+        if sha256:
+            hash_results = await self.threat_intel.query_hash(sha256)
+            results["hash_lookup"] = {
+                source: {
+                    "found": r.found,
+                    "data": r.data,
+                    "error": r.error,
+                }
+                for source, r in hash_results.items()
+            }
+
+        # Query IoCs
+        strings = static_results.get("strings", {})
+        domains = strings.get("domains", [])
+        ips = strings.get("ips", [])
+        urls = strings.get("urls", [])
+
+        if domains or ips or urls:
+            ioc_results = await self.threat_intel.query_iocs(
+                domains=domains[:5],
+                ips=ips[:5],
+                urls=urls[:5],
+            )
+            results["ioc_lookup"] = {
+                ioc_type: [
+                    {"found": r.found, "data": r.data, "error": r.error}
+                    for r in ioc_list
+                ]
+                for ioc_type, ioc_list in ioc_results.items()
+            }
+
+        return results
 
     async def _run_stage_5(
         self,
@@ -181,10 +252,13 @@ class AnalysisCoordinator:
         Returns:
             Final analysis report.
         """
+        # Extract threat intel for report
+        threat_intel = static_results.get("threat_intel", {})
+
         result = await self.malware_agent.analyze({
             "static_results": static_results,
             "ghidra_analysis": ghidra_results,
-            "threat_intel": {},  # TODO: Add in Phase 5
+            "threat_intel": threat_intel,
             "dynamic_results": {},  # TODO: Add dynamic analysis
         })
 
