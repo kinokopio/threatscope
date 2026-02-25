@@ -1,64 +1,106 @@
 """REST API for ThreatScope."""
 
 import asyncio
-from pathlib import Path
-from typing import Any
 import tempfile
 import uuid
+from pathlib import Path
+from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, BackgroundTasks
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from core import AnalysisCoordinator, AnalysisTask, TaskStatus
+from core import (
+    AnalysisCoordinator,
+    ScheduledCoordinator,
+    SchedulerConfig,
+    TaskStatus,
+)
 
-
-# Task storage (in-memory for now)
 _tasks: dict[str, dict[str, Any]] = {}
 _coordinator: AnalysisCoordinator | None = None
+_scheduled_coordinator: ScheduledCoordinator | None = None
 
 
 def get_coordinator() -> AnalysisCoordinator:
-    """Get or create the coordinator instance."""
     global _coordinator
     if _coordinator is None:
         _coordinator = AnalysisCoordinator()
     return _coordinator
 
 
-# Pydantic models
+def get_scheduled_coordinator() -> ScheduledCoordinator:
+    global _scheduled_coordinator, _coordinator
+    if _scheduled_coordinator is None:
+        coordinator = get_coordinator()
+        config = SchedulerConfig(
+            stage_1_4_workers=4,
+            stage_6_workers=4,
+            ghidra_pool_size=1,
+        )
+        _scheduled_coordinator = ScheduledCoordinator(coordinator, config)
+    return _scheduled_coordinator
+
+
 class AnalysisOptions(BaseModel):
-    """Options for analysis."""
     enable_ghidra: bool = True
+    enable_dynamic: bool = True
     enable_threat_intel: bool = True
 
 
 class TaskResponse(BaseModel):
-    """Response for task operations."""
     task_id: str
     status: str
     message: str | None = None
 
 
 class AnalysisResponse(BaseModel):
-    """Response for analysis results."""
     task_id: str
     status: str
     result: dict[str, Any] | None = None
     error: str | None = None
 
 
-# Create FastAPI app
+class BatchSubmitRequest(BaseModel):
+    file_paths: list[str]
+    options: AnalysisOptions | None = None
+
+
+class BatchSubmitResponse(BaseModel):
+    task_ids: list[str]
+    message: str
+
+
+class QueueStatsResponse(BaseModel):
+    pending: int
+    ghidra_waiting: int
+    report_waiting: int
+    total_tasks: int
+    completed: int
+    failed: int
+
+
 app = FastAPI(
     title="ThreatScope API",
     description="AI-driven malware analysis framework",
-    version="0.1.0",
+    version="0.2.0",
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    scheduler = get_scheduled_coordinator()
+    await scheduler.start()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    if _scheduled_coordinator:
+        await _scheduled_coordinator.stop()
 
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {"status": "healthy"}
 
 
@@ -67,16 +109,11 @@ async def analyze_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     enable_ghidra: bool = True,
+    enable_dynamic: bool = True,
     enable_threat_intel: bool = True,
 ):
-    """Submit a file for analysis.
-
-    Returns a task ID that can be used to check status and retrieve results.
-    """
-    # Generate task ID
     task_id = str(uuid.uuid4())[:8]
 
-    # Save uploaded file
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
     file_path = temp_dir / f"{task_id}_{file.filename}"
@@ -84,7 +121,6 @@ async def analyze_file(
     content = await file.read()
     file_path.write_bytes(content)
 
-    # Initialize task
     _tasks[task_id] = {
         "id": task_id,
         "status": TaskStatus.PENDING.value,
@@ -92,18 +128,19 @@ async def analyze_file(
         "file_name": file.filename,
         "options": {
             "enable_ghidra": enable_ghidra,
+            "enable_dynamic": enable_dynamic,
             "enable_threat_intel": enable_threat_intel,
         },
         "result": None,
         "error": None,
     }
 
-    # Run analysis in background
     background_tasks.add_task(
         run_analysis_task,
         task_id,
         file_path,
         enable_ghidra,
+        enable_dynamic,
         enable_threat_intel,
     )
 
@@ -118,9 +155,9 @@ async def run_analysis_task(
     task_id: str,
     file_path: Path,
     enable_ghidra: bool,
+    enable_dynamic: bool,
     enable_threat_intel: bool,
 ):
-    """Run analysis task in background."""
     try:
         _tasks[task_id]["status"] = TaskStatus.STAGE_1_4.value
 
@@ -128,6 +165,7 @@ async def run_analysis_task(
         result = await coordinator.analyze(
             file_path=file_path,
             enable_ghidra=enable_ghidra,
+            enable_dynamic=enable_dynamic,
             enable_threat_intel=enable_threat_intel,
         )
 
@@ -139,7 +177,6 @@ async def run_analysis_task(
         _tasks[task_id]["error"] = str(e)
 
     finally:
-        # Cleanup temp file
         try:
             file_path.unlink()
         except Exception:
@@ -148,8 +185,16 @@ async def run_analysis_task(
 
 @app.get("/tasks/{task_id}", response_model=AnalysisResponse)
 async def get_task_status(task_id: str):
-    """Get the status and results of an analysis task."""
     if task_id not in _tasks:
+        scheduled = get_scheduled_coordinator()
+        task_status = scheduled.get_task_status(task_id)
+        if task_status:
+            return AnalysisResponse(
+                task_id=task_id,
+                status=task_status["status"],
+                result=None,
+                error=task_status.get("error"),
+            )
         raise HTTPException(status_code=404, detail="Task not found")
 
     task = _tasks[task_id]
@@ -163,7 +208,9 @@ async def get_task_status(task_id: str):
 
 @app.get("/tasks")
 async def list_tasks():
-    """List all tasks."""
+    scheduled = get_scheduled_coordinator()
+    queue_stats = scheduled.get_queue_stats()
+
     return {
         "tasks": [
             {
@@ -172,13 +219,13 @@ async def list_tasks():
                 "file_name": t.get("file_name"),
             }
             for t in _tasks.values()
-        ]
+        ],
+        "queue_stats": queue_stats,
     }
 
 
 @app.delete("/tasks/{task_id}")
 async def delete_task(task_id: str):
-    """Delete a task and its results."""
     if task_id not in _tasks:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -186,21 +233,34 @@ async def delete_task(task_id: str):
     return {"message": "Task deleted"}
 
 
+@app.post("/batch/submit", response_model=BatchSubmitResponse)
+async def submit_batch(request: BatchSubmitRequest):
+    scheduled = get_scheduled_coordinator()
+    task_ids = await scheduled.submit_batch(request.file_paths)
+
+    return BatchSubmitResponse(
+        task_ids=task_ids,
+        message=f"Submitted {len(task_ids)} tasks for analysis",
+    )
+
+
+@app.get("/batch/stats", response_model=QueueStatsResponse)
+async def get_queue_stats():
+    scheduled = get_scheduled_coordinator()
+    stats = scheduled.get_queue_stats()
+
+    return QueueStatsResponse(**stats)
+
+
 @app.post("/analyze/sync", response_model=AnalysisResponse)
 async def analyze_file_sync(
     file: UploadFile = File(...),
     enable_ghidra: bool = True,
+    enable_dynamic: bool = True,
     enable_threat_intel: bool = True,
 ):
-    """Submit a file for synchronous analysis.
-
-    Waits for analysis to complete and returns results directly.
-    Use for smaller files or when immediate results are needed.
-    """
-    # Generate task ID
     task_id = str(uuid.uuid4())[:8]
 
-    # Save uploaded file
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
     file_path = temp_dir / f"{task_id}_{file.filename}"
@@ -213,6 +273,7 @@ async def analyze_file_sync(
         result = await coordinator.analyze(
             file_path=file_path,
             enable_ghidra=enable_ghidra,
+            enable_dynamic=enable_dynamic,
             enable_threat_intel=enable_threat_intel,
         )
 
@@ -230,7 +291,6 @@ async def analyze_file_sync(
         )
 
     finally:
-        # Cleanup temp file
         try:
             file_path.unlink()
         except Exception:
@@ -238,5 +298,4 @@ async def analyze_file_sync(
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application."""
     return app
