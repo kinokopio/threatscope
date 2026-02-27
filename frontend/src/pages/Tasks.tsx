@@ -1,263 +1,372 @@
-import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { useState, useCallback, useMemo, memo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ListTodo, FileText, AlertCircle, CheckCircle, Loader2, Search, XCircle, Clock, RefreshCw } from 'lucide-react';
+import { 
+  ListTodo, 
+  FileText, 
+  AlertCircle, 
+  CheckCircle, 
+  Loader2, 
+  Search, 
+  XCircle, 
+  Clock, 
+  RefreshCw,
+  ChevronRight,
+  Activity,
+  Cpu,
+  Brain,
+  Filter
+} from 'lucide-react';
+import { useTasks, useTask } from '../shared/api';
+import { Spinner } from '../shared/ui';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+type TaskStatus = 'pending' | 'queued' | 'stage_1_4' | 'stage_5' | 'stage_6' | 'completed' | 'failed';
+type FilterType = 'all' | 'in_progress' | 'completed' | 'failed';
 
 interface Task {
-  id: string;
+  id?: string;
+  task_id?: string;
   status: string;
   file_name?: string;
   created_at?: string;
 }
 
+const STATUS_CONFIG: Record<TaskStatus, { 
+  icon: typeof CheckCircle; 
+  color: string; 
+  bg: string; 
+  border: string;
+  label: string;
+  description: string;
+}> = {
+  pending: { 
+    icon: Clock, 
+    color: 'text-slate-400', 
+    bg: 'bg-slate-500/10', 
+    border: 'border-slate-500/30',
+    label: 'Pending',
+    description: 'Waiting to start'
+  },
+  queued: { 
+    icon: Clock, 
+    color: 'text-blue-400', 
+    bg: 'bg-blue-500/10', 
+    border: 'border-blue-500/30',
+    label: 'Queued',
+    description: 'In queue'
+  },
+  stage_1_4: { 
+    icon: Activity, 
+    color: 'text-cyan-400', 
+    bg: 'bg-cyan-500/10', 
+    border: 'border-cyan-500/30',
+    label: 'Static Analysis',
+    description: 'Analyzing binary structure'
+  },
+  stage_5: { 
+    icon: Cpu, 
+    color: 'text-violet-400', 
+    bg: 'bg-violet-500/10', 
+    border: 'border-violet-500/30',
+    label: 'Ghidra Analysis',
+    description: 'Deep reverse engineering'
+  },
+  stage_6: { 
+    icon: Brain, 
+    color: 'text-pink-400', 
+    bg: 'bg-pink-500/10', 
+    border: 'border-pink-500/30',
+    label: 'AI Report',
+    description: 'Generating analysis report'
+  },
+  completed: { 
+    icon: CheckCircle, 
+    color: 'text-emerald-400', 
+    bg: 'bg-emerald-500/10', 
+    border: 'border-emerald-500/30',
+    label: 'Completed',
+    description: 'Analysis finished'
+  },
+  failed: { 
+    icon: XCircle, 
+    color: 'text-red-400', 
+    bg: 'bg-red-500/10', 
+    border: 'border-red-500/30',
+    label: 'Failed',
+    description: 'Analysis failed'
+  },
+};
+
+const FILTER_OPTIONS: { value: FilterType; label: string; icon: typeof Filter }[] = [
+  { value: 'all', label: 'All Tasks', icon: ListTodo },
+  { value: 'in_progress', label: 'In Progress', icon: Loader2 },
+  { value: 'completed', label: 'Completed', icon: CheckCircle },
+  { value: 'failed', label: 'Failed', icon: XCircle },
+];
+
+const IN_PROGRESS_STATUSES = ['pending', 'queued', 'stage_1_4', 'stage_5', 'stage_6'];
+
+interface TaskRowProps {
+  task: Task;
+  onNavigate: (id: string) => void;
+}
+
+const TaskRow = memo(function TaskRow({ task, onNavigate }: TaskRowProps) {
+  const taskId = task.id || task.task_id || '';
+  const status = (task.status as TaskStatus) || 'pending';
+  const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
+  const Icon = config.icon;
+  const isInProgress = IN_PROGRESS_STATUSES.includes(status);
+
+  return (
+    <div
+      onClick={() => onNavigate(taskId)}
+      className="p-4 hover:bg-slate-800/50 transition-all duration-200 cursor-pointer group"
+    >
+      <div className="flex items-center gap-4">
+        <div className={`w-12 h-12 rounded-xl ${config.bg} ${config.border} border flex items-center justify-center flex-shrink-0`}>
+          <Icon className={`w-6 h-6 ${config.color} ${isInProgress ? 'animate-pulse' : ''}`} />
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <FileText className="w-4 h-4 text-slate-500 flex-shrink-0" />
+            <span className="text-white font-medium truncate">{task.file_name || 'Unknown'}</span>
+          </div>
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-slate-500 text-xs font-mono truncate max-w-[200px]">{taskId}</span>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg ${config.bg} ${config.border} border`}>
+              {isInProgress && <Loader2 className={`w-3.5 h-3.5 ${config.color} animate-spin`} />}
+              <span className={`text-sm font-medium ${config.color}`}>{config.label}</span>
+            </div>
+            <p className="text-slate-500 text-xs mt-1">{config.description}</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-slate-600 group-hover:text-slate-400 transition-colors" />
+        </div>
+      </div>
+    </div>
+  );
+});
+
+interface StatsCardProps {
+  label: string;
+  value: number;
+  icon: typeof CheckCircle;
+  colorClass: string;
+  bgClass: string;
+  borderClass: string;
+}
+
+const StatsCard = memo(function StatsCard({ label, value, icon: Icon, colorClass, bgClass, borderClass }: StatsCardProps) {
+  return (
+    <div className={`p-5 rounded-xl ${bgClass} border ${borderClass}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className={`${colorClass} text-sm opacity-80`}>{label}</span>
+        <Icon className={`w-4 h-4 ${colorClass} opacity-50`} />
+      </div>
+      <p className={`text-3xl font-bold ${colorClass}`}>{value}</p>
+    </div>
+  );
+});
+
 export default function Tasks() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchId, setSearchId] = useState("");
-  const [isSearching, setIsSearching] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchId, setSearchId] = useState('');
+  const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   const navigate = useNavigate();
+  
+  const { data: tasksData, isLoading, error, refetch, isRefetching } = useTasks({ refetchInterval: 5000 });
+  const { refetch: searchTask, isFetching: isSearching } = useTask(searchId, { enabled: false });
 
-  const fetchTasks = async (showRefresh = false) => {
-    if (showRefresh) setIsRefreshing(true);
-    try {
-      const res = await axios.get(`${API_BASE}/tasks`);
-      setTasks(res.data.tasks || []);
-      setError(null);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to load tasks.");
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  };
+  const stats = useMemo(() => {
+    if (!tasksData?.tasks) return { total: 0, inProgress: 0, completed: 0, failed: 0 };
+    const tasks = tasksData.tasks;
+    return {
+      total: tasks.length,
+      inProgress: tasks.filter(t => IN_PROGRESS_STATUSES.includes(t.status)).length,
+      completed: tasks.filter(t => t.status === 'completed').length,
+      failed: tasks.filter(t => t.status === 'failed').length,
+    };
+  }, [tasksData]);
 
-  useEffect(() => {
-    fetchTasks();
+  const filteredTasks = useMemo(() => {
+    if (!tasksData?.tasks) return [];
+    const tasks = tasksData.tasks as Task[];
     
-    // Poll every 5 seconds
-    const interval = setInterval(() => fetchTasks(), 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  const searchByTaskId = async () => {
-    if (!searchId) return;
-    setIsSearching(true);
-    setError(null);
-    try {
-      const res = await axios.get(`${API_BASE}/tasks/${searchId}`);
-      if (res.data) {
-        navigate(`/task/${searchId}`);
-      }
-    } catch {
-      setError("Task not found for this ID.");
-      setIsSearching(false);
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (activeFilter) {
+      case 'in_progress':
+        return tasks.filter(t => IN_PROGRESS_STATUSES.includes(t.status));
       case 'completed':
-        return <CheckCircle className="w-5 h-5 text-emerald-400" />;
+        return tasks.filter(t => t.status === 'completed');
       case 'failed':
-        return <XCircle className="w-5 h-5 text-red-400" />;
-      case 'pending':
-      case 'stage_1_4':
-      case 'stage_5':
-      case 'stage_6':
-      case 'queued':
-        return <Loader2 className="w-5 h-5 text-cyan-400 animate-spin" />;
+        return tasks.filter(t => t.status === 'failed');
       default:
-        return <Clock className="w-5 h-5 text-slate-400" />;
+        return tasks;
     }
-  };
+  }, [tasksData, activeFilter]);
 
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'bg-emerald-900/30 text-emerald-400 border-emerald-800';
-      case 'failed':
-        return 'bg-red-900/30 text-red-400 border-red-800';
-      case 'pending':
-      case 'stage_1_4':
-      case 'stage_5':
-      case 'stage_6':
-      case 'queued':
-        return 'bg-cyan-900/30 text-cyan-400 border-cyan-800';
-      default:
-        return 'bg-slate-800 text-slate-400 border-slate-700';
+  const handleSearch = useCallback(async () => {
+    if (!searchId.trim()) return;
+    const result = await searchTask();
+    if (result.data) {
+      navigate(`/task/${searchId}`);
     }
-  };
+  }, [searchId, searchTask, navigate]);
 
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'stage_1_4':
-        return 'Static Analysis';
-      case 'stage_5':
-        return 'Ghidra Analysis';
-      case 'stage_6':
-        return 'AI Report';
-      case 'queued':
-        return 'Queued';
-      default:
-        return status.charAt(0).toUpperCase() + status.slice(1);
-    }
-  };
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSearch();
+  }, [handleSearch]);
 
-  // Count tasks by status
-  const pendingCount = tasks.filter(t => ['pending', 'stage_1_4', 'stage_5', 'stage_6', 'queued'].includes(t.status)).length;
-  const completedCount = tasks.filter(t => t.status === 'completed').length;
-  const failedCount = tasks.filter(t => t.status === 'failed').length;
+  const handleNavigate = useCallback((taskId: string) => {
+    navigate(`/task/${taskId}`);
+  }, [navigate]);
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Spinner size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto">
-      <header className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center">
-            <ListTodo className="mr-3 text-cyan-400" /> All Tasks
-          </h1>
-          <p className="text-slate-400 mt-2">View and manage all analysis tasks</p>
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center">
+            <ListTodo className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-white">Analysis Tasks</h1>
+            <p className="text-slate-400 text-sm">Monitor and manage all analysis jobs</p>
+          </div>
         </div>
         
-        {/* Search Input */}
-        <div className="flex items-center space-x-2 bg-slate-800 p-2 rounded-xl border border-slate-700 shadow-lg w-full md:w-96">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        {/* Search */}
+        <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-800/50 border border-slate-700/50 w-full lg:w-auto">
+          <div className="relative flex-1 lg:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input 
               type="text" 
-              placeholder="Enter Task ID"
-              className="w-full bg-slate-900 border border-slate-600 rounded-lg py-2 pl-10 pr-4 text-sm text-slate-100 focus:outline-none focus:border-cyan-500 transition-colors"
+              placeholder="Search by Task ID..."
+              className="w-full bg-slate-900/50 border border-slate-700 rounded-lg py-2 pl-10 pr-4 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all"
               value={searchId}
               onChange={(e) => setSearchId(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && searchByTaskId()}
+              onKeyDown={handleKeyDown}
             />
           </div>
           <button 
-            onClick={searchByTaskId}
-            disabled={!searchId || isSearching}
-            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-bold rounded-lg transition-all disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            onClick={handleSearch}
+            disabled={!searchId.trim() || isSearching}
+            className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {isSearching ? 'Searching...' : 'Search'}
+            {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+            Search
           </button>
-        </div>
-      </header>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-center justify-between">
-          <div>
-            <p className="text-slate-400 text-sm">In Progress</p>
-            <p className="text-2xl font-bold text-cyan-400">{pendingCount}</p>
-          </div>
-          <Loader2 className="w-8 h-8 text-cyan-400/30" />
-        </div>
-        <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-center justify-between">
-          <div>
-            <p className="text-slate-400 text-sm">Completed</p>
-            <p className="text-2xl font-bold text-emerald-400">{completedCount}</p>
-          </div>
-          <CheckCircle className="w-8 h-8 text-emerald-400/30" />
-        </div>
-        <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 flex items-center justify-between">
-          <div>
-            <p className="text-slate-400 text-sm">Failed</p>
-            <p className="text-2xl font-bold text-red-400">{failedCount}</p>
-          </div>
-          <XCircle className="w-8 h-8 text-red-400/30" />
         </div>
       </div>
 
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard 
+          label="Total Tasks" 
+          value={stats.total} 
+          icon={ListTodo}
+          colorClass="text-slate-300"
+          bgClass="bg-slate-800/50"
+          borderClass="border-slate-700/50"
+        />
+        <StatsCard 
+          label="In Progress" 
+          value={stats.inProgress} 
+          icon={Loader2}
+          colorClass="text-cyan-400"
+          bgClass="bg-cyan-500/5"
+          borderClass="border-cyan-500/20"
+        />
+        <StatsCard 
+          label="Completed" 
+          value={stats.completed} 
+          icon={CheckCircle}
+          colorClass="text-emerald-400"
+          bgClass="bg-emerald-500/5"
+          borderClass="border-emerald-500/20"
+        />
+        <StatsCard 
+          label="Failed" 
+          value={stats.failed} 
+          icon={XCircle}
+          colorClass="text-red-400"
+          bgClass="bg-red-500/5"
+          borderClass="border-red-500/20"
+        />
+      </div>
+
+      {/* Error Message */}
       {error && (
-        <div className="mb-6 bg-red-900/20 p-4 rounded-xl border border-red-800 text-center text-red-400">
-          <AlertCircle className="w-5 h-5 inline mr-2" />
-          {error}
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
+          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+          <p className="text-red-400">Failed to load tasks. Please try again.</p>
         </div>
       )}
 
-      <div className="bg-slate-800 rounded-xl border border-slate-700 shadow-xl overflow-hidden">
-        {/* Table Header with Refresh */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-700 bg-slate-900/50">
-          <span className="text-slate-300 font-medium">{tasks.length} Tasks</span>
+      {/* Filter Tabs & Task List */}
+      <div className="rounded-xl bg-slate-800/30 border border-slate-700/50 overflow-hidden">
+        {/* Filter Header */}
+        <div className="flex items-center justify-between p-4 border-b border-slate-700/50 bg-slate-900/30">
+          <div className="flex items-center gap-1 p-1 rounded-lg bg-slate-800/50">
+            {FILTER_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => setActiveFilter(option.value)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  activeFilter === option.value
+                    ? 'bg-slate-700 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-300 hover:bg-slate-700/50'
+                }`}
+              >
+                <option.icon className="w-3.5 h-3.5" />
+                {option.label}
+              </button>
+            ))}
+          </div>
+          
           <button
-            onClick={() => fetchTasks(true)}
-            disabled={isRefreshing}
-            className="flex items-center px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded transition-colors cursor-pointer"
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-sm font-medium transition-all disabled:opacity-50"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
             Refresh
           </button>
         </div>
 
-        {tasks.length === 0 ? (
-          <div className="p-12 text-center text-slate-400">
-            <FileText className="w-16 h-16 mx-auto mb-4 opacity-30" />
-            <p className="text-lg">No tasks found.</p>
-            <p className="text-sm mt-2">Upload a file to get started.</p>
+        {/* Task List */}
+        {filteredTasks.length === 0 ? (
+          <div className="p-16 text-center">
+            <div className="w-16 h-16 mx-auto rounded-xl bg-slate-800 flex items-center justify-center mb-4">
+              <FileText className="w-8 h-8 text-slate-600" />
+            </div>
+            <p className="text-slate-400 text-lg">
+              {activeFilter === 'all' ? 'No tasks found' : `No ${activeFilter.replace('_', ' ')} tasks`}
+            </p>
+            <p className="text-slate-500 text-sm mt-1">
+              {activeFilter === 'all' ? 'Upload a file to start analyzing' : 'Try a different filter'}
+            </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-900/30 border-b border-slate-700 text-slate-300 text-sm uppercase tracking-wider">
-                  <th className="p-4 font-medium">Status</th>
-                  <th className="p-4 font-medium">Filename</th>
-                  <th className="p-4 font-medium">Task ID</th>
-                  <th className="p-4 font-medium text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-700/50">
-                {tasks.map((task) => (
-                  <tr 
-                    key={task.id} 
-                    className="hover:bg-slate-700/30 transition-colors group cursor-pointer"
-                    onClick={() => navigate(`/task/${task.id}`)}
-                  >
-                    <td className="p-4">
-                      <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${getStatusBadgeClass(task.status)}`}>
-                        {getStatusIcon(task.status)}
-                        <span className="ml-1.5">{getStatusLabel(task.status)}</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center text-slate-200 font-medium">
-                        <FileText className="w-4 h-4 mr-2 text-slate-400 flex-shrink-0" />
-                        <span className="truncate max-w-xs" title={task.file_name || 'Unknown'}>
-                          {task.file_name || 'Unknown'}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="text-slate-400 font-mono text-sm">
-                        {task.id}
-                      </div>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/task/${task.id}`);
-                        }}
-                        className="inline-flex items-center px-3 py-1.5 bg-slate-700 hover:bg-cyan-600 text-white text-sm font-medium rounded transition-colors cursor-pointer"
-                      >
-                        View Details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="divide-y divide-slate-700/50">
+            {filteredTasks.map((task) => (
+              <TaskRow 
+                key={task.id || task.task_id} 
+                task={task} 
+                onNavigate={handleNavigate}
+              />
+            ))}
           </div>
         )}
       </div>

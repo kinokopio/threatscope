@@ -46,6 +46,7 @@ logs/
 .coverage
 htmlcov/
 .pytest_cache/
+.ruff_cache/
 
 # macOS
 .DS_Store
@@ -54,3 +55,13 @@ htmlcov/
 tmp/
 temp/
 *.tmp
+
+# OpenCode / Sisyphus
+.opencode/
+.sisyphus/
+
+# Node modules (frontend)
+node_modules/
+
+# Frontend build
+frontend/dist/

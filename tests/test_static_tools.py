@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.static import FunctionClassifier, HashCalculator, MitreMapper
+from src.threatscope.analysis.tools.static import FunctionClassifier, HashCalculator, MitreMapper
 
 
 class TestHashCalculator:

@@ -1,6 +1,6 @@
 [project]
 name = "threatscope"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI-driven malware analysis framework"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -22,6 +22,7 @@ classifiers = [
 dependencies = [
     "pyyaml>=6.0",
     "pydantic>=2.0",
+    "pydantic-settings>=2.0",
     "httpx>=0.24.0",
     "lief>=0.14.0",
     "yara-python>=4.3.0",
@@ -39,13 +40,16 @@ ai = [
 ghidra = [
     "pyghidra>=1.0.0",
 ]
+docker = [
+    "docker>=7.0.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21.0",
     "ruff>=0.1.0",
 ]
 all = [
-    "threatscope[api,ai,ghidra,dev]",
+    "threatscope[api,ai,ghidra,docker,dev]",
 ]
 
 [build-system]
@@ -66,3 +70,7 @@ testpaths = ["tests"]
 
 [project.scripts]
 threatscope = "threatscope.cli:main"
+threatscope-api = "src.threatscope.api.app:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/threatscope"]
