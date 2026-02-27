@@ -8,12 +8,16 @@ workers:
 
 # Ghidra 实例池配置
 ghidra:
-  pool_size: 1          # 默认单实例
-  docker_image: "threatscope/ghidra:latest"
+  pool_size: 1
+  docker_image: "threatscope-ghidra:latest"
   memory_limit: "4g"
-  base_http_port: 8000
+  base_http_port: 8080
   base_mcp_port: 9000
-  startup_timeout: 60
+  startup_timeout: 120
+  base_url: "http://localhost:8080"
+  # Service manager settings
+  service_mode: "docker"
+  service_host: "localhost"
 
 # 威胁情报配置
 threat_intel:
@@ -39,9 +43,18 @@ agents:
 # 分析选项默认值
 analysis:
   default_timeout: 300
+  dynamic_analysis_timeout: 30  # 动态分析超时（秒）- 恶意软件可能无限运行
   enable_dynamic_analysis: true
   enable_ghidra_analysis: true
   yara_rules_path: "rules/yara"
+# Tracee 动态分析配置
+tracee:
+  image: "aquasec/tracee:latest"
+  sandbox_image: "ubuntu:22.04"
+  output_dir: "/tmp/tracee-output"
+  enable_network_capture: true
+  enable_file_capture: true
+
 
 # 任务管理
 tasks:
@@ -52,10 +65,10 @@ tasks:
 # LLM 配置 (AI 分析)
 llm:
   # API Key - 也可通过环境变量 ANTHROPIC_API_KEY 设置
-  api_key: ""
+  api_key: "sk-ob26dOWZQZbX8OqY0QaBCiGtIyTSFgNfiZK8XvgOAESToUl5"
   # Base URL - 用于代理或自托管服务 (可选)
   # 也可通过环境变量 ANTHROPIC_BASE_URL 设置
-  base_url: ""
+  base_url: "https://chat.lovebear.cloud"
   # 默认模型
   model: "claude-sonnet-4-20250514"
   # 请求超时 (秒)

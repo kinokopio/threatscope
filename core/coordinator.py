@@ -9,8 +9,9 @@ from ai import AgentConfig, GhidraAgent, MalwareAnalysisAgent
 from clients import ThreatIntelClient
 from core.config import Config, load_config
 from core.task import AnalysisTask, TaskStatus
+from ghidra_service.manager import GhidraServiceManager
 from tools import StaticAnalyzer
-from tools.dynamic import DynamicAnalyzer
+from tools.dynamic import TraceeAnalyzer, TraceeConfig
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +46,15 @@ class AnalysisCoordinator:
             yara_rules_path=self.config.analysis.yara_rules_path,
         )
 
-        # Initialize dynamic analyzer
-        self.dynamic_analyzer = DynamicAnalyzer(
-            emulation_timeout=self.config.analysis.default_timeout,
+        tracee_config = TraceeConfig(
+            timeout=self.config.analysis.dynamic_analysis_timeout,
+            tracee_image=self.config.tracee.image,
+            sandbox_image=self.config.tracee.sandbox_image,
+            output_dir=self.config.tracee.output_dir,
+            enable_network_capture=self.config.tracee.enable_network_capture,
+            enable_file_capture=self.config.tracee.enable_file_capture,
         )
+        self.dynamic_analyzer = TraceeAnalyzer(tracee_config)
 
         # Initialize threat intel client
         self.threat_intel = ThreatIntelClient(
@@ -73,6 +79,14 @@ class AnalysisCoordinator:
         )
         self.malware_agent = MalwareAnalysisAgent(malware_config)
 
+        # Initialize Ghidra service manager (auto-start/stop)
+        self.ghidra_service = GhidraServiceManager(
+            mode=self.config.ghidra.service_mode,
+            host=self.config.ghidra.service_host,
+            port=self.config.ghidra.base_http_port,
+            startup_timeout=self.config.ghidra.startup_timeout,
+            docker_image=self.config.ghidra.docker_image,
+        )
     async def analyze(
         self,
         file_path: str | Path,
@@ -103,7 +117,8 @@ class AnalysisCoordinator:
             enable_ghidra = self.config.analysis.enable_ghidra_analysis
         if enable_dynamic is None:
             enable_dynamic = self.config.analysis.enable_dynamic_analysis
-
+        
+        logger.info(f"=== ANALYZE: enable_ghidra={enable_ghidra}, enable_dynamic={enable_dynamic} ===")
         try:
             # Stage 1-4: Static + Threat Intel + Dynamic (parallel where possible)
             task.update_status(TaskStatus.STAGE_1_4)
@@ -115,10 +130,10 @@ class AnalysisCoordinator:
             # Stage 5: Ghidra analysis (if enabled)
             ghidra_results = {}
             if enable_ghidra:
+                logger.info("=== STAGE 5: Ghidra analysis enabled, calling run_stage_5 ===")
                 task.update_status(TaskStatus.STAGE_5)
-                ghidra_results = await self._run_stage_5(stage_1_4_results, file_path)
+                ghidra_results = await self.run_stage_5(static_results=stage_1_4_results, file_path=file_path)
                 task.ghidra_results = ghidra_results
-
             # Stage 6: Report generation
             task.update_status(TaskStatus.STAGE_6)
             report = await self._run_stage_6(stage_1_4_results, ghidra_results)
@@ -150,6 +165,11 @@ class AnalysisCoordinator:
                 "error": str(e),
             }
 
+        finally:
+            # Cleanup: Stop Ghidra service if we started it
+            if enable_ghidra and self.ghidra_service.is_running():
+                logger.info("Stopping Ghidra service...")
+                self.ghidra_service.stop()
     async def run_stage_1_4(
         self,
         file_path: Path,
@@ -211,32 +231,16 @@ class AnalysisCoordinator:
         file_path: Path,
         static_results: dict,
     ) -> dict[str, Any]:
-        """Run dynamic analysis (binary emulation).
-
-        Args:
-            file_path: Path to the binary.
-            static_results: Static analysis results (for architecture info).
-
-        Returns:
-            Dynamic analysis results.
-        """
-        # Get architecture from static analysis
         elf_info = static_results.get("elf", {})
         arch = elf_info.get("arch", "").lower()
 
-        # Map common architecture names
         arch_mapping = {
             "x86_64": "x86_64",
             "amd64": "x86_64",
             "i386": "i386",
             "i686": "i386",
-            "arm": "arm",
-            "aarch64": "aarch64",
-            "mips": "mips",
-            "mipsel": "mipsel",
         }
 
-        # Try to determine architecture
         target_arch = None
         for key, value in arch_mapping.items():
             if key in arch:
@@ -244,22 +248,35 @@ class AnalysisCoordinator:
                 break
 
         if not target_arch:
-            logger.warning(f"Unknown architecture: {arch}, skipping dynamic analysis")
+            logger.warning(f"Unsupported architecture for Tracee: {arch}")
             return {
                 "success": False,
-                "error": f"Unsupported architecture: {arch}",
+                "error": f"Tracee only supports x86_64, got: {arch}",
                 "skipped": True,
+                "method": "tracee",
             }
 
-        # Run emulation
         try:
-            result = self.dynamic_analyzer.emulate(str(file_path), target_arch)
-            return result
+            result = self.dynamic_analyzer.analyze(str(file_path), target_arch)
+            return {
+                "success": result.success,
+                "method": result.method,
+                "process_tree": result.process_tree,
+                "network_summary": result.network_summary,
+                "security_events": result.security_events,
+                "syscall_summary": result.syscall_summary,
+                "file_activity": result.file_activity,
+                "duration_seconds": result.duration_seconds,
+                "raw_events_count": result.raw_events_count,
+                "error": result.error,
+                "event_types": result.event_types,
+            }
         except Exception as e:
             logger.warning(f"Dynamic analysis failed: {e}")
             return {
                 "success": False,
                 "error": str(e),
+                "method": "tracee",
             }
 
     async def _query_threat_intel(self, static_results: dict) -> dict[str, Any]:
@@ -310,16 +327,41 @@ class AnalysisCoordinator:
         self,
         static_results: dict[str, Any],
         file_path: Path,
+        progress_callback: Any = None,
     ) -> dict[str, Any]:
         """Run Stage 5: Ghidra deep analysis.
+
+        Automatically starts Ghidra service if not running.
 
         Args:
             static_results: Results from Stage 1-4.
             file_path: Path to the file.
+            progress_callback: Optional callback for progress updates.
 
         Returns:
             Ghidra analysis results.
         """
+        logger.info(f"=== RUN_STAGE_5 CALLED === file_path={file_path}")
+        # Auto-start Ghidra service
+        if not self.ghidra_service.is_running():
+            logger.info("Starting Ghidra service...")
+            if progress_callback:
+                await progress_callback(
+                    "ghidra_service", "Starting Ghidra Service", "running", None
+                )
+            if not self.ghidra_service.start():
+                error_msg = "Failed to start Ghidra service"
+                logger.error(error_msg)
+                if progress_callback:
+                    await progress_callback(
+                        "ghidra_service", "Starting Ghidra Service", "failed", {"error": error_msg}
+                    )
+                return {"error": error_msg}
+            if progress_callback:
+                await progress_callback(
+                    "ghidra_service", "Starting Ghidra Service", "completed", {"url": self.ghidra_service.base_url}
+                )
+
         sample_hash = static_results.get("hashes", {}).get("sha256", "")
 
         result = await self.ghidra_agent.analyze(
@@ -327,11 +369,11 @@ class AnalysisCoordinator:
                 "static_results": static_results,
                 "file_path": str(file_path),
                 "sample_hash": sample_hash,
-            }
+            },
+            progress_callback=progress_callback,
         )
 
         return result.data if result.success else {"error": result.error}
-
     async def run_stage_6(
         self,
         static_results: dict[str, Any],

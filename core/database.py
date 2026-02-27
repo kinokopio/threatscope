@@ -53,8 +53,15 @@ class TaskDatabase:
     @contextmanager
     def _get_connection(self) -> Generator[sqlite3.Connection, None, None]:
         """Get database connection with context manager."""
-        conn = sqlite3.connect(str(self.db_path))
+        conn = sqlite3.connect(
+            str(self.db_path),
+            timeout=30.0,  # Wait up to 30 seconds for locks
+            check_same_thread=False,
+        )
         conn.row_factory = sqlite3.Row
+        # Enable WAL mode for better concurrency
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         try:
             yield conn
         finally:
@@ -206,6 +213,49 @@ class TaskDatabase:
             )
             conn.commit()
 
+
+    def merge_stage_1_4_result(
+        self,
+        task_id: str,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Merge a single result into stage_1_4_results.
+
+        This allows incremental updates as each analysis step completes.
+
+        Args:
+            task_id: Task ID.
+            key: Result key (e.g., 'hashes', 'strings', 'elf').
+            value: Result value.
+        """
+        now = datetime.now().isoformat()
+        with self._get_connection() as conn:
+            # Get existing results
+            row = conn.execute(
+                "SELECT stage_1_4_results FROM tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            
+            existing = {}
+            if row and row["stage_1_4_results"]:
+                try:
+                    existing = json.loads(row["stage_1_4_results"])
+                except json.JSONDecodeError:
+                    existing = {}
+            
+            # Merge new result
+            existing[key] = value
+            
+            # Save back
+            conn.execute(
+                """
+                UPDATE tasks 
+                SET stage_1_4_results = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (json.dumps(existing), now, task_id),
+            )
+            conn.commit()
     def delete_task(self, task_id: str) -> bool:
         """Delete a task.
 

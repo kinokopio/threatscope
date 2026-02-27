@@ -15,13 +15,16 @@ import {
   Activity,
   Search,
   Target,
-  SkipForward
+  SkipForward,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { getTask } from '../api/client';
-import type { AnalysisTask, TaskStatus } from '../types';
+import type { AnalysisTask, TaskStatus, AnalysisResult } from '../types';
 import ReportView from '../components/ReportView';
+import DynamicAnalysisView from '../components/DynamicAnalysisView';
 
-const POLL_INTERVAL_MS = 2000;
+const POLL_INTERVAL_MS = 1000; // Poll every 1 second for faster updates
 
 // Complete analysis steps
 const ANALYSIS_STEPS = [
@@ -85,7 +88,7 @@ function formatPreviewValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-// Step preview component
+// Step preview component (compact summary)
 function StepPreview({ preview }: { preview?: Record<string, unknown> }) {
   if (!preview || Object.keys(preview).length === 0) return null;
 
@@ -103,6 +106,109 @@ function StepPreview({ preview }: { preview?: Record<string, unknown> }) {
   );
 }
 
+// Detailed step content component
+function StepDetailContent({ stepId, result }: { stepId: string; result: AnalysisResult }) {
+  const renderValue = (value: unknown, depth = 0): React.ReactNode => {
+    if (value === null || value === undefined) return <span className="text-slate-500">N/A</span>;
+    if (typeof value === 'boolean') return <span className={value ? 'text-emerald-400' : 'text-red-400'}>{value ? 'Yes' : 'No'}</span>;
+    if (typeof value === 'number') return <span className="text-cyan-300">{value}</span>;
+    if (typeof value === 'string') {
+      if (value.length > 500) return <span className="text-slate-300 break-all">{value.slice(0, 500)}...</span>;
+      return <span className="text-slate-300 break-all">{value}</span>;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) return <span className="text-slate-500">Empty</span>;
+      if (depth > 2) return <span className="text-slate-400">[{value.length} items]</span>;
+      return (
+        <div className="space-y-1 ml-2">
+          {value.map((item, i) => (
+            <div key={i} className="text-xs">{renderValue(item, depth + 1)}</div>
+          ))}
+        </div>
+      );
+    }
+    if (typeof value === 'object') {
+      if (depth > 3) return <span className="text-slate-400">{'{...}'}</span>;
+      return (
+        <div className="space-y-1 ml-2">
+          {Object.entries(value as Record<string, unknown>).map(([k, v]) => (
+            <div key={k} className="text-xs">
+              <span className="text-purple-400">{k}:</span> {renderValue(v, depth + 1)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    return <span className="text-slate-400">{String(value)}</span>;
+  };
+
+  // Get data for each step
+  const getStepData = (): unknown => {
+    switch (stepId) {
+      case 'hash': return result.hashes;
+      case 'strings': return result.strings;
+      case 'elf': return result.elf;
+      case 'func_class': return result.function_categories;
+      case 'mitre': return result.mitre_mapping;
+      case 'yara': return result.yara;
+      case 'threat_intel': return result.threat_intel;
+      case 'dynamic': return result.dynamic_analysis;
+      case 'ghidra': return result.ghidra_analysis;
+      case 'report': return result.malware_report;
+      default: return null;
+    }
+  };
+
+  const data = getStepData();
+
+  // Show helpful message for missing data
+  if (!data) {
+    const messages: Record<string, string> = {
+      func_class: 'No imported functions found (binary may be statically linked)',
+      mitre: 'No imported functions to map (binary may be statically linked)',
+      dynamic: 'Dynamic analysis requires Docker or QEMU user-mode emulator',
+      ghidra: 'Ghidra analysis was not performed',
+    };
+    const message = messages[stepId] || 'No data available';
+    return <div className="text-slate-500 text-sm py-2">{message}</div>;
+  }
+
+  // Special handling for dynamic analysis - use dedicated component
+  if (stepId === 'dynamic' && typeof data === 'object' && data !== null) {
+    const dynData = data as Record<string, unknown>;
+    
+    // Check for error with help message
+    if (dynData.error && dynData.help) {
+      return (
+        <div className="mt-3 pt-3 border-t border-slate-700/50">
+          <div className="bg-yellow-900/20 rounded-lg p-3 border border-yellow-800/50">
+            <p className="text-yellow-400 text-sm font-medium">⚠️ {String(dynData.error)}</p>
+            <p className="text-slate-400 text-xs mt-2">{String(dynData.help)}</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Use dedicated DynamicAnalysisView component
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (
+      <div className="mt-3 pt-3 border-t border-slate-700/50">
+        <DynamicAnalysisView data={dynData as any} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-700/50">
+      <div className="bg-slate-900/50 rounded-lg p-3 max-h-[600px] overflow-y-auto">
+        <div className="text-xs font-mono">
+          {renderValue(data)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
@@ -110,63 +216,23 @@ export default function TaskDetail() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [stepStates, setStepStates] = useState<Record<string, StepState>>({});
-  const [wsConnected, setWsConnected] = useState(false);
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
-  // WebSocket connection for real-time updates
-  useEffect(() => {
-    if (!taskId) return;
-
-    const wsUrl = `${import.meta.env.VITE_API_URL?.replace('http', 'ws') || 'ws://localhost:8000'}/ws/progress`;
-    let ws: WebSocket | null = null;
-    let reconnectTimeout: ReturnType<typeof setTimeout>;
-
-    const connect = () => {
-      try {
-        ws = new WebSocket(wsUrl);
-
-        ws.onopen = () => {
-          setWsConnected(true);
-          // Subscribe to task updates
-          ws?.send(JSON.stringify({ action: 'subscribe', task_id: taskId }));
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            
-            if (message.event === 'step_progress' && message.task_id === taskId) {
-              const { step_id, status, result_preview } = message.data;
-              setStepStates(prev => ({
-                ...prev,
-                [step_id]: { status, preview: result_preview }
-              }));
-            }
-          } catch (e) {
-            console.error('Failed to parse WebSocket message:', e);
-          }
-        };
-
-        ws.onclose = () => {
-          setWsConnected(false);
-          // Reconnect after 3 seconds
-          reconnectTimeout = setTimeout(connect, 3000);
-        };
-
-        ws.onerror = () => {
-          ws?.close();
-        };
-      } catch (e) {
-        console.error('WebSocket connection failed:', e);
+  // Toggle step expansion
+  const toggleStepExpansion = (stepId: string) => {
+    setExpandedSteps(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(stepId)) {
+        newSet.delete(stepId);
+      } else {
+        newSet.add(stepId);
       }
-    };
+      return newSet;
+    });
+  };
 
-    connect();
-
-    return () => {
-      clearTimeout(reconnectTimeout);
-      ws?.close();
-    };
-  }, [taskId]);
+  // WebSocket disabled - using polling instead
+  // The polling is handled by fetchTaskStatus below
 
   const fetchTaskStatus = useCallback(async (id: string) => {
     try {
@@ -182,57 +248,157 @@ export default function TaskDetail() {
       if (data.result) {
         setStepStates(prev => {
           const newStates = { ...prev };
+          const result = data.result;
           
-          // Static analysis steps - check if we have the data
-          if (data.result?.hashes && !newStates.hash?.status) {
-            newStates.hash = { status: 'completed', preview: { md5: String(data.result.hashes?.md5 || '').slice(0, 8) + '...' } };
+          // Hash Calculation
+          if (result?.hashes && !newStates.hash?.status) {
+            const hashes = result.hashes as Record<string, string>;
+            newStates.hash = { 
+              status: 'completed', 
+              preview: { 
+                md5: String(hashes?.md5 || '').slice(0, 12) + '...',
+                sha256: String(hashes?.sha256 || '').slice(0, 12) + '...'
+              } 
+            };
           }
-          if (data.result?.strings && !newStates.strings?.status) {
-            const strings = data.result.strings as Record<string, string[]>;
+          
+          // String Extraction
+          if (result?.strings && !newStates.strings?.status) {
+            const strings = result.strings as Record<string, unknown[]>;
             newStates.strings = { 
               status: 'completed', 
               preview: { 
                 urls: strings?.urls?.length || 0,
                 ips: strings?.ips?.length || 0,
+                domains: strings?.domains?.length || 0,
+                suspicious: strings?.suspicious?.length || 0,
               } 
             };
           }
-          if (data.result?.elf && !newStates.elf?.status) {
-            const elf = data.result.elf as Record<string, unknown>;
-            newStates.elf = { status: 'completed', preview: { arch: String(elf?.arch || ''), format: String(elf?.format || '') } };
-          }
-          if (data.result?.function_categories && !newStates.func_class?.status) {
-            newStates.func_class = { status: 'completed' };
-          }
-          if (data.result?.mitre_mapping && !newStates.mitre?.status) {
-            newStates.mitre = { status: 'completed' };
-          }
-          if (data.result?.yara && !newStates.yara?.status) {
-            const yara = data.result.yara as Record<string, string[]>;
-            newStates.yara = { status: 'completed', preview: { matches: yara?.matches?.length || 0 } };
-          }
-          if (data.result?.threat_intel && !newStates.threat_intel?.status) {
-            newStates.threat_intel = { status: 'completed' };
-          }
-          if (data.result?.dynamic_analysis && !newStates.dynamic?.status) {
-            newStates.dynamic = { status: 'completed' };
+          
+          // ELF Parsing
+          if (result?.elf && !newStates.elf?.status) {
+            const elf = result.elf as Record<string, unknown>;
+            if (elf?.error) {
+              newStates.elf = { status: 'failed', preview: { error: 'Not an ELF file' } };
+            } else {
+              newStates.elf = { 
+                status: 'completed', 
+                preview: { 
+                  format: String(elf?.format || 'N/A'),
+                  arch: String(elf?.arch || 'N/A'),
+                  imports: Array.isArray(elf?.imports) ? elf.imports.length : 0,
+                } 
+              };
+            }
           }
           
-          // Ghidra
-          if (data.result?.ghidra_analysis && !newStates.ghidra?.status) {
-            const ghidra = data.result.ghidra_analysis;
-            newStates.ghidra = { 
+          // Function Classification
+          if (!newStates.func_class?.status) {
+            if (result?.function_categories) {
+              const categories = result.function_categories as Record<string, string[]>;
+              const categoryCount = Object.values(categories).filter(v => Array.isArray(v) && v.length > 0).length;
+              newStates.func_class = { 
+                status: 'completed',
+                preview: { categories: categoryCount }
+              };
+            } else if (result?.elf && !(result.elf as Record<string, unknown>).error) {
+              // ELF parsed but no function categories - likely static binary
+              newStates.func_class = { 
+                status: 'skipped',
+                preview: { reason: 'Static binary' }
+              };
+            }
+          }
+          
+          // MITRE ATT&CK Mapping
+          if (!newStates.mitre?.status) {
+            if (result?.mitre_mapping) {
+              const mitre = result.mitre_mapping as Record<string, unknown[]>;
+              newStates.mitre = { 
+                status: 'completed',
+                preview: { techniques: mitre?.techniques?.length || 0 }
+              };
+            } else if (result?.elf && !(result.elf as Record<string, unknown>).error) {
+              // ELF parsed but no MITRE mapping - likely static binary
+              newStates.mitre = { 
+                status: 'skipped',
+                preview: { reason: 'Static binary' }
+              };
+            }
+          }
+          
+          // YARA Scanning
+          if (result?.yara && !newStates.yara?.status) {
+            const yara = result.yara as Record<string, unknown>;
+            if (yara?.error) {
+              newStates.yara = { status: 'failed', preview: { error: 'No rules loaded' } };
+            } else {
+              const matches = yara?.matches as string[] || [];
+              newStates.yara = { 
+                status: 'completed', 
+                preview: { 
+                  matches: matches.length,
+                  rules: matches.slice(0, 3).join(', ') || 'None'
+                } 
+              };
+            }
+          }
+          
+          // Threat Intelligence
+          if (result?.threat_intel && !newStates.threat_intel?.status) {
+            const intel = result.threat_intel as Record<string, unknown>;
+            const hashLookup = intel?.hash_lookup as Record<string, { found?: boolean }> || {};
+            const foundCount = Object.values(hashLookup).filter(v => v?.found).length;
+            newStates.threat_intel = { 
               status: 'completed',
-              preview: { functions: ghidra?.ai_analysis?.analyzed_functions?.length || 0 }
+              preview: { 
+                sources_checked: Object.keys(hashLookup).length,
+                found: foundCount,
+              }
             };
           }
           
-          // Report
-          if (data.result?.malware_report && !newStates.report?.status) {
-            const report = data.result.malware_report;
+          // Dynamic Analysis
+          if (result?.dynamic_analysis !== undefined && !newStates.dynamic?.status) {
+            const dynamic = result.dynamic_analysis;
+            if (!dynamic || Object.keys(dynamic).length === 0) {
+              newStates.dynamic = { status: 'completed', preview: { status: 'Skipped' } };
+            } else {
+              const syscalls = dynamic?.syscalls || [];
+              newStates.dynamic = { 
+                status: 'completed',
+                preview: { 
+                  syscalls: syscalls.length,
+                  network: dynamic?.network_connections?.length || 0
+                }
+              };
+            }
+          }
+          
+          // Ghidra Analysis
+          if (result?.ghidra_analysis && !newStates.ghidra?.status) {
+            const ghidra = result.ghidra_analysis;
+            const aiAnalysis = ghidra?.ai_analysis;
+            newStates.ghidra = { 
+              status: 'completed',
+              preview: { 
+                functions: aiAnalysis?.analyzed_functions?.length || 0,
+                findings: aiAnalysis?.key_findings?.length || 0,
+              }
+            };
+          }
+          
+          // AI Report
+          if (result?.malware_report && !newStates.report?.status) {
+            const report = result.malware_report;
             newStates.report = { 
               status: 'completed',
-              preview: { verdict: report?.verdict || '', confidence: report?.confidence }
+              preview: { 
+                verdict: report?.verdict || 'unknown',
+                confidence: `${report?.confidence || 0}%`,
+                family: report?.family || 'N/A',
+              }
             };
           }
           
@@ -277,35 +443,65 @@ export default function TaskDetail() {
 
   // Determine which steps should be shown as running based on current status
   const getEffectiveStepStatus = (stepId: string): StepStatus => {
-    // If we have explicit state from WebSocket or inferred from result, use it
-    if (stepStates[stepId]?.status) {
-      return stepStates[stepId].status;
-    }
-
-    // Otherwise infer from task status
     const step = ANALYSIS_STEPS.find(s => s.id === stepId);
     if (!step) return 'pending';
 
+    // If task is completed, all steps are completed
     if (currentStatus === 'completed') return 'completed';
     if (currentStatus === 'failed') return 'pending';
 
-    // Infer based on group and current stage
-    if (currentStatus === 'stage_1_4') {
-      if (step.group === 'static' || step.group === 'intel' || step.group === 'dynamic') {
-        // Show first uncompleted step as running
-        const groupSteps = ANALYSIS_STEPS.filter(s => 
+    // If we have explicit state from WebSocket, use it (but validate against stage)
+    const wsStatus = stepStates[stepId]?.status;
+    
+    // Define stage order for validation
+    const stageOrder = ['pending', 'stage_1_4', 'queued', 'stage_5', 'stage_6', 'completed'];
+    const currentStageIndex = stageOrder.indexOf(currentStatus);
+    
+    // Stage 1-4 steps (static, intel, dynamic)
+    if (step.group === 'static' || step.group === 'intel' || step.group === 'dynamic') {
+      // If we're past stage_1_4, these are all completed
+      if (currentStageIndex > stageOrder.indexOf('stage_1_4')) {
+        return 'completed';
+      }
+      // If we're in stage_1_4, trust WebSocket status or infer
+      if (currentStatus === 'stage_1_4') {
+        if (wsStatus && wsStatus !== 'pending') {
+          return wsStatus;
+        }
+        // Infer: find first step without completed status and mark as running
+        const stage14Steps = ANALYSIS_STEPS.filter(s => 
           s.group === 'static' || s.group === 'intel' || s.group === 'dynamic'
         );
-        for (const gs of groupSteps) {
-          if (!stepStates[gs.id]?.status || stepStates[gs.id]?.status === 'pending') {
-            if (gs.id === stepId) return 'running';
-            break;
+        for (const gs of stage14Steps) {
+          const gsStatus = stepStates[gs.id]?.status;
+          if (!gsStatus || gsStatus === 'pending' || gsStatus === 'running') {
+            return gs.id === stepId ? 'running' : 'pending';
           }
         }
+        // All previous steps completed, this one should be running or completed
+        return wsStatus || 'pending';
       }
+      return 'pending';
     }
-    if (currentStatus === 'stage_5' && step.group === 'ghidra') return 'running';
-    if (currentStatus === 'stage_6' && step.group === 'report') return 'running';
+    
+    // Ghidra step
+    if (step.group === 'ghidra') {
+      if (currentStageIndex > stageOrder.indexOf('stage_5')) {
+        return 'completed';
+      }
+      if (currentStatus === 'stage_5') {
+        return wsStatus || 'running';
+      }
+      return 'pending';
+    }
+    
+    // Report step
+    if (step.group === 'report') {
+      if (currentStatus === 'stage_6') {
+        return wsStatus || 'running';
+      }
+      return 'pending';
+    }
 
     return 'pending';
   };
@@ -339,60 +535,76 @@ export default function TaskDetail() {
 
       {/* Task Content */}
       {!loading && task && (
-        <div className="animate-in fade-in duration-500">
-          {/* In Progress State - Show all steps */}
-          {isInProgress(task.status) && (
-            <div className="space-y-4">
-              {/* Header */}
-              <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h2 className="text-2xl font-bold text-white flex items-center">
-                      <Shield className="w-6 h-6 mr-2 text-emerald-400" />
-                      Analysis in Progress
-                    </h2>
-                    {task.file_name && (
-                      <p className="text-slate-400 mt-1">
-                        File: <span className="font-mono text-slate-300">{task.file_name}</span>
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {wsConnected && (
-                      <span className="text-xs text-emerald-400 flex items-center">
-                        <span className="w-2 h-2 bg-emerald-400 rounded-full mr-1 animate-pulse" />
-                        Live
-                      </span>
-                    )}
-                    <Loader2 className="animate-spin w-8 h-8 text-cyan-400" />
-                  </div>
-                </div>
-                
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">Current Stage:</span>
-                  <span className={`font-semibold ${statusInfo.color}`}>{statusInfo.label}</span>
-                </div>
+        <div className="animate-in fade-in duration-500 space-y-6">
+          {/* Header */}
+          <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-2xl font-bold text-white flex items-center">
+                  <Shield className="w-6 h-6 mr-2 text-emerald-400" />
+                  {isInProgress(task.status) ? 'Analysis in Progress' : 
+                   task.status === 'completed' ? 'Analysis Complete' : 'Analysis Failed'}
+                </h2>
+                {task.file_name && (
+                  <p className="text-slate-400 mt-1">
+                    File: <span className="font-mono text-slate-300">{task.file_name}</span>
+                  </p>
+                )}
               </div>
+              <div className="flex items-center gap-3">
+                {isInProgress(task.status) && (
+                  <Loader2 className="animate-spin w-8 h-8 text-cyan-400" />
+                )}
+                {task.status === 'completed' && (
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                )}
+                {task.status === 'failed' && (
+                  <AlertCircle className="w-8 h-8 text-red-400" />
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400">Status:</span>
+              <span className={`font-semibold ${statusInfo.color}`}>{statusInfo.label}</span>
+            </div>
+          </div>
 
-              {/* Analysis Steps - Vertical Layout */}
-              <div className="space-y-2">
-                {ANALYSIS_STEPS.map((step) => {
-                  const effectiveStatus = getEffectiveStepStatus(step.id);
-                  const stepState = stepStates[step.id];
-                  const Icon = step.icon;
-                  
-                  return (
+          {/* Failed State Error */}
+          {task.status === 'failed' && (
+            <div className="bg-red-900/20 p-6 rounded-xl border border-red-800">
+              <p className="text-red-200">{task.error || 'An unknown error occurred.'}</p>
+            </div>
+          )}
+
+          {/* Analysis Steps - Always show for in-progress and completed */}
+          {(isInProgress(task.status) || task.status === 'completed') && (
+            <div className="space-y-2">
+              <h3 className="text-lg font-semibold text-white mb-3">Analysis Steps</h3>
+              {ANALYSIS_STEPS.map((step) => {
+                const effectiveStatus = getEffectiveStepStatus(step.id);
+                const stepState = stepStates[step.id];
+                const Icon = step.icon;
+                const isExpanded = expandedSteps.has(step.id);
+                const canExpand = effectiveStatus === 'completed' && task?.result;
+                
+                return (
+                  <div 
+                    key={step.id}
+                    className={`bg-slate-800 rounded-xl border transition-all duration-300 ${
+                      effectiveStatus === 'running' 
+                        ? 'border-cyan-500/50 shadow-lg shadow-cyan-500/10' 
+                        : effectiveStatus === 'completed'
+                        ? 'border-emerald-500/30'
+                        : effectiveStatus === 'failed'
+                        ? 'border-red-500/30'
+                        : 'border-slate-700/50'
+                    }`}
+                  >
+                    {/* Clickable Header */}
                     <div 
-                      key={step.id}
-                      className={`bg-slate-800 p-4 rounded-xl border transition-all duration-300 ${
-                        effectiveStatus === 'running' 
-                          ? 'border-cyan-500/50 shadow-lg shadow-cyan-500/10' 
-                          : effectiveStatus === 'completed'
-                          ? 'border-emerald-500/30'
-                          : effectiveStatus === 'failed'
-                          ? 'border-red-500/30'
-                          : 'border-slate-700/50'
-                      }`}
+                      className={`p-4 ${canExpand ? 'cursor-pointer hover:bg-slate-700/30' : ''}`}
+                      onClick={() => canExpand && toggleStepExpansion(step.id)}
                     >
                       <div className="flex items-start gap-3">
                         {/* Status Icon */}
@@ -431,6 +643,16 @@ export default function TaskDetail() {
                             }`}>
                               {step.name}
                             </h3>
+                            {/* Expand/Collapse Icon */}
+                            {canExpand && (
+                              <span className="ml-auto">
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                                )}
+                              </span>
+                            )}
                           </div>
                           <p className={`text-xs mt-0.5 ${
                             effectiveStatus === 'pending' ? 'text-slate-600' : 'text-slate-400'
@@ -438,31 +660,32 @@ export default function TaskDetail() {
                             {step.description}
                           </p>
                           
-                          {/* Step Preview */}
-                          {effectiveStatus === 'completed' && stepState?.preview && (
+                          {/* Step Preview (only when collapsed) */}
+                          {!isExpanded && effectiveStatus === 'completed' && stepState?.preview && (
                             <StepPreview preview={stepState.preview} />
                           )}
                         </div>
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Failed State */}
-          {task.status === 'failed' && (
-            <div className="bg-red-900/20 p-8 rounded-xl border border-red-800 text-center">
-              <AlertCircle className="w-12 h-12 mx-auto text-red-500 mb-4" />
-              <h3 className="text-2xl font-bold text-red-400">Analysis Failed</h3>
-              <p className="text-red-200 mt-2">{task.error || 'An unknown error occurred.'}</p>
+                    
+                    {/* Expanded Detail Content */}
+                    {isExpanded && task?.result && (
+                      <div className="px-4 pb-4">
+                        <StepDetailContent stepId={step.id} result={task.result} />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {/* Completed State - Show Full Report */}
           {task.status === 'completed' && task.result && (
-            <ReportView result={task.result} fileName={task.file_name} />
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-3">Analysis Report</h3>
+              <ReportView result={task.result} fileName={task.file_name} />
+            </div>
           )}
         </div>
       )}

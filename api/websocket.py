@@ -254,34 +254,13 @@ async def websocket_logs(websocket: WebSocket, task_id: str):
 
 
 async def notify_task_started(task_id: str, file_path: str) -> None:
-    """Notify that a task has started.
-
-    Args:
-        task_id: Task ID.
-        file_path: Path to file being analyzed.
-    """
-    message = ProgressMessage(
-        task_id=task_id,
-        event="task_started",
-        data={"file_path": file_path},
-    )
-    await manager.send_to_task_subscribers(message)
+    """Disabled - frontend uses polling instead."""
+    pass
 
 
 async def notify_step_started(task_id: str, step_id: str, step_name: str) -> None:
-    """Notify that a step has started.
-
-    Args:
-        task_id: Task ID.
-        step_id: Step ID.
-        step_name: Human-readable step name.
-    """
-    message = ProgressMessage(
-        task_id=task_id,
-        event="step_started",
-        data={"step_id": step_id, "step_name": step_name},
-    )
-    await manager.send_to_task_subscribers(message)
+    """Disabled - frontend uses polling instead."""
+    pass
 
 
 async def notify_step_completed(
@@ -291,26 +270,8 @@ async def notify_step_completed(
     duration_ms: int = 0,
     error: str | None = None,
 ) -> None:
-    """Notify that a step has completed.
-
-    Args:
-        task_id: Task ID.
-        step_id: Step ID.
-        status: Step status (completed, failed, skipped).
-        duration_ms: Step duration in milliseconds.
-        error: Error message if failed.
-    """
-    message = ProgressMessage(
-        task_id=task_id,
-        event="step_completed",
-        data={
-            "step_id": step_id,
-            "status": status,
-            "duration_ms": duration_ms,
-            "error": error,
-        },
-    )
-    await manager.send_to_task_subscribers(message)
+    """Disabled - frontend uses polling instead."""
+    pass
 
 
 async def notify_task_completed(
@@ -318,38 +279,13 @@ async def notify_task_completed(
     status: str,
     result_summary: dict | None = None,
 ) -> None:
-    """Notify that a task has completed.
-
-    Args:
-        task_id: Task ID.
-        status: Task status (completed, failed).
-        result_summary: Summary of results.
-    """
-    message = ProgressMessage(
-        task_id=task_id,
-        event="task_completed",
-        data={
-            "status": status,
-            "result_summary": result_summary or {},
-        },
-    )
-    await manager.send_to_task_subscribers(message)
+    """Disabled - frontend uses polling instead."""
+    pass
 
 
 async def notify_error(task_id: str, error: str, step_id: str | None = None) -> None:
-    """Notify of an error.
-
-    Args:
-        task_id: Task ID.
-        error: Error message.
-        step_id: Optional step ID where error occurred.
-    """
-    message = ProgressMessage(
-        task_id=task_id,
-        event="error",
-        data={"error": error, "step_id": step_id},
-    )
-    await manager.send_to_task_subscribers(message)
+    """Disabled - frontend uses polling instead."""
+    pass
 
 
 async def notify_step_progress(
@@ -359,29 +295,8 @@ async def notify_step_progress(
     status: str,
     result_preview: dict | None = None,
 ) -> None:
-    """Notify step progress with optional result preview.
-
-    Args:
-        task_id: Task ID.
-        step_id: Step ID.
-        step_name: Human-readable step name.
-        status: Step status (running, completed, failed).
-        result_preview: Optional preview of step results.
-    """
-    message = ProgressMessage(
-        task_id=task_id,
-        event="step_progress",
-        data={
-            "step_id": step_id,
-            "step_name": step_name,
-            "status": status,
-            "result_preview": result_preview or {},
-        },
-    )
-    await manager.send_to_task_subscribers(message)
-    # Also broadcast to all connections for real-time updates
-    await manager.broadcast(message)
-
+    """Disabled - frontend uses polling instead."""
+    pass
 
 def get_connection_manager() -> ConnectionManager:
     """Get the global connection manager.

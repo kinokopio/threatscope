@@ -57,19 +57,54 @@ class GhidraClient:
         """Check service health."""
         return self._request("GET", "/health")
 
-    def upload(self, file_path: str) -> dict:
-        """Upload binary file for analysis."""
+    def upload(self, file_path: str, timeout: float | None = None) -> dict:
+        """Upload binary file for analysis.
+        
+        Args:
+            file_path: Path to binary file
+            timeout: Custom timeout (default: 300s for large files)
+        """
+        upload_timeout = timeout or 300  # 5 minutes default
+        url = f"{self.base_url}/upload"
         with open(file_path, "rb") as f:
-            return self._request("POST", "/upload", files={"file": f})
-
+            try:
+                response = httpx.request(
+                    "POST",
+                    url,
+                    files={"file": f},
+                    timeout=upload_timeout,
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                raise RuntimeError(f"Ghidra error: {e.response.text}") from e
+            except httpx.HTTPError as e:
+                raise RuntimeError(f"Connection error: {e}") from e
     def close(self) -> dict:
         """Close current binary."""
         return self._request("POST", "/close")
 
-    def analyze(self) -> dict:
-        """Run Ghidra auto-analysis."""
-        return self._request("POST", "/analyze")
-
+    def analyze(self, timeout: float | None = None) -> dict:
+        """Run Ghidra auto-analysis.
+        
+        Args:
+            timeout: Custom timeout for analysis (default: 600s for large binaries)
+        """
+        # Use longer timeout for analysis - Ghidra can take a while
+        analysis_timeout = timeout or 600  # 10 minutes default
+        url = f"{self.base_url}/analyze"
+        try:
+            response = httpx.request(
+                "POST",
+                url,
+                timeout=analysis_timeout,
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(f"Ghidra error: {e.response.text}") from e
+        except httpx.HTTPError as e:
+            raise RuntimeError(f"Connection error: {e}") from e
     def get_info(self) -> dict:
         """Get binary metadata."""
         return self._request("GET", "/info")

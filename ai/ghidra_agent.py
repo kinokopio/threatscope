@@ -5,7 +5,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -17,6 +17,8 @@ from claude_agent_sdk import (
     HookMatcher,
     ProcessError,
     TextBlock,
+    ResultMessage,
+    ToolUseBlock,
     create_sdk_mcp_server,
     tool,
 )
@@ -222,7 +224,11 @@ class GhidraAgent(BaseAgent):
     def name(self) -> str:
         return "ghidra_agent"
 
-    async def analyze(self, context: dict[str, Any]) -> AgentResult:
+    async def analyze(
+        self,
+        context: dict[str, Any],
+        progress_callback: Callable[[str, str, str, dict | None], Any] | None = None,
+    ) -> AgentResult:
         """Perform deep analysis using Ghidra with AI-driven exploration.
 
         Args:
@@ -230,10 +236,13 @@ class GhidraAgent(BaseAgent):
                 - static_results: Results from static analysis
                 - file_path: Path to the binary file
                 - sample_hash: SHA256 hash of the sample
+            progress_callback: Optional async callback for progress updates.
+                Signature: (step_id, step_name, status, preview_data) -> None
 
         Returns:
             AgentResult with deep analysis findings.
         """
+        self._progress_callback = progress_callback
         static_results = context.get("static_results", {})
         file_path = context.get("file_path", "")
         sample_hash = context.get("sample_hash", "")
@@ -255,20 +264,28 @@ class GhidraAgent(BaseAgent):
         ghidra_available = False
         ghidra_info = {}
         try:
+            print(f"=== GHIDRA_AGENT: Connecting to Ghidra at: {self.ghidra_url} ===", flush=True)
+            logger.info(f"=== GHIDRA_AGENT: Connecting to Ghidra at: {self.ghidra_url} ===")
             self.ghidra_client.health_check()
+            print("=== GHIDRA_AGENT: Health check passed! ===", flush=True)
+            logger.info("=== GHIDRA_AGENT: Health check passed! ===")
             ghidra_available = True
 
             # If file provided and not already loaded, upload it
             if file_path and Path(file_path).exists():
                 try:
+                    print(f"=== GHIDRA_AGENT: Uploading {file_path} ===", flush=True)
                     self.ghidra_client.upload(file_path)
+                    print("=== GHIDRA_AGENT: Running analysis ===", flush=True)
                     self.ghidra_client.analyze()
                     ghidra_info = self.ghidra_client.get_info()
+                    print(f"=== GHIDRA_AGENT: Got info: {ghidra_info} ===", flush=True)
                 except Exception as e:
+                    print(f"=== GHIDRA_AGENT: Failed to load binary: {e} ===", flush=True)
                     logger.warning(f"Failed to load binary: {e}")
         except Exception as e:
+            print(f"=== GHIDRA_AGENT: Service not available: {e} ===", flush=True)
             logger.warning(f"Ghidra service not available: {e}")
-
         # If Ghidra is available, run AI-driven analysis
         if ghidra_available and ghidra_info:
             try:
@@ -431,17 +448,128 @@ class GhidraAgent(BaseAgent):
             },
         )
 
+        # Tool name to human-readable description mapping
+        tool_descriptions = {
+            "mcp__ghidra__list_functions": "Listing functions",
+            "mcp__ghidra__decompile_function": "Decompiling function",
+            "mcp__ghidra__disassemble_function": "Disassembling function",
+            "mcp__ghidra__get_function_details": "Getting function details",
+            "mcp__ghidra__list_strings": "Listing strings",
+            "mcp__ghidra__search_strings": "Searching strings",
+            "mcp__ghidra__function_xrefs": "Getting cross-references",
+            "mcp__ghidra__get_callgraph": "Building call graph",
+            "mcp__ghidra__read_memory": "Reading memory",
+            "mcp__ghidra__get_imports": "Getting imports",
+            "mcp__ghidra__get_exports": "Getting exports",
+            "mcp__ghidra__get_sections": "Getting sections",
+            "mcp__memory__memory_save_finding": "Saving finding",
+            "mcp__memory__memory_cache_function": "Caching function analysis",
+        }
+
         async def _call_ai() -> dict[str, Any]:
             """Inner function for AI call."""
             result_text = ""
+            tool_call_count = 0
+            functions_analyzed = 0
+            findings_saved = 0
+            
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt)
                 async for msg in client.receive_response():
+                    # Handle assistant messages (AI responses with potential tool use)
                     if isinstance(msg, AssistantMessage):
+                        if not hasattr(msg, 'content') or not msg.content:
+                            continue
                         for block in msg.content:
-                            if isinstance(block, TextBlock):
+                            if isinstance(block, ToolUseBlock):
+                                tool_call_count += 1
+                                tool_name = block.name
+                                tool_input = block.input or {}
+                                
+                                # Get human-readable description
+                                description = tool_descriptions.get(
+                                    tool_name, 
+                                    tool_name.replace("mcp__", "").replace("__", ": ").replace("_", " ").title()
+                                )
+                                
+                                # Extract relevant info for preview
+                                preview_data = {
+                                    "tool": tool_name,
+                                    "tool_call_count": tool_call_count,
+                                }
+                                
+                                # Add context based on tool type
+                                if "function" in tool_name.lower():
+                                    func_name = tool_input.get("name") or tool_input.get("function_name", "")
+                                    if func_name:
+                                        description = f"{description}: {func_name}"
+                                        preview_data["function"] = func_name
+                                        functions_analyzed += 1
+                                elif "string" in tool_name.lower():
+                                    pattern = tool_input.get("pattern", "")
+                                    if pattern:
+                                        description = f"{description}: {pattern}"
+                                        preview_data["pattern"] = pattern
+                                elif "save" in tool_name.lower() or "finding" in tool_name.lower():
+                                    findings_saved += 1
+                                
+                                # Send progress notification
+                                if self._progress_callback:
+                                    try:
+                                        await self._progress_callback(
+                                            "ghidra_tool",
+                                            description,
+                                            "running",
+                                            preview_data,
+                                        )
+                                    except Exception as e:
+                                        logger.debug(f"Progress callback failed: {e}")
+                                
+                                logger.info(f"AI tool call #{tool_call_count}: {description}")
+                            
+                            elif isinstance(block, TextBlock):
                                 result_text = block.text
-
+                    
+                    # Handle result message (final stats, no content attribute)
+                    elif isinstance(msg, ResultMessage):
+                        # ResultMessage has num_turns, total_cost_usd, duration_ms, session_id
+                        # but NOT content - it's the final summary message
+                        logger.info(f"AI analysis result: turns={getattr(msg, 'num_turns', 'N/A')}, cost=${getattr(msg, 'total_cost_usd', 0):.4f}")
+                        
+                        # Send completion notification
+                        if self._progress_callback:
+                            try:
+                                await self._progress_callback(
+                                    "ghidra_tool",
+                                    "AI Analysis Complete",
+                                    "completed",
+                                    {
+                                        "tool_call_count": tool_call_count,
+                                        "functions_analyzed": functions_analyzed,
+                                        "findings_saved": findings_saved,
+                                        "num_turns": getattr(msg, 'num_turns', 0),
+                                        "cost_usd": getattr(msg, 'total_cost_usd', 0),
+                                    },
+                                )
+                            except Exception as e:
+                                logger.debug(f"Progress callback failed: {e}")
+            # Send final summary
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        "ghidra_ai",
+                        "AI Analysis Complete",
+                        "completed",
+                        {
+                            "total_tool_calls": tool_call_count,
+                            "functions_analyzed": functions_analyzed,
+                            "findings_saved": findings_saved,
+                        },
+                    )
+                except Exception as e:
+                    logger.debug(f"Progress callback failed: {e}")
+            
+            logger.info(f"AI analysis completed: {tool_call_count} tool calls, {functions_analyzed} functions analyzed")
             # Parse JSON result
             try:
                 # Extract JSON from response

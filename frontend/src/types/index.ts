@@ -174,7 +174,7 @@ export interface TaskListResponse {
 // WebSocket progress message
 export interface ProgressMessage {
   task_id: string;
-  event: 'task_started' | 'step_started' | 'step_completed' | 'task_completed' | 'error';
+  event: 'task_started' | 'step_started' | 'step_completed' | 'step_progress' | 'task_completed' | 'error';
   data: {
     file_path?: string;
     step_id?: string;
@@ -183,6 +183,15 @@ export interface ProgressMessage {
     duration_ms?: number;
     error?: string;
     result_summary?: Record<string, unknown>;
+    result_preview?: {
+      tool?: string;
+      tool_call_count?: number;
+      function?: string;
+      pattern?: string;
+      functions_analyzed?: number;
+      findings_saved?: number;
+      total_tool_calls?: number;
+    };
   };
   timestamp: string;
 }

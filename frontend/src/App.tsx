@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Home as HomeIcon, Clock, Shield } from 'lucide-react';
+import { Home as HomeIcon, Clock, Shield, ListTodo } from 'lucide-react';
 import Home from './pages/Home';
 import History from './pages/History';
+import Tasks from './pages/Tasks';
 import TaskDetail from './pages/TaskDetail';
 
 function App() {
@@ -62,6 +63,17 @@ function App() {
               Home
             </Link>
             <Link 
+              to="/tasks" 
+              className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
+                isActive('/tasks') 
+                  ? 'bg-slate-700 text-white shadow-md' 
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+            >
+              <ListTodo className="w-4 h-4 mr-2" />
+              Tasks
+            </Link>
+            <Link 
               to="/history" 
               className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer ${
                 isActive('/history') 
@@ -80,6 +92,7 @@ function App() {
       <main className="pt-28 pb-12 px-4 sm:px-6 lg:px-8">
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/tasks" element={<Tasks />} />
           <Route path="/history" element={<History />} />
           <Route path="/task/:taskId" element={<TaskDetail />} />
         </Routes>

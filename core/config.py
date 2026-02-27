@@ -23,7 +23,9 @@ class GhidraConfig:
     base_mcp_port: int = 9000
     startup_timeout: int = 60
     base_url: str = "http://localhost:8000"
-
+    # Service manager settings
+    service_mode: str = "subprocess"  # "subprocess" or "docker"
+    service_host: str = "localhost"
 
 @dataclass
 class ThreatIntelSourceConfig:
@@ -65,9 +67,18 @@ class AgentsConfig:
 @dataclass
 class AnalysisConfig:
     default_timeout: int = 300
+    dynamic_analysis_timeout: int = 30  # Shorter timeout for dynamic analysis
     enable_dynamic_analysis: bool = True
     enable_ghidra_analysis: bool = True
     yara_rules_path: str = "rules/yara"
+
+@dataclass
+class TraceeConfig:
+    image: str = "aquasec/tracee:latest"
+    sandbox_image: str = "ubuntu:22.04"
+    output_dir: str = "/tmp/tracee-output"
+    enable_network_capture: bool = True
+    enable_file_capture: bool = True
 
 
 @dataclass
@@ -94,6 +105,7 @@ class Config:
     threat_intel: ThreatIntelConfig = field(default_factory=ThreatIntelConfig)
     agents: AgentsConfig = field(default_factory=AgentsConfig)
     analysis: AnalysisConfig = field(default_factory=AnalysisConfig)
+    tracee: TraceeConfig = field(default_factory=TraceeConfig)
     tasks: TasksConfig = field(default_factory=TasksConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
 

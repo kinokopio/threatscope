@@ -1,7 +1,7 @@
 """String extractor tool."""
 
+import asyncio
 import re
-import subprocess
 from pathlib import Path
 
 from tools.base import AnalysisResult, BaseTool
@@ -56,14 +56,24 @@ class StringExtractor(BaseTool):
             AnalysisResult with categorized strings.
         """
         try:
-            # Use strings command
-            result = subprocess.run(
-                ["strings", "-n", str(self.min_length), str(file_path)],
-                capture_output=True,
-                text=True,
-                timeout=60,
+            # Use asyncio subprocess for non-blocking execution
+            proc = await asyncio.create_subprocess_exec(
+                "strings",
+                "-n",
+                str(self.min_length),
+                str(file_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            all_strings = result.stdout.splitlines()
+
+            try:
+                stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.wait()
+                return AnalysisResult(success=False, error="String extraction timed out")
+
+            all_strings = stdout.decode("utf-8", errors="replace").splitlines()
 
             # Categorize strings
             urls = set()
@@ -106,7 +116,5 @@ class StringExtractor(BaseTool):
                     "suspicious": sorted(suspicious)[:50],  # Limit count
                 },
             )
-        except subprocess.TimeoutExpired:
-            return AnalysisResult(success=False, error="String extraction timed out")
         except Exception as e:
             return AnalysisResult(success=False, error=str(e))

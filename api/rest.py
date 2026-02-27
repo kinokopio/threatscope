@@ -135,7 +135,12 @@ async def analyze_file(
     enable_dynamic: bool = True,
     enable_threat_intel: bool = True,
 ):
+    """Upload and analyze a file."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     task_id = str(uuid.uuid4())[:8]
+    logger.info(f"Creating task {task_id}")
 
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
@@ -143,6 +148,7 @@ async def analyze_file(
 
     content = await file.read()
     file_path.write_bytes(content)
+    logger.info(f"File saved to {file_path}")
 
     # Save to database
     db = get_db()
@@ -156,21 +162,211 @@ async def analyze_file(
             "enable_threat_intel": enable_threat_intel,
         },
     )
+    logger.info(f"Task {task_id} created in database")
 
+    # Use BackgroundTasks with a SYNC function - FastAPI runs it in threadpool
+    print(f"=== ADDING BACKGROUND TASK === task_id={task_id}, enable_ghidra={enable_ghidra}", flush=True)
+    logger.info(f"=== ADDING BACKGROUND TASK === task_id={task_id}, enable_ghidra={enable_ghidra}")
     background_tasks.add_task(
-        run_analysis_task,
+        run_analysis_task_sync,  # SYNC function, not async!
         task_id,
-        file_path,
+        str(file_path),
         enable_ghidra,
         enable_dynamic,
         enable_threat_intel,
     )
-
+    print(f"=== BACKGROUND TASK ADDED === task_id={task_id}", flush=True)
+    logger.info(f"=== BACKGROUND TASK ADDED === task_id={task_id}")
     return TaskResponse(
         task_id=task_id,
         status=TaskStatus.PENDING.value,
         message="Analysis started",
     )
+
+
+def run_analysis_task_sync(
+    task_id: str,
+    file_path_str: str,
+    enable_ghidra: bool,
+    enable_dynamic: bool,
+    enable_threat_intel: bool,
+):
+    """
+    Synchronous wrapper for analysis task.
+    FastAPI runs this in a threadpool, so it won't block the event loop.
+    """
+    import asyncio
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    print(f"=== RUN_ANALYSIS_TASK_SYNC CALLED === task_id={task_id}, enable_ghidra={enable_ghidra}", flush=True)
+    logger.info(f"=== RUN_ANALYSIS_TASK_SYNC CALLED === task_id={task_id}, enable_ghidra={enable_ghidra}")
+    # Create a new event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        loop.run_until_complete(
+            run_analysis_task(
+                task_id,
+                Path(file_path_str),
+                enable_ghidra,
+                enable_dynamic,
+                enable_threat_intel,
+            )
+        )
+    except Exception as e:
+        logger.error(f"Task {task_id} failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        db = get_db()
+        db.update_task_status(task_id, "failed", str(e))
+    finally:
+        loop.close()
+
+async def run_stage_1_4_with_saving(
+    coordinator,
+    task_id: str,
+    file_path: Path,
+    enable_dynamic: bool,
+    enable_threat_intel: bool,
+    progress_callback,
+    save_step_result,
+    logger,
+) -> dict[str, Any]:
+    """Run Stage 1-4 with step-by-step database saving.
+    
+    Each step result is saved to the database immediately after completion,
+    allowing the frontend to display progress in real-time.
+    """
+    from tools.base import AnalysisResult
+    
+    static_analyzer = coordinator.static_analyzer
+    output: dict[str, Any] = {
+        "file_path": str(file_path),
+        "file_name": file_path.name,
+        "file_size": file_path.stat().st_size if file_path.exists() else 0,
+    }
+    
+    # Step 1: Hash calculation
+    await progress_callback("hash", "Hash Calculation", "running", None)
+    hash_result = await static_analyzer.hash_calculator.analyze(file_path)
+    if isinstance(hash_result, AnalysisResult) and hash_result.success:
+        output["hashes"] = hash_result.data
+        await save_step_result("hashes", hash_result.data)
+        await progress_callback("hash", "Hash Calculation", "completed", {
+            "md5": hash_result.data.get("md5", "")[:16] + "...",
+            "sha256": hash_result.data.get("sha256", "")[:16] + "...",
+        })
+    else:
+        output["hashes"] = {"error": str(hash_result)}
+        await save_step_result("hashes", {"error": str(hash_result)})
+        await progress_callback("hash", "Hash Calculation", "failed", None)
+    
+    # Step 2: String extraction
+    await progress_callback("strings", "String Extraction", "running", None)
+    string_result = await static_analyzer.string_extractor.analyze(file_path)
+    if isinstance(string_result, AnalysisResult) and string_result.success:
+        output["strings"] = string_result.data
+        await save_step_result("strings", string_result.data)
+        await progress_callback("strings", "String Extraction", "completed", {
+            "urls": len(string_result.data.get("urls", [])),
+            "ips": len(string_result.data.get("ips", [])),
+            "domains": len(string_result.data.get("domains", [])),
+        })
+    else:
+        output["strings"] = {"error": str(string_result)}
+        await save_step_result("strings", {"error": str(string_result)})
+        await progress_callback("strings", "String Extraction", "failed", None)
+    
+    # Step 3: ELF parsing
+    await progress_callback("elf", "ELF Parsing", "running", None)
+    elf_result = await static_analyzer.elf_parser.analyze(file_path)
+    if isinstance(elf_result, AnalysisResult) and elf_result.success:
+        output["elf"] = elf_result.data
+        await save_step_result("elf", elf_result.data)
+        await progress_callback("elf", "ELF Parsing", "completed", {
+            "format": elf_result.data.get("format", ""),
+            "arch": elf_result.data.get("arch", ""),
+            "imports": len(elf_result.data.get("imports", [])),
+        })
+        
+        # Step 4: Function classification (depends on ELF)
+        imports = elf_result.data.get("imports", [])
+        if imports:
+            await progress_callback("func_class", "Function Classification", "running", None)
+            output["function_categories"] = static_analyzer.function_classifier.get_category_summary(imports)
+            await save_step_result("function_categories", output["function_categories"])
+            categories_found = [k for k, v in output["function_categories"].items() if v]
+            await progress_callback("func_class", "Function Classification", "completed", {
+                "categories": len(categories_found),
+            })
+            
+            # Step 5: MITRE ATT&CK mapping (depends on ELF)
+            await progress_callback("mitre", "MITRE ATT&CK Mapping", "running", None)
+            output["mitre_mapping"] = static_analyzer.mitre_mapper.get_mapping_summary(imports)
+            await save_step_result("mitre_mapping", output["mitre_mapping"])
+            techniques = output["mitre_mapping"].get("techniques", [])
+            await progress_callback("mitre", "MITRE ATT&CK Mapping", "completed", {
+                "techniques": len(techniques) if isinstance(techniques, list) else 0,
+            })
+        else:
+            # No imports - mark as skipped
+            await progress_callback("func_class", "Function Classification", "completed", {"reason": "No imports"})
+            await progress_callback("mitre", "MITRE ATT&CK Mapping", "completed", {"reason": "No imports"})
+    else:
+        output["elf"] = {"error": str(elf_result)}
+        await save_step_result("elf", {"error": str(elf_result)})
+        await progress_callback("elf", "ELF Parsing", "failed", None)
+    
+    # Step 6: YARA scanning
+    await progress_callback("yara", "YARA Scanning", "running", None)
+    yara_result = await static_analyzer.yara_scanner.analyze(file_path)
+    if isinstance(yara_result, AnalysisResult) and yara_result.success:
+        output["yara"] = yara_result.data
+        await save_step_result("yara", yara_result.data)
+        matches = yara_result.data.get("matches", [])
+        await progress_callback("yara", "YARA Scanning", "completed", {
+            "matches": len(matches),
+            "rules": matches[:3] if matches else [],
+        })
+    else:
+        output["yara"] = {"error": str(yara_result)}
+        await save_step_result("yara", {"error": str(yara_result)})
+        await progress_callback("yara", "YARA Scanning", "failed", None)
+    
+    # Step 7: Threat intelligence
+    if enable_threat_intel:
+        await progress_callback("threat_intel", "Threat Intelligence", "running", None)
+        threat_intel_results = await coordinator._query_threat_intel(output)
+        output["threat_intel"] = threat_intel_results
+        await save_step_result("threat_intel", threat_intel_results)
+        found_count = sum(
+            1 for source in threat_intel_results.get("hash_lookup", {}).values()
+            if isinstance(source, dict) and source.get("found")
+        )
+        await progress_callback("threat_intel", "Threat Intelligence", "completed", {
+            "sources_found": found_count,
+        })
+    
+    # Step 8: Dynamic analysis
+    if enable_dynamic:
+        await progress_callback("dynamic", "Dynamic Analysis", "running", None)
+        dynamic_results = await coordinator._run_dynamic_analysis(file_path, output)
+        output["dynamic_analysis"] = dynamic_results
+        await save_step_result("dynamic_analysis", dynamic_results)
+        syscalls = dynamic_results.get("syscalls", [])
+        await progress_callback("dynamic", "Dynamic Analysis", "completed", {
+            "syscalls": len(syscalls) if isinstance(syscalls, list) else 0,
+            "success": dynamic_results.get("success", False),
+        })
+    else:
+        output["dynamic_analysis"] = {}
+        await save_step_result("dynamic_analysis", {})
+        await progress_callback("dynamic", "Dynamic Analysis", "completed", {"skipped": True})
+    
+    return output
+
 
 
 async def run_analysis_task(
@@ -180,47 +376,66 @@ async def run_analysis_task(
     enable_dynamic: bool,
     enable_threat_intel: bool,
 ):
+    """Async analysis task - runs in a separate thread's event loop."""
     db = get_db()
     import logging
     logger = logging.getLogger(__name__)
     
-    # Progress callback for detailed step updates
+    logger.info(f"=== RUN_ANALYSIS_TASK STARTED === task_id={task_id}, enable_ghidra={enable_ghidra}")
+    # Create progress callback that saves each step to database immediately
     async def progress_callback(step_id: str, step_name: str, status: str, preview: dict | None):
-        await notify_step_progress(task_id, step_id, step_name, status, preview)
-        logger.debug(f"Task {task_id}: Step {step_id} ({step_name}) - {status}")
+        """Save each step result to database as it completes."""
+        logger.info(f"Task {task_id}: Step {step_id} - {status}")
+        
+        # Notify WebSocket clients
+        if status == "running":
+            await notify_step_progress(task_id, step_id, step_name, "running", None)
+        elif status == "completed":
+            await notify_step_progress(task_id, step_id, step_name, "completed", preview)
+        elif status == "failed":
+            await notify_step_progress(task_id, step_id, step_name, "failed", preview)
+    
+    # Callback to save step results to database
+    async def save_step_result(key: str, value: dict):
+        """Save individual step result to database."""
+        db.merge_stage_1_4_result(task_id, key, value)
+        logger.info(f"Task {task_id}: Saved {key} to database")
     
     try:
-        # Notify task started
-        await notify_task_started(task_id, str(file_path))
         logger.info(f"Task {task_id}: Starting analysis for {file_path}")
         
         coordinator = get_coordinator()
         
         # ========== Stage 1-4: Static + Threat Intel + Dynamic ==========
         db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
-        await notify_step_started(task_id, "stage_1_4", "Static Analysis, Threat Intel, Dynamic Analysis")
         
-        stage_1_4_results = await coordinator.run_stage_1_4(
+        # Run static analysis with step-by-step saving
+        stage_1_4_results = await run_stage_1_4_with_saving(
+            coordinator=coordinator,
+            task_id=task_id,
             file_path=file_path,
             enable_dynamic=enable_dynamic,
             enable_threat_intel=enable_threat_intel,
             progress_callback=progress_callback,
+            save_step_result=save_step_result,
+            logger=logger,
         )
         
-        # Save Stage 1-4 results immediately
-        db.update_task_result(task_id, "stage_1_4_results", stage_1_4_results)
         await notify_step_completed(task_id, "stage_1_4", "completed")
         logger.info(f"Task {task_id}: Stage 1-4 completed")
         
         # ========== Stage 5: Ghidra Analysis ==========
         ghidra_results = {}
+        logger.info(f"Task {task_id}: enable_ghidra={enable_ghidra}")
         if enable_ghidra:
+            logger.info(f"Task {task_id}: Starting Stage 5 Ghidra analysis")
             db.update_task_status(task_id, TaskStatus.STAGE_5.value)
             await notify_step_progress(task_id, "ghidra", "Ghidra Deep Analysis", "running", None)
             
             ghidra_results = await coordinator.run_stage_5(
                 static_results=stage_1_4_results,
                 file_path=file_path,
+                progress_callback=progress_callback,
             )
             
             # Save Ghidra results immediately
@@ -299,6 +514,27 @@ async def get_task_status(task_id: str):
     )
 
 
+
+def _extract_result_summary(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Extract summary from result for list view."""
+    if not result:
+        return None
+    
+    summary = {}
+    
+    # Extract malware report summary
+    if "malware_report" in result:
+        report = result["malware_report"]
+        if isinstance(report, dict):
+            summary["malware_report"] = {
+                "verdict": report.get("verdict"),
+                "confidence": report.get("confidence"),
+                "family": report.get("family"),
+            }
+    
+    return summary if summary else None
+
+
 @app.get("/tasks")
 async def list_tasks():
     db = get_db()
@@ -321,6 +557,7 @@ async def list_tasks():
                 "id": t["id"],
                 "status": t["status"],
                 "file_name": t.get("file_name"),
+                "result": _extract_result_summary(t.get("result")),
             }
             for t in tasks
         ],

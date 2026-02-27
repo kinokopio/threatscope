@@ -1,12 +1,15 @@
 """Dynamic analysis tools."""
 
-from tools.dynamic.emulator import BinaryEmulator, EmulationResult
-from tools.dynamic.monitor import DynamicAnalyzer, MonitorResult, ProcessMonitor
+from tools.dynamic.tracee_analyzer import (
+    DynamicAnalysisResult,
+    TraceeAnalyzer,
+    TraceeConfig,
+    analyze_with_tracee,
+)
 
 __all__ = [
-    "BinaryEmulator",
-    "EmulationResult",
-    "ProcessMonitor",
-    "MonitorResult",
-    "DynamicAnalyzer",
+    "TraceeAnalyzer",
+    "TraceeConfig",
+    "DynamicAnalysisResult",
+    "analyze_with_tracee",
 ]
