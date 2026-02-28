@@ -33,13 +33,16 @@ class GhidraSettings(BaseSettings):
     pool_size: int = Field(default=1, ge=1, le=4, description="Ghidra instance pool size")
     docker_image: str = Field(default="threatscope/ghidra:latest")
     memory_limit: str = Field(default="4g")
-    base_http_port: int = Field(default=8000, ge=1024, le=65535)
+    base_http_port: int = Field(default=8080, ge=1024, le=65535)
     base_mcp_port: int = Field(default=9000, ge=1024, le=65535)
     startup_timeout: int = Field(default=60, ge=10, le=300)
-    base_url: str = Field(default="http://localhost:8000")
     service_mode: Literal["subprocess", "docker"] = Field(default="subprocess")
     service_host: str = Field(default="localhost")
 
+    @property
+    def base_url(self) -> str:
+        """Get the Ghidra service base URL."""
+        return f"http://{self.service_host}:{self.base_http_port}"
 
 class ThreatIntelSourceSettings(BaseSettings):
     """Individual threat intel source configuration."""

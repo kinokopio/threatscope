@@ -79,6 +79,13 @@ class AnalysisCoordinator:
 
 
 _coordinator_instance: AnalysisCoordinator | None = None
+_ghidra_pool = None  # Set by app lifespan
+
+
+def set_ghidra_pool(pool) -> None:
+    """Set the Ghidra pool instance (called from app lifespan)."""
+    global _ghidra_pool
+    _ghidra_pool = pool
 
 
 def get_coordinator(settings: SettingsDep) -> AnalysisCoordinator:
@@ -95,9 +102,8 @@ def get_coordinator(settings: SettingsDep) -> AnalysisCoordinator:
         # Import here to avoid circular imports
         from src.threatscope.analysis.coordinator import AnalysisCoordinator as Coordinator
 
-        _coordinator_instance = Coordinator(settings)
+        _coordinator_instance = Coordinator(settings, ghidra_pool=_ghidra_pool)
     return _coordinator_instance
-
 
 CoordinatorDep = Annotated[AnalysisCoordinator, Depends(get_coordinator)]
 

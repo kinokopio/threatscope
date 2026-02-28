@@ -49,15 +49,18 @@ class AnalysisCoordinator:
         self,
         settings: Settings | None = None,
         project_dir: str | Path = ".",
+        ghidra_pool: Any | None = None,  # GhidraInstancePool
     ):
         """Initialize the coordinator.
 
         Args:
             settings: Application settings. Uses get_settings() if not provided.
             project_dir: Project directory for memory storage.
+            ghidra_pool: Optional GhidraInstancePool for Docker mode.
         """
         self.settings = settings or get_settings()
         self.project_dir = Path(project_dir)
+        self.ghidra_pool = ghidra_pool
 
         # Initialize dynamic analyzer
         tracee_config = TraceeConfig(
@@ -366,19 +369,54 @@ class AnalysisCoordinator:
         file_path: Path,
         progress_callback: ProgressCallback,
     ) -> dict[str, Any]:
-        """Run Ghidra deep analysis."""
+        """Run Ghidra deep analysis.
+
+        If ghidra_pool is available (Docker mode), acquires an instance from the pool.
+        Otherwise, uses the default ghidra_url from settings.
+        """
         sample_hash = static_results.get("hashes", {}).get("sha256", "")
 
-        result = await self.ghidra_agent.analyze(
-            {
-                "static_results": static_results,
-                "file_path": str(file_path),
-                "sample_hash": sample_hash,
-            },
-            progress_callback=progress_callback,
-        )
+        # Try to acquire instance from pool (Docker mode)
+        instance = None
+        ghidra_url = self.settings.ghidra.base_url
 
-        return result.data if result.success else {"error": result.error}
+        if self.ghidra_pool is not None:
+            instance = await self.ghidra_pool.acquire(timeout=60.0)
+            if instance:
+                ghidra_url = instance.http_url
+                instance.current_sample = sample_hash
+                logger.info(f"Acquired Ghidra instance {instance.id} at {ghidra_url}")
+            else:
+                logger.warning("No Ghidra instance available from pool, using default URL")
+
+        try:
+            # Create agent with the appropriate URL
+            config = AgentConfig(
+                system_prompt_path=str(self.project_dir / "prompts" / "ghidra_agent.md"),
+                max_iterations=20,
+            )
+            agent = GhidraAgent(
+                config,
+                self.project_dir,
+                ghidra_url=ghidra_url,
+            )
+
+            result = await agent.analyze(
+                {
+                    "static_results": static_results,
+                    "file_path": str(file_path),
+                    "sample_hash": sample_hash,
+                },
+                progress_callback=progress_callback,
+            )
+
+            return result.data if result.success else {"error": result.error}
+
+        finally:
+            # Release instance back to pool
+            if instance is not None and self.ghidra_pool is not None:
+                await self.ghidra_pool.release(instance)
+                logger.info(f"Released Ghidra instance {instance.id}")
 
     async def _run_report_generation(
         self,

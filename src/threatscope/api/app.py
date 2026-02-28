@@ -23,7 +23,10 @@ from fastapi.responses import JSONResponse  # noqa: E402
 from src.threatscope.api.router import router as analysis_router  # noqa: E402
 from src.threatscope.api.schemas import HealthResponse  # noqa: E402
 from src.threatscope.core.config import get_settings  # noqa: E402
-from src.threatscope.core.dependencies import shutdown_dependencies  # noqa: E402
+from src.threatscope.core.dependencies import (  # noqa: E402
+    set_ghidra_pool,
+    shutdown_dependencies,
+)
 from src.threatscope.shared.exceptions import ThreatScopeError  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -36,14 +39,44 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     Handles startup and shutdown events properly using the modern
     lifespan pattern instead of deprecated on_event decorators.
     """
+    from src.threatscope.ghidra.pool import GhidraInstancePool, PoolConfig  # noqa: E402
+
     # Startup
     logger.info("Starting ThreatScope API...")
     settings = get_settings()
 
-    # Start scheduler if needed
+    # Start Ghidra instance pool if enabled (Docker mode)
+    ghidra_pool: GhidraInstancePool | None = None
+    if settings.analysis.enable_ghidra_analysis:
+        if settings.ghidra.service_mode == "docker":
+            logger.info(f"Starting Ghidra instance pool (size: {settings.ghidra.pool_size})...")
+            pool_config = PoolConfig(
+                pool_size=settings.ghidra.pool_size,
+                docker_image=settings.ghidra.docker_image,
+                base_http_port=settings.ghidra.base_http_port,
+                base_mcp_port=settings.ghidra.base_mcp_port,
+                memory_limit=settings.ghidra.memory_limit,
+                startup_timeout=settings.ghidra.startup_timeout,
+            )
+            ghidra_pool = GhidraInstancePool(pool_config)
+            if await ghidra_pool.initialize():
+                stats = ghidra_pool.get_stats()
+                logger.info(f"Ghidra pool initialized: {stats['total']} instances ready")
+            else:
+                logger.warning("Failed to initialize Ghidra pool - deep analysis will be unavailable")
+                ghidra_pool = None
+        else:
+            # Subprocess mode - single instance, no pool needed
+            logger.info("Ghidra in subprocess mode - using single instance (no Docker pool)")
+            logger.warning("For multi-file concurrent analysis, use docker mode with pool_size > 1")
+
+    # Set ghidra pool in dependencies for coordinator to use
+    set_ghidra_pool(ghidra_pool)
+
+    # Store in app state for access elsewhere
+    app.state.ghidra_pool = ghidra_pool
+
     try:
-        # Note: In production, you'd want to properly initialize
-        # the scheduler here with proper dependency injection
         logger.info(f"Environment: {settings.environment}")
         logger.info(f"Debug mode: {settings.debug}")
     except Exception as e:
@@ -53,9 +86,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Shutdown
     logger.info("Shutting down ThreatScope API...")
+
+    # Shutdown Ghidra pool
+    if ghidra_pool is not None:
+        logger.info("Shutting down Ghidra pool...")
+        await ghidra_pool.shutdown()
+
     await shutdown_dependencies()
     logger.info("Shutdown complete")
-
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
