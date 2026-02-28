@@ -1,25 +1,47 @@
 import { Brain, AlertTriangle, CheckCircle, Shield, Zap } from 'lucide-react';
 
+interface AnalyzedFunction {
+  name: string;
+  address?: string;
+  analysis?: string;
+  purpose?: string;
+  risk?: string;
+  risk_level?: string;
+}
+
+interface KeyFinding {
+  id?: string;
+  type?: string;
+  title?: string;
+  category?: string;
+  description: string;
+  severity?: string;
+  evidence?: string[];
+  impact?: string;
+  recommendation?: string;
+}
+
 interface GhidraViewProps {
   data: {
     status?: string;
     ghidra_available?: boolean;
-    analyzed_functions?: Array<{
-      name: string;
-      address?: string;
-      analysis?: string;
-      risk_level?: string;
-    }>;
-    key_findings?: Array<{
-      type: string;
-      description: string;
-      severity?: string;
-    }>;
+    analyzed_functions?: AnalyzedFunction[];
+    key_findings?: KeyFinding[];
     ai_analysis?: {
-      analyzed_functions?: Array<unknown>;
-      key_findings?: Array<unknown>;
+      analyzed_functions?: AnalyzedFunction[];
+      key_findings?: KeyFinding[];
     };
   };
+}
+
+// Normalize severity to lowercase for styling
+function normalizeSeverity(severity?: string): 'critical' | 'high' | 'medium' | 'low' | undefined {
+  if (!severity) return undefined;
+  const lower = severity.toLowerCase();
+  if (lower === 'critical' || lower === 'high') return lower as 'critical' | 'high';
+  if (lower === 'medium') return 'medium';
+  if (lower === 'low') return 'low';
+  return undefined;
 }
 
 export function GhidraView({ data }: GhidraViewProps) {
@@ -64,27 +86,50 @@ export function GhidraView({ data }: GhidraViewProps) {
             Key Findings ({findings.length})
           </h4>
           <div className="space-y-2">
-            {(findings as Array<{ type: string; description: string; severity?: string }>).map((finding, i) => (
-              <div 
-                key={i} 
-                className={`rounded-lg p-3 border ${
-                  finding.severity === 'high' 
-                    ? 'bg-red-900/20 border-red-800/50' 
-                    : finding.severity === 'medium'
-                    ? 'bg-orange-900/20 border-orange-800/50'
-                    : 'bg-slate-800/50 border-slate-700/50'
-                }`}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Shield className={`w-4 h-4 ${
-                    finding.severity === 'high' ? 'text-red-400' : 
-                    finding.severity === 'medium' ? 'text-orange-400' : 'text-slate-400'
-                  }`} />
-                  <span className="text-sm font-medium text-slate-200">{finding.type}</span>
+            {findings.map((finding, i) => {
+              const severity = normalizeSeverity(finding.severity);
+              const title = finding.title || finding.type || finding.category || 'Finding';
+              return (
+                <div 
+                  key={finding.id || i} 
+                  className={`rounded-lg p-3 border ${
+                    severity === 'critical' || severity === 'high'
+                      ? 'bg-red-900/20 border-red-800/50' 
+                      : severity === 'medium'
+                      ? 'bg-orange-900/20 border-orange-800/50'
+                      : 'bg-slate-800/50 border-slate-700/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Shield className={`w-4 h-4 ${
+                      severity === 'critical' || severity === 'high' ? 'text-red-400' : 
+                      severity === 'medium' ? 'text-orange-400' : 'text-slate-400'
+                    }`} />
+                    <span className="text-sm font-medium text-slate-200">{title}</span>
+                    {severity && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                        severity === 'critical' ? 'bg-red-500/20 text-red-400' :
+                        severity === 'high' ? 'bg-red-500/20 text-red-400' :
+                        severity === 'medium' ? 'bg-orange-500/20 text-orange-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {severity.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400">{finding.description}</p>
+                  {finding.evidence && finding.evidence.length > 0 && (
+                    <div className="mt-2 text-xs">
+                      <span className="text-slate-500">Evidence: </span>
+                      <span className="text-slate-400">{finding.evidence.slice(0, 3).join(', ')}</span>
+                      {finding.evidence.length > 3 && (
+                        <span className="text-slate-500"> +{finding.evidence.length - 3} more</span>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-slate-400">{finding.description}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -96,23 +141,38 @@ export function GhidraView({ data }: GhidraViewProps) {
             <Brain className="w-4 h-4" />
             Analyzed Functions ({functions.length})
           </h4>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
-            {(functions as Array<{ name: string; address?: string; analysis?: string }>).slice(0, 10).map((func, i) => (
-              <div key={i} className="bg-slate-900/50 rounded-lg p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-cyan-400 font-mono text-sm">{func.name}</span>
-                  {func.address && (
-                    <span className="text-xs text-slate-500 font-mono">@ {func.address}</span>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {functions.slice(0, 15).map((func, i) => {
+              const risk = normalizeSeverity(func.risk || func.risk_level);
+              return (
+                <div key={i} className="bg-slate-900/50 rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-cyan-400 font-mono text-sm">{func.name}</span>
+                    {func.address && func.address !== 'UNKNOWN' && (
+                      <span className="text-xs text-slate-500 font-mono">@ {func.address}</span>
+                    )}
+                    {risk && (
+                      <span className={`text-xs px-1.5 py-0.5 rounded ml-auto ${
+                        risk === 'critical' || risk === 'high' ? 'bg-red-500/20 text-red-400' :
+                        risk === 'medium' ? 'bg-orange-500/20 text-orange-400' :
+                        'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {risk.toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  {func.purpose && (
+                    <p className="text-xs text-slate-300 mb-1">{func.purpose}</p>
+                  )}
+                  {func.analysis && (
+                    <p className="text-xs text-slate-400 line-clamp-2">{func.analysis}</p>
                   )}
                 </div>
-                {func.analysis && (
-                  <p className="text-xs text-slate-400 line-clamp-2">{func.analysis}</p>
-                )}
-              </div>
-            ))}
-            {functions.length > 10 && (
+              );
+            })}
+            {functions.length > 15 && (
               <p className="text-xs text-slate-500 text-center py-2">
-                +{functions.length - 10} more functions analyzed
+                +{functions.length - 15} more functions analyzed
               </p>
             )}
           </div>
