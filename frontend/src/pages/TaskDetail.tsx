@@ -8,6 +8,7 @@ import {
   AnalysisStepsList,
   isInProgress,
   inferStepStates,
+  STATUS_DISPLAY,
 } from '../features/analysis';
 
 const POLL_INTERVAL_MS = 1000;
@@ -136,7 +137,7 @@ export default function TaskDetail() {
               </div>
               <div>
                 <p className="text-xs text-slate-500">Status</p>
-                <p className="text-sm text-slate-300 capitalize">{task.status.replace(/_/g, ' ')}</p>
+                <p className="text-sm text-slate-300">{STATUS_DISPLAY[task.status]?.label || task.status}</p>
               </div>
             </div>
           </div>
