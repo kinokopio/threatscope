@@ -116,10 +116,50 @@ export interface DynamicAnalysis {
 export interface GhidraAnalysis {
   status: string;
   ghidra_available: boolean;
-  ai_analysis?: {
-    analyzed_functions: AnalyzedFunction[];
-    key_findings: string[];
+  ghidra_info?: {
+    file?: string;
+    format?: string;
+    arch?: string;
+    bits?: number;
+    endian?: string;
+    compiler?: string;
+    size?: number;
+    human_size?: string;
   };
+  ai_analysis?: {
+    analyzed_functions?: Array<{
+      name: string;
+      address?: string;
+      purpose?: string;
+      analysis?: string;
+      risk?: string;
+    }>;
+    key_findings?: Array<{
+      id?: string;
+      title?: string;
+      category?: string;
+      description: string;
+      severity?: string;
+      evidence?: string[];
+      impact?: string;
+      recommendation?: string;
+    }>;
+    malware_classification?: {
+      type?: string;
+      family?: string;
+      severity?: string;
+    };
+  };
+  analyzed_functions?: Array<{
+    name: string;
+    address?: string;
+    analysis?: string;
+  }>;
+  key_findings?: Array<{
+    type?: string;
+    description: string;
+    severity?: string;
+  }>;
 }
 
 export interface AnalyzedFunction {
