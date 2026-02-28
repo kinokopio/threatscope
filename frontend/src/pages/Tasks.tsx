@@ -19,7 +19,7 @@ import {
 import { useTasks, useTask } from '../shared/api';
 import { Spinner } from '../shared/ui';
 
-type TaskStatus = 'pending' | 'queued' | 'static_analysis' | 'ghidra_analysis' | 'report_generation' | 'completed' | 'failed';
+type TaskStatus = 'pending' | 'queued' | 'static_analysis' | 'dynamic_analysis' | 'ghidra_analysis' | 'report_generation' | 'completed' | 'failed';
 type FilterType = 'all' | 'in_progress' | 'completed' | 'failed';
 
 interface Task {
@@ -62,6 +62,14 @@ const STATUS_CONFIG: Record<TaskStatus, {
     label: 'Static Analysis',
     description: 'Analyzing binary structure'
   },
+  dynamic_analysis: { 
+    icon: Activity, 
+    color: 'text-orange-400', 
+    bg: 'bg-orange-500/10', 
+    border: 'border-orange-500/30',
+    label: 'Dynamic Analysis',
+    description: 'Running in sandbox'
+  },
   ghidra_analysis: { 
     icon: Cpu, 
     color: 'text-violet-400', 
@@ -103,7 +111,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string; icon: typeof Filter }[
   { value: 'failed', label: 'Failed', icon: XCircle },
 ];
 
-const IN_PROGRESS_STATUSES = ['pending', 'queued', 'static_analysis', 'ghidra_analysis', 'report_generation'];
+const IN_PROGRESS_STATUSES = ['pending', 'queued', 'static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation'];
 
 interface TaskRowProps {
   task: Task;

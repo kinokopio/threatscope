@@ -331,6 +331,7 @@ def _run_analysis_background(
                 
                 # Update task status based on step_id for major phases
                 step_to_status = {
+                    "dynamic_analysis": TaskStatus.DYNAMIC_ANALYSIS.value,
                     "ghidra_analysis": TaskStatus.GHIDRA_ANALYSIS.value,
                     "report_generation": TaskStatus.REPORT_GENERATION.value,
                 }

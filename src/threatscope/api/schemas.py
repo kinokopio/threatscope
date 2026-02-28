@@ -21,6 +21,7 @@ class TaskStatus(str, Enum):
     PENDING = "pending"
     QUEUED = "queued"
     STATIC_ANALYSIS = "static_analysis"
+    DYNAMIC_ANALYSIS = "dynamic_analysis"
     GHIDRA_ANALYSIS = "ghidra_analysis"
     REPORT_GENERATION = "report_generation"
     COMPLETED = "completed"

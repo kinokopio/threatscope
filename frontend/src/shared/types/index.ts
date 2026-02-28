@@ -13,8 +13,9 @@ export interface AnalysisTask {
 
 export type TaskStatus =
   | 'pending'
-  | 'static_analysis'
   | 'queued'
+  | 'static_analysis'
+  | 'dynamic_analysis'
   | 'ghidra_analysis'
   | 'report_generation'
   | 'completed'

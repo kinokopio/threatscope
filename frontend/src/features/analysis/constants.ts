@@ -40,6 +40,7 @@ export const STATUS_DISPLAY: Record<TaskStatus, { label: string; color: string }
   pending: { label: 'Pending', color: 'text-slate-400' },
   static_analysis: { label: 'Static Analysis', color: 'text-cyan-400' },
   queued: { label: 'Waiting for Ghidra', color: 'text-yellow-400' },
+  dynamic_analysis: { label: 'Dynamic Analysis', color: 'text-orange-400' },
   ghidra_analysis: { label: 'Ghidra Analysis', color: 'text-purple-400' },
   report_generation: { label: 'Report Generation', color: 'text-emerald-400' },
   completed: { label: 'Completed', color: 'text-green-400' },
@@ -48,8 +49,8 @@ export const STATUS_DISPLAY: Record<TaskStatus, { label: string; color: string }
 
 // Helper function to check if task is in progress
 export function isInProgress(status: TaskStatus): boolean {
-  return ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation'].includes(status);
+  return ['pending', 'static_analysis', 'dynamic_analysis', 'queued', 'ghidra_analysis', 'report_generation'].includes(status);
 }
 
 // Stage order for validation
-export const STAGE_ORDER = ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation', 'completed'] as const;
+export const STAGE_ORDER = ['pending', 'static_analysis', 'dynamic_analysis', 'queued', 'ghidra_analysis', 'report_generation', 'completed'] as const;
