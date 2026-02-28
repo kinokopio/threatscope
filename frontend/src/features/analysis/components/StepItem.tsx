@@ -116,6 +116,13 @@ export const StepItem = memo(function StepItem({
             {!isExpanded && effectiveStatus === 'completed' && stepState?.preview && (
               <StepPreview preview={stepState.preview} />
             )}
+
+            {/* Running state preview - show current step */}
+            {effectiveStatus === 'running' && stepState?.preview?.currentStep && (
+              <div className="mt-2 text-xs text-cyan-400 animate-pulse">
+                {String(stepState.preview.currentStep)}
+              </div>
+            )}
           </div>
         </div>
       </div>

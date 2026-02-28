@@ -6,16 +6,35 @@ export interface StepState {
 }
 
 /**
- * Infer step states from analysis result
+ * Infer step states from analysis result and current step
  * This is extracted from TaskDetail to be reusable and testable
  */
 export function inferStepStates(
   result: AnalysisResult | undefined,
-  currentStates: Record<string, StepState>
+  currentStates: Record<string, StepState>,
+  currentStep?: string,
+  taskStatus?: TaskStatus
 ): Record<string, StepState> {
-  if (!result) return currentStates;
-
   const newStates = { ...currentStates };
+
+  // Handle Ghidra running state based on current_step
+  if (taskStatus === 'ghidra_analysis' && currentStep && !result?.ghidra_analysis) {
+    // Ghidra is in progress - show running state with current step info
+    newStates.ghidra = {
+      status: 'running',
+      preview: { currentStep },
+    };
+  }
+
+  // Handle Report generation running state
+  if (taskStatus === 'report_generation' && currentStep && !result?.malware_report) {
+    newStates.report = {
+      status: 'running',
+      preview: { currentStep },
+    };
+  }
+
+  if (!result) return newStates;
 
   // Hash Calculation
   if (result.hashes && !newStates.hash?.status) {

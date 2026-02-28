@@ -36,9 +36,8 @@ export default function TaskDetail() {
         setErrorMessage(data.error);
       }
 
-      if (data.result) {
-        setStepStates((prev) => inferStepStates(data.result, prev));
-      }
+      // Update step states with current step info for running states
+      setStepStates((prev) => inferStepStates(data.result, prev, data.current_step, data.status));
     } catch (err: unknown) {
       console.error('Failed to fetch task:', err);
       const error = err as { response?: { status: number } };
