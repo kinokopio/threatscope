@@ -37,52 +37,69 @@ class YaraScanner(AnalysisTool):
         different OS/architectures. Prefer source .yar files for portability.
         """
         if not YARA_AVAILABLE:
+            logger.error("yara-python is not installed!")
             return False
 
         rules_path = Path(rules_path)
+        logger.info(f"Loading YARA rules from: {rules_path} (exists={rules_path.exists()})")
+
+        if not rules_path.exists():
+            logger.error(f"YARA rules path does not exist: {rules_path.absolute()}")
+            return False
 
         try:
             # Priority 1: Compile from source files (portable)
             if rules_path.is_dir():
                 filepaths = {}
-                for rule_file in rules_path.rglob("*.yar"):
+                yar_files = list(rules_path.rglob("*.yar"))
+                yara_files = list(rules_path.rglob("*.yara"))
+                logger.info(f"Found {len(yar_files)} .yar files and {len(yara_files)} .yara files")
+
+                for rule_file in yar_files:
                     try:
                         yara.compile(filepath=str(rule_file))
                         namespace = rule_file.stem.replace("-", "_").replace(".", "_")
                         filepaths[namespace] = str(rule_file)
                     except yara.SyntaxError as e:
-                        logger.warning(f"Skipping invalid rule {rule_file}: {e}")
+                        logger.debug(f"Skipping invalid rule {rule_file.name}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.debug(f"Error compiling {rule_file.name}: {e}")
                         continue
 
-                for rule_file in rules_path.rglob("*.yara"):
+                for rule_file in yara_files:
                     try:
                         yara.compile(filepath=str(rule_file))
                         namespace = rule_file.stem.replace("-", "_").replace(".", "_")
                         filepaths[namespace] = str(rule_file)
                     except yara.SyntaxError as e:
-                        logger.warning(f"Skipping invalid rule {rule_file}: {e}")
+                        logger.debug(f"Skipping invalid rule {rule_file.name}: {e}")
+                        continue
+                    except Exception as e:
+                        logger.debug(f"Error compiling {rule_file.name}: {e}")
                         continue
 
                 if filepaths:
+                    logger.info(f"Compiling {len(filepaths)} valid YARA rules...")
                     self._rules = yara.compile(filepaths=filepaths)
                     self._rule_count = len(filepaths)
-                    logger.info(f"Compiled {self._rule_count} YARA rule files from {rules_path}")
+                    logger.info(f"Successfully compiled {self._rule_count} YARA rules")
                     return True
 
                 # Fallback: Try precompiled .yarc if no source files found
                 compiled_file = rules_path / "compiled_rules.yarc"
                 if compiled_file.exists():
-                    logger.info(f"No source rules found, trying precompiled: {compiled_file}")
+                    logger.info(f"No source rules compiled, trying precompiled: {compiled_file}")
                     try:
                         self._rules = yara.load(str(compiled_file))
                         self._rule_count = -1
                         logger.info("Loaded precompiled YARA rules (platform-specific)")
                         return True
                     except Exception as e:
-                        logger.warning(f"Failed to load precompiled rules (platform mismatch?): {e}")
+                        logger.error(f"Failed to load precompiled rules (platform mismatch?): {e}")
                         return False
 
-                logger.warning(f"No YARA rules found in {rules_path}")
+                logger.error(f"No valid YARA rules found in {rules_path}")
                 return False
 
             # Single .yar/.yara file
@@ -99,11 +116,11 @@ class YaraScanner(AnalysisTool):
                 self._rule_count = -1
                 return True
 
-            logger.error(f"Invalid rules path: {rules_path}")
+            logger.error(f"Invalid rules path (not a file or directory): {rules_path}")
             return False
 
         except Exception as e:
-            logger.error(f"Failed to load YARA rules: {e}")
+            logger.error(f"Failed to load YARA rules: {e}", exc_info=True)
             return False
 
     async def analyze(self, file_path: Path) -> ToolResult:
@@ -115,7 +132,11 @@ class YaraScanner(AnalysisTool):
                 return ToolResult(success=False, error="Failed to load YARA rules")
 
         if not self._rules:
-            return ToolResult(success=True, data={"matches": [], "rule_count": 0})
+            logger.warning("No YARA rules loaded, returning empty matches")
+            return ToolResult(
+                success=True,
+                data={"matches": [], "rule_count": 0, "message": "No rules loaded"},
+            )
 
         try:
             import warnings

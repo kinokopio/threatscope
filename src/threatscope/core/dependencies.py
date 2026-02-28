@@ -100,10 +100,24 @@ def get_coordinator(settings: SettingsDep) -> AnalysisCoordinator:
     global _coordinator_instance
     if _coordinator_instance is None:
         # Import here to avoid circular imports
+        # Get project root directory (where pyproject.toml is)
+        from pathlib import Path
+
         from src.threatscope.analysis.coordinator import AnalysisCoordinator as Coordinator
 
-        _coordinator_instance = Coordinator(settings, ghidra_pool=_ghidra_pool)
-    return _coordinator_instance
+        # Try to find project root by looking for pyproject.toml
+        project_dir = Path.cwd()
+        for parent in [Path(__file__).parent] + list(Path(__file__).parents):
+            if (parent / "pyproject.toml").exists():
+                project_dir = parent
+                break
+
+        _coordinator_instance = Coordinator(
+            settings,
+            project_dir=project_dir,
+            ghidra_pool=_ghidra_pool,
+        )
+
 
 CoordinatorDep = Annotated[AnalysisCoordinator, Depends(get_coordinator)]
 

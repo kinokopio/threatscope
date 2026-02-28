@@ -261,8 +261,13 @@ class AnalysisCoordinator:
             StaticAnalysisService,
         )
 
+        # Resolve YARA rules path relative to project directory
+        yara_rules_path = self.settings.analysis.yara_rules_path
+        if yara_rules_path and not Path(yara_rules_path).is_absolute():
+            yara_rules_path = str(self.project_dir / yara_rules_path)
+
         service = StaticAnalysisService(
-            yara_rules_path=self.settings.analysis.yara_rules_path,
+            yara_rules_path=yara_rules_path,
         )
 
         # Run static analysis with status updates
