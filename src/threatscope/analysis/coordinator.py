@@ -372,13 +372,16 @@ class AnalysisCoordinator:
         """Run Ghidra deep analysis.
 
         If ghidra_pool is available (Docker mode), acquires an instance from the pool.
-        Otherwise, uses the default ghidra_url from settings.
+        Otherwise, starts Ghidra service on-demand using GhidraServiceManager.
         """
+        from src.threatscope.ghidra.manager import GhidraServiceManager
+
         sample_hash = static_results.get("hashes", {}).get("sha256", "")
 
         # Try to acquire instance from pool (Docker mode)
         instance = None
         ghidra_url = self.settings.ghidra.base_url
+        ghidra_manager: GhidraServiceManager | None = None
 
         if self.ghidra_pool is not None:
             instance = await self.ghidra_pool.acquire(timeout=60.0)
@@ -388,6 +391,47 @@ class AnalysisCoordinator:
                 logger.info(f"Acquired Ghidra instance {instance.id} at {ghidra_url}")
             else:
                 logger.warning("No Ghidra instance available from pool, using default URL")
+        else:
+            # No pool - start Ghidra service on-demand
+            ghidra_manager = GhidraServiceManager(
+                mode="docker",
+                docker_image=self.settings.ghidra.docker_image,
+                host=self.settings.ghidra.service_host,
+                port=self.settings.ghidra.base_http_port,
+                startup_timeout=self.settings.ghidra.startup_timeout,
+            )
+
+            if progress_callback:
+                try:
+                    await progress_callback(
+                        "ghidra_startup",
+                        "Starting Ghidra service (this may take 1-2 minutes)",
+                        "running",
+                        {"mode": "docker", "image": self.settings.ghidra.docker_image},
+                    )
+                except Exception:
+                    pass
+
+            if not ghidra_manager.start():
+                logger.error("Failed to start Ghidra service on-demand")
+                return {
+                    "error": "Failed to start Ghidra service",
+                    "status": "ghidra_unavailable",
+                }
+
+            ghidra_url = ghidra_manager.base_url
+            logger.info(f"Started Ghidra service on-demand at {ghidra_url}")
+
+            if progress_callback:
+                try:
+                    await progress_callback(
+                        "ghidra_startup",
+                        "Ghidra service started",
+                        "completed",
+                        {"url": ghidra_url},
+                    )
+                except Exception:
+                    pass
 
         try:
             # Create agent with the appropriate URL
@@ -417,6 +461,11 @@ class AnalysisCoordinator:
             if instance is not None and self.ghidra_pool is not None:
                 await self.ghidra_pool.release(instance)
                 logger.info(f"Released Ghidra instance {instance.id}")
+
+            # Stop on-demand Ghidra service
+            if ghidra_manager is not None:
+                logger.info("Stopping on-demand Ghidra service")
+                ghidra_manager.stop()
 
     async def _run_report_generation(
         self,
