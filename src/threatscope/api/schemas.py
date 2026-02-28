@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 # =============================================================================
 # Enums
@@ -172,6 +172,17 @@ class GhidraAIAnalysis(BaseModel):
     analysis_path: list[str] | list[dict[str, Any]] = Field(default_factory=list)
     analysis_metadata: dict[str, Any] | None = None
 
+    @field_validator('key_findings', mode='before')
+    @classmethod
+    def normalize_findings(cls, v: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Ensure evidence field is always a list."""
+        if not v:
+            return v
+        for finding in v:
+            if 'evidence' in finding and not isinstance(finding['evidence'], list):
+                # Convert string evidence to list
+                finding['evidence'] = [finding['evidence']] if finding['evidence'] else []
+        return v
 
 class GhidraAnalysisResult(BaseModel):
     """Ghidra analysis results."""
