@@ -261,7 +261,9 @@ class AnalysisCoordinator:
             StaticAnalysisService,
         )
 
-        service = StaticAnalysisService()
+        service = StaticAnalysisService(
+            yara_rules_path=self.settings.analysis.yara_rules_path,
+        )
 
         # Run static analysis with status updates
         task.update_status(AnalysisStatus.HASHING)
