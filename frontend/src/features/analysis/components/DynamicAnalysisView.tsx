@@ -143,11 +143,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
           <div className="text-slate-400 text-xs mb-1">Duration</div>
-          <div className="text-white font-medium">{data.duration_seconds.toFixed(1)}s</div>
+          <div className="text-white font-medium">{data.duration_seconds != null ? `${data.duration_seconds.toFixed(1)}s` : 'N/A'}</div>
         </div>
         <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
           <div className="text-slate-400 text-xs mb-1">Events Captured</div>
-          <div className="text-white font-medium">{data.raw_events_count}</div>
+          <div className="text-white font-medium">{data.raw_events_count ?? 0}</div>
         </div>
         <div className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
           <div className="text-slate-400 text-xs mb-1">Security Alerts</div>
