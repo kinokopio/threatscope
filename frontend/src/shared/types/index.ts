@@ -12,10 +12,10 @@ export interface AnalysisTask {
 
 export type TaskStatus =
   | 'pending'
-  | 'stage_1_4'
+  | 'static_analysis'
   | 'queued'
-  | 'stage_5'
-  | 'stage_6'
+  | 'ghidra_analysis'
+  | 'report_generation'
   | 'completed'
   | 'failed';
 

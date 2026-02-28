@@ -211,7 +211,7 @@ export function getEffectiveStepStatus(
   currentStatus: TaskStatus,
   stepStates: Record<string, StepState>
 ): StepStatus {
-  const STAGE_ORDER = ['pending', 'stage_1_4', 'queued', 'stage_5', 'stage_6', 'completed'];
+  const STAGE_ORDER = ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation', 'completed'];
   const currentStageIndex = STAGE_ORDER.indexOf(currentStatus);
 
   // If task is completed, all steps are completed
@@ -220,12 +220,12 @@ export function getEffectiveStepStatus(
 
   const wsStatus = stepStates[stepId]?.status;
 
-  // Stage 1-4 steps (static, intel, dynamic)
+  // Static analysis steps (static, intel, dynamic)
   if (stepGroup === 'static' || stepGroup === 'intel' || stepGroup === 'dynamic') {
-    if (currentStageIndex > STAGE_ORDER.indexOf('stage_1_4')) {
+    if (currentStageIndex > STAGE_ORDER.indexOf('static_analysis')) {
       return 'completed';
     }
-    if (currentStatus === 'stage_1_4') {
+    if (currentStatus === 'static_analysis') {
       if (wsStatus && wsStatus !== 'pending') {
         return wsStatus;
       }
@@ -236,10 +236,10 @@ export function getEffectiveStepStatus(
 
   // Ghidra step
   if (stepGroup === 'ghidra') {
-    if (currentStageIndex > STAGE_ORDER.indexOf('stage_5')) {
+    if (currentStageIndex > STAGE_ORDER.indexOf('ghidra_analysis')) {
       return 'completed';
     }
-    if (currentStatus === 'stage_5') {
+    if (currentStatus === 'ghidra_analysis') {
       return wsStatus || 'running';
     }
     return 'pending';
@@ -247,7 +247,7 @@ export function getEffectiveStepStatus(
 
   // Report step
   if (stepGroup === 'report') {
-    if (currentStatus === 'stage_6') {
+    if (currentStatus === 'report_generation') {
       return wsStatus || 'running';
     }
     return 'pending';

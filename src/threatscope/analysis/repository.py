@@ -40,13 +40,27 @@ class TaskRepository:
                     file_path TEXT NOT NULL,
                     file_name TEXT,
                     status TEXT NOT NULL DEFAULT 'pending',
+                    current_step TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
                     error TEXT,
                     retry_count INTEGER DEFAULT 0,
-                    stage_1_4_results TEXT,
-                    ghidra_results TEXT,
-                    report TEXT,
+                    -- Static analysis results (each step separate)
+                    hashes TEXT,
+                    strings TEXT,
+                    elf TEXT,
+                    yara TEXT,
+                    function_categories TEXT,
+                    mitre_mapping TEXT,
+                    -- Threat intelligence
+                    threat_intel TEXT,
+                    -- Dynamic analysis
+                    dynamic_analysis TEXT,
+                    -- Ghidra analysis
+                    ghidra_analysis TEXT,
+                    -- Final report
+                    malware_report TEXT,
+                    -- Options
                     options TEXT
                 )
             """)
@@ -197,17 +211,23 @@ class TaskRepository:
         result_type: str,
         result: dict[str, Any],
     ) -> None:
-        """Update task result.
+        """Update task result for a specific step.
 
         Args:
             task_id: Task identifier.
-            result_type: Type of result (stage_1_4_results, ghidra_results, report).
+            result_type: Type of result (hashes, strings, elf, yara, function_categories,
+                         mitre_mapping, threat_intel, dynamic_analysis, ghidra_analysis,
+                         malware_report).
             result: Result data.
 
         Raises:
             ValueError: If result_type is invalid.
         """
-        valid_types = ("stage_1_4_results", "ghidra_results", "report")
+        valid_types = (
+            "hashes", "strings", "elf", "yara", "function_categories",
+            "mitre_mapping", "threat_intel", "dynamic_analysis",
+            "ghidra_analysis", "malware_report"
+        )
         if result_type not in valid_types:
             raise ValueError(f"Invalid result type: {result_type}. Must be one of {valid_types}")
 
@@ -223,43 +243,22 @@ class TaskRepository:
             )
             conn.commit()
 
-    def merge_stage_result(
-        self,
-        task_id: str,
-        key: str,
-        value: Any,
-    ) -> None:
-        """Merge a single result into stage_1_4_results.
-
-        Allows incremental updates as each analysis step completes.
+    def update_current_step(self, task_id: str, step_name: str) -> None:
+        """Update the current step being executed.
 
         Args:
             task_id: Task identifier.
-            key: Result key (e.g., 'hashes', 'strings', 'elf').
-            value: Result value.
+            step_name: Name of the current step.
         """
         now = datetime.now().isoformat()
         with self._connection() as conn:
-            row = conn.execute(
-                "SELECT stage_1_4_results FROM tasks WHERE id = ?", (task_id,)
-            ).fetchone()
-
-            existing = {}
-            if row and row["stage_1_4_results"]:
-                try:
-                    existing = json.loads(row["stage_1_4_results"])
-                except json.JSONDecodeError:
-                    existing = {}
-
-            existing[key] = value
-
             conn.execute(
                 """
                 UPDATE tasks
-                SET stage_1_4_results = ?, updated_at = ?
+                SET current_step = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (json.dumps(existing), now, task_id),
+                (step_name, now, task_id),
             )
             conn.commit()
 
@@ -318,7 +317,11 @@ class TaskRepository:
         data = dict(row)
 
         # Parse JSON fields
-        json_fields = ("stage_1_4_results", "ghidra_results", "report", "options")
+        json_fields = (
+            "hashes", "strings", "elf", "yara", "function_categories",
+            "mitre_mapping", "threat_intel", "dynamic_analysis",
+            "ghidra_analysis", "malware_report", "options"
+        )
         for field in json_fields:
             if data.get(field):
                 try:
@@ -327,19 +330,27 @@ class TaskRepository:
                     data[field] = None
 
         # Build result field for API compatibility
-        result = None
-        if data.get("report") or data.get("stage_1_4_results"):
-            result = {}
-            if data.get("stage_1_4_results"):
-                result.update(data["stage_1_4_results"])
-                result["metadata"] = {
-                    "file_name": data.get("file_name"),
-                    "hashes": data["stage_1_4_results"].get("hashes", {}),
-                }
-            if data.get("report"):
-                result["malware_report"] = data["report"]
-            if data.get("ghidra_results"):
-                result["ghidra_analysis"] = data["ghidra_results"]
+        result = {}
+        if data.get("hashes"):
+            result["hashes"] = data["hashes"]
+        if data.get("strings"):
+            result["strings"] = data["strings"]
+        if data.get("elf"):
+            result["elf"] = data["elf"]
+        if data.get("yara"):
+            result["yara"] = data["yara"]
+        if data.get("function_categories"):
+            result["function_categories"] = data["function_categories"]
+        if data.get("mitre_mapping"):
+            result["mitre_mapping"] = data["mitre_mapping"]
+        if data.get("threat_intel"):
+            result["threat_intel"] = data["threat_intel"]
+        if data.get("dynamic_analysis"):
+            result["dynamic_analysis"] = data["dynamic_analysis"]
+        if data.get("ghidra_analysis"):
+            result["ghidra_analysis"] = data["ghidra_analysis"]
+        if data.get("malware_report"):
+            result["malware_report"] = data["malware_report"]
 
-        data["result"] = result
+        data["result"] = result if result else None
         return data

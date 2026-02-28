@@ -38,18 +38,18 @@ export const ANALYSIS_STEPS: AnalysisStep[] = [
 // Status display mapping - hoisted outside component
 export const STATUS_DISPLAY: Record<TaskStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: 'text-slate-400' },
-  stage_1_4: { label: 'Static Analysis', color: 'text-cyan-400' },
+  static_analysis: { label: 'Static Analysis', color: 'text-cyan-400' },
   queued: { label: 'Waiting for Ghidra', color: 'text-yellow-400' },
-  stage_5: { label: 'Ghidra Analysis', color: 'text-purple-400' },
-  stage_6: { label: 'Report Generation', color: 'text-emerald-400' },
+  ghidra_analysis: { label: 'Ghidra Analysis', color: 'text-purple-400' },
+  report_generation: { label: 'Report Generation', color: 'text-emerald-400' },
   completed: { label: 'Completed', color: 'text-green-400' },
   failed: { label: 'Failed', color: 'text-red-400' },
 };
 
 // Helper function to check if task is in progress
 export function isInProgress(status: TaskStatus): boolean {
-  return ['pending', 'stage_1_4', 'queued', 'stage_5', 'stage_6'].includes(status);
+  return ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation'].includes(status);
 }
 
 // Stage order for validation
-export const STAGE_ORDER = ['pending', 'stage_1_4', 'queued', 'stage_5', 'stage_6', 'completed'] as const;
+export const STAGE_ORDER = ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation', 'completed'] as const;

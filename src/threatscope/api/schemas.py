@@ -20,9 +20,9 @@ class TaskStatus(str, Enum):
 
     PENDING = "pending"
     QUEUED = "queued"
-    STAGE_1_4 = "stage_1_4"
-    STAGE_5 = "stage_5"
-    STAGE_6 = "stage_6"
+    STATIC_ANALYSIS = "static_analysis"
+    GHIDRA_ANALYSIS = "ghidra_analysis"
+    REPORT_GENERATION = "report_generation"
     COMPLETED = "completed"
     FAILED = "failed"
 

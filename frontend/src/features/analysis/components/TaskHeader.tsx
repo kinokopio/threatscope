@@ -33,9 +33,9 @@ export const TaskHeader = memo(function TaskHeader({ status, fileName, stepState
     
     // Define step groups by stage
     const stageSteps: Record<string, string[]> = {
-      stage_1_4: ['hash', 'strings', 'elf', 'func_class', 'mitre', 'yara', 'threat_intel', 'dynamic'],
-      stage_5: ['ghidra'],
-      stage_6: ['report'],
+      static_analysis: ['hash', 'strings', 'elf', 'func_class', 'mitre', 'yara', 'threat_intel', 'dynamic'],
+      ghidra_analysis: ['ghidra'],
+      report_generation: ['report'],
     };
     
     // Get steps for current stage

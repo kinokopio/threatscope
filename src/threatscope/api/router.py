@@ -241,7 +241,7 @@ async def list_tasks(
         queue_stats=QueueStats(
             pending=stats.get("pending", 0),
             ghidra_waiting=stats.get("queued", 0),
-            report_waiting=stats.get("stage_6", 0),
+            report_waiting=stats.get("report_generation", 0),
             total_tasks=stats.get("total", 0),
             completed=stats.get("completed", 0),
             failed=stats.get("failed", 0),
@@ -324,14 +324,33 @@ def _run_analysis_background(
     async def _do_analysis():
         async def save_progress(step_id: str, step_name: str, status: str, preview: dict | None, current_results: dict | None):
             """Save progress after each step completes."""
+            if status == 'running':
+                # Update current step
+                db.update_current_step(task_id, step_name)
+            
             if status == 'completed' and current_results:
-                # Save current results to database after each step
-                db.update_task_result(task_id, "stage_1_4_results", current_results)
-                logger.debug(f"Saved progress after {step_id}: {step_name}")
+                # Map step_id to database field and save
+                step_to_field = {
+                    "hashing": "hashes",
+                    "string_extraction": "strings",
+                    "binary_parsing": "elf",
+                    "function_classification": "function_categories",
+                    "mitre_mapping": "mitre_mapping",
+                    "yara_scanning": "yara",
+                    "threat_intel": "threat_intel",
+                    "dynamic_analysis": "dynamic_analysis",
+                    "ghidra_analysis": "ghidra_analysis",
+                    "report_generation": "malware_report",
+                }
+                
+                field = step_to_field.get(step_id)
+                if field and field in current_results:
+                    db.update_task_result(task_id, field, current_results[field])
+                    logger.debug(f"Saved {field} after {step_name}")
         
         try:
             # Update status
-            db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
+            db.update_task_status(task_id, TaskStatus.STATIC_ANALYSIS.value)
 
             # Run analysis with progress callback
             result = await coordinator.analyze(
@@ -346,11 +365,18 @@ def _run_analysis_background(
             if "error" in result:
                 db.update_task_status(task_id, TaskStatus.FAILED.value, error=result["error"])
             else:
-                db.update_task_result(task_id, "stage_1_4_results", result.get("static_analysis", {}))
+                # Save any remaining results
+                static = result.get("static_analysis", {})
+                for field in ["hashes", "strings", "elf", "yara", "function_categories", 
+                              "mitre_mapping", "threat_intel", "dynamic_analysis"]:
+                    if static.get(field):
+                        db.update_task_result(task_id, field, static[field])
+                
                 if result.get("ghidra_analysis"):
-                    db.update_task_result(task_id, "ghidra_results", result["ghidra_analysis"])
+                    db.update_task_result(task_id, "ghidra_analysis", result["ghidra_analysis"])
                 if result.get("report"):
-                    db.update_task_result(task_id, "report", result["report"])
+                    db.update_task_result(task_id, "malware_report", result["report"])
+                
                 db.update_task_status(task_id, TaskStatus.COMPLETED.value)
 
         except Exception as e:
@@ -381,20 +407,27 @@ def _extract_results(task: dict) -> dict:
     """Extract analysis results from task data."""
     results = {}
 
-    if task.get("stage_1_4_results"):
-        stage_results = task["stage_1_4_results"]
-        results["hashes"] = stage_results.get("hashes")
-        results["strings"] = stage_results.get("strings")
-        results["elf"] = stage_results.get("elf")
-        results["yara"] = stage_results.get("yara")
-        results["threat_intel"] = stage_results.get("threat_intel")
-        results["dynamic_analysis"] = stage_results.get("dynamic_analysis")
-
-    if task.get("ghidra_results"):
-        results["ghidra_analysis"] = task["ghidra_results"]
-
-    if task.get("report"):
-        results["malware_report"] = task["report"]
+    # Each step has its own field now
+    if task.get("hashes"):
+        results["hashes"] = task["hashes"]
+    if task.get("strings"):
+        results["strings"] = task["strings"]
+    if task.get("elf"):
+        results["elf"] = task["elf"]
+    if task.get("yara"):
+        results["yara"] = task["yara"]
+    if task.get("function_categories"):
+        results["function_categories"] = task["function_categories"]
+    if task.get("mitre_mapping"):
+        results["mitre_mapping"] = task["mitre_mapping"]
+    if task.get("threat_intel"):
+        results["threat_intel"] = task["threat_intel"]
+    if task.get("dynamic_analysis"):
+        results["dynamic_analysis"] = task["dynamic_analysis"]
+    if task.get("ghidra_analysis"):
+        results["ghidra_analysis"] = task["ghidra_analysis"]
+    if task.get("malware_report"):
+        results["malware_report"] = task["malware_report"]
 
     return results
 
