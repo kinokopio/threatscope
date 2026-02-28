@@ -128,8 +128,9 @@ class YaraResult(BaseModel):
     """YARA scanning results."""
 
     matches: list[Any] = Field(default_factory=list)
-    rules_matched: int = 0
-
+    rule_count: int = Field(default=0, description="Number of rules loaded")
+    match_count: int = Field(default=0, description="Number of matches found")
+    message: str | None = Field(default=None, description="Optional status message")
 class ThreatIntelResult(BaseModel):
     """Threat intelligence results."""
 

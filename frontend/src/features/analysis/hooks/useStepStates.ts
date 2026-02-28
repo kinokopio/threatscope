@@ -125,7 +125,7 @@ export function inferStepStates(
         status: 'completed',
         preview: {
           matches: matches.length,
-          rules: matches.slice(0, 3).join(', ') || 'None',
+          rules: (matches as Array<{ rule?: string }>).slice(0, 3).map((m) => m.rule || 'unknown').join(', ') || 'None',
         },
       };
     }

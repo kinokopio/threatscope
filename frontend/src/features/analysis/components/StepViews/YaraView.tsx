@@ -9,7 +9,9 @@ interface YaraViewProps {
       meta?: Record<string, string>;
       strings?: Array<{ identifier: string; data: string; offset: number }>;
     }>;
-    rules_loaded?: number;
+    rule_count?: number;
+    match_count?: number;
+    message?: string;
     error?: string;
   };
 }
@@ -33,7 +35,7 @@ export function YaraView({ data }: YaraViewProps) {
           <div>
             <p className="text-emerald-400 font-medium">No YARA Rules Matched</p>
             <p className="text-slate-400 text-sm mt-1">
-              {data.rules_loaded ? `Scanned against ${data.rules_loaded} rules` : 'No malicious patterns detected'}
+              {data.rule_count ? `Scanned against ${data.rule_count} rules` : 'No malicious patterns detected'}
             </p>
           </div>
         </div>

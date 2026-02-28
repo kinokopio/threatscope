@@ -68,3 +68,6 @@ frontend/dist/
 tasks.db
 tasks.db-shm
 tasks.db-wal
+
+# YARA compiled rules (platform-specific, auto-generated)
+*.yarc
