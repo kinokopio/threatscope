@@ -27,27 +27,36 @@ export const TaskHeader = memo(function TaskHeader({ status, fileName, stepState
     return 'Analysis Failed';
   };
 
-  // Find the current running step
+  // Find the current running step based on task status and completed steps
   const getCurrentStep = (): string | null => {
-    if (!inProgress || !stepStates) return null;
+    if (!inProgress) return null;
     
-    // Find the first step that is 'running' or the first 'pending' step after completed ones
-    for (const step of ANALYSIS_STEPS) {
-      const state = stepStates[step.id];
-      if (state?.status === 'running') {
-        return step.name;
+    // Define step groups by stage
+    const stageSteps: Record<string, string[]> = {
+      stage_1_4: ['hash', 'strings', 'elf', 'func_class', 'mitre', 'yara', 'threat_intel', 'dynamic'],
+      stage_5: ['ghidra'],
+      stage_6: ['report'],
+    };
+    
+    // Get steps for current stage
+    const currentStageSteps = stageSteps[status] || [];
+    if (currentStageSteps.length === 0) return null;
+    
+    // If we have stepStates, find the first non-completed step in current stage
+    if (stepStates) {
+      for (const stepId of currentStageSteps) {
+        const state = stepStates[stepId];
+        const step = ANALYSIS_STEPS.find(s => s.id === stepId);
+        if (!state || state.status === 'pending' || state.status === 'running') {
+          return step?.name || null;
+        }
       }
     }
     
-    // If no running step, find the first pending step
-    for (const step of ANALYSIS_STEPS) {
-      const state = stepStates[step.id];
-      if (!state || state.status === 'pending') {
-        return step.name;
-      }
-    }
-    
-    return null;
+    // Fallback: return first step of current stage
+    const firstStepId = currentStageSteps[0];
+    const firstStep = ANALYSIS_STEPS.find(s => s.id === firstStepId);
+    return firstStep?.name || null;
   };
 
   const currentStep = getCurrentStep();
