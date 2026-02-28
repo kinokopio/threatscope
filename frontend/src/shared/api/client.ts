@@ -76,10 +76,29 @@ export async function uploadFileSync(
 export async function getTask(taskId: string): Promise<AnalysisTask> {
   const response = await api.get(`/tasks/${taskId}`);
   const data = response.data;
-  // Normalize: API returns task_id, but we use id internally
+  
+  // API returns flat structure, normalize to expected format
+  // Extract result fields from top level
+  const result = {
+    hashes: data.hashes,
+    strings: data.strings,
+    elf: data.elf,
+    yara: data.yara,
+    function_categories: data.function_categories,
+    mitre_mapping: data.mitre_mapping,
+    threat_intel: data.threat_intel,
+    dynamic_analysis: data.dynamic_analysis,
+    ghidra_analysis: data.ghidra_analysis,
+    malware_report: data.malware_report,
+  };
+  
   return {
-    ...data,
     id: data.task_id || data.id,
+    task_id: data.task_id,
+    status: data.status,
+    file_name: data.file_name,
+    error: data.error,
+    result,
   };
 }
 

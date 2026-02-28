@@ -131,13 +131,15 @@ export function inferStepStates(
     const dynamic = result.dynamic_analysis;
     if (!dynamic || Object.keys(dynamic).length === 0) {
       newStates.dynamic = { status: 'completed', preview: { status: 'Skipped' } };
+    } else if (dynamic.error) {
+      newStates.dynamic = { status: 'completed', preview: { status: 'Skipped', reason: dynamic.error } };
     } else {
       const syscalls = dynamic?.syscalls || [];
       newStates.dynamic = {
         status: 'completed',
         preview: {
-          syscalls: syscalls.length,
-          network: dynamic?.network_connections?.length || 0,
+          syscalls: Array.isArray(syscalls) ? syscalls.length : 0,
+          network: Array.isArray(dynamic?.network_activity) ? dynamic.network_activity.length : 0,
         },
       };
     }
@@ -146,24 +148,37 @@ export function inferStepStates(
   // Ghidra Analysis
   if (result.ghidra_analysis && !newStates.ghidra?.status) {
     const ghidra = result.ghidra_analysis;
-    const aiAnalysis = ghidra?.ai_analysis;
-    newStates.ghidra = {
-      status: 'completed',
-      preview: {
-        functions: aiAnalysis?.analyzed_functions?.length || 0,
-        findings: aiAnalysis?.key_findings?.length || 0,
-      },
-    };
+    // Handle both direct fields and nested ai_analysis structure
+    const analyzedFunctions = ghidra?.ai_analysis?.analyzed_functions || ghidra?.analyzed_functions || [];
+    const keyFindings = ghidra?.ai_analysis?.key_findings || ghidra?.key_findings || [];
+    
+    if (ghidra.status === 'ghidra_unavailable' || !ghidra.ghidra_available) {
+      newStates.ghidra = {
+        status: 'skipped',
+        preview: { status: 'Ghidra unavailable' },
+      };
+    } else {
+      newStates.ghidra = {
+        status: 'completed',
+        preview: {
+          functions: analyzedFunctions.length,
+          findings: keyFindings.length,
+        },
+      };
+    }
   }
 
   // AI Report
   if (result.malware_report && !newStates.report?.status) {
     const report = result.malware_report;
+    // Handle confidence as decimal (0.3) or percentage (30)
+    const confidence = report?.confidence || 0;
+    const confidencePercent = confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence);
     newStates.report = {
       status: 'completed',
       preview: {
         verdict: report?.verdict || 'unknown',
-        confidence: `${report?.confidence || 0}%`,
+        confidence: `${confidencePercent}%`,
         family: report?.family || 'N/A',
       },
     };
