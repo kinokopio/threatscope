@@ -11,15 +11,20 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
 
-from src.threatscope.api.router import router as analysis_router
-from src.threatscope.api.schemas import HealthResponse
-from src.threatscope.core.config import get_settings
-from src.threatscope.core.dependencies import shutdown_dependencies
-from src.threatscope.shared.exceptions import ThreatScopeError
+# Load .env file BEFORE importing settings
+load_dotenv()
+
+from fastapi import FastAPI, Request  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import JSONResponse  # noqa: E402
+
+from src.threatscope.api.router import router as analysis_router  # noqa: E402
+from src.threatscope.api.schemas import HealthResponse  # noqa: E402
+from src.threatscope.core.config import get_settings  # noqa: E402
+from src.threatscope.core.dependencies import shutdown_dependencies  # noqa: E402
+from src.threatscope.shared.exceptions import ThreatScopeError  # noqa: E402
 
 logger = logging.getLogger(__name__)
 

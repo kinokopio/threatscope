@@ -3,7 +3,6 @@
 import asyncio
 import json
 import logging
-import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -375,8 +374,10 @@ class GhidraAgent(BaseAgent):
             ClaudeSDKError: If SDK encounters an error.
         """
         # Check for API key first to fail fast
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise ValueError("ANTHROPIC_API_KEY environment variable not set")
+        from src.threatscope.core.config import get_settings
+        settings = get_settings()
+        if not settings.llm.api_key:
+            raise ValueError("ANTHROPIC_API_KEY not configured in .env or environment")
 
         # Build the analysis prompt
         prompt = self._build_analysis_prompt(
