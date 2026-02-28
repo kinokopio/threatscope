@@ -33,8 +33,11 @@ COPY docker/requirements-ghidra.txt /app/
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-ghidra.txt
 
-# Copy Ghidra service code
-COPY src/threatscope/ghidra /app/ghidra_service
+# Copy source code (needed for imports)
+COPY src /app/src
+
+# Set PYTHONPATH for imports
+ENV PYTHONPATH="/app"
 
 # Create data directories
 RUN mkdir -p /app/data/uploads /app/data/projects
@@ -49,4 +52,4 @@ ENV GHIDRA_HTTP_URL=http://localhost:8000
 EXPOSE 8000 9000
 
 # Run both HTTP and MCP servers
-CMD ["bash", "-lc", "python -m ghidra_service.http_server & python -m ghidra_service.mcp_server"]
+CMD ["bash", "-lc", "uvicorn src.threatscope.ghidra.http_server:app --host 0.0.0.0 --port 8000 & python -m src.threatscope.ghidra.mcp_server"]
