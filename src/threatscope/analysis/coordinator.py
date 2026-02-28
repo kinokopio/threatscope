@@ -263,7 +263,7 @@ class AnalysisCoordinator:
         # Run static analysis with status updates
         task.update_status(AnalysisStatus.HASHING)
         if progress_callback:
-            await progress_callback("hashing", "Hash Calculation", "running", None)
+            await progress_callback("hashing", "Hash Calculation", "running", None, {})
 
         results = await service.analyze(file_path, progress_callback)
 
