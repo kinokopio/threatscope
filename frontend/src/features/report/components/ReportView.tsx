@@ -316,83 +316,103 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
       )}
 
       {/* 6. Ghidra Analysis */}
-      {ghidra_analysis?.ai_analysis && (
-        <div className="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold text-emerald-400 flex items-center">
-              <Shield className="w-6 h-6 mr-2" />
-              Ghidra Deep Analysis
-              {ghidra_analysis.ai_analysis.analyzed_functions && (
-                <span className="ml-2 text-sm text-slate-400 bg-slate-700 px-2 py-0.5 rounded">
-                  {ghidra_analysis.ai_analysis.analyzed_functions.length} functions
-                </span>
-              )}
-            </h2>
-            {renderChevronButton(functionsOpen, () => setFunctionsOpen(!functionsOpen), 'Toggle functions')}
-          </div>
+      {ghidra_analysis?.ai_analysis && (() => {
+        // Parse ai_analysis - handle case where $defs contains JSON string
+        type AiAnalysisType = typeof ghidra_analysis.ai_analysis;
+        let aiAnalysis: AiAnalysisType | null = ghidra_analysis.ai_analysis;
+        if (aiAnalysis && '$defs' in aiAnalysis) {
+          const defs = (aiAnalysis as Record<string, unknown>)['$defs'];
+          if (typeof defs === 'string') {
+            try {
+              aiAnalysis = JSON.parse(defs) as AiAnalysisType;
+            } catch {
+              aiAnalysis = null;
+            }
+          } else if (typeof defs === 'object' && defs !== null) {
+            aiAnalysis = defs as AiAnalysisType;
+          }
+        }
 
-          {/* Key Findings */}
-          {ghidra_analysis.ai_analysis.key_findings && ghidra_analysis.ai_analysis.key_findings.length > 0 && (
-            <div className="bg-slate-700/50 p-4 rounded border-l-4 border-rose-500 mb-4">
-              <h3 className="font-bold text-lg text-white mb-2">Key Findings</h3>
-              <ul className="list-disc list-inside space-y-1 text-slate-300">
-                {ghidra_analysis.ai_analysis.key_findings.map((finding, idx) => (
-                  <li key={finding.id || idx}>
-                    <span className="font-medium">{finding.title || finding.category || 'Finding'}</span>
-                    {finding.severity && (
-                      <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
-                        finding.severity.toLowerCase() === 'critical' || finding.severity.toLowerCase() === 'high'
-                          ? 'bg-red-500/20 text-red-400'
-                          : finding.severity.toLowerCase() === 'medium'
-                          ? 'bg-orange-500/20 text-orange-400'
-                          : 'bg-slate-500/20 text-slate-400'
-                      }`}>
-                        {finding.severity}
-                      </span>
-                    )}
-                    <span className="text-slate-400 ml-2">- {finding.description}</span>
-                  </li>
-                ))}
-              </ul>
+        if (!aiAnalysis) return null;
+
+        return (
+          <div className="bg-slate-800 p-6 rounded-lg shadow-lg border border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-2xl font-bold text-emerald-400 flex items-center">
+                <Shield className="w-6 h-6 mr-2" />
+                Ghidra Deep Analysis
+                {aiAnalysis.analyzed_functions && (
+                  <span className="ml-2 text-sm text-slate-400 bg-slate-700 px-2 py-0.5 rounded">
+                    {aiAnalysis.analyzed_functions.length} functions
+                  </span>
+                )}
+              </h2>
+              {renderChevronButton(functionsOpen, () => setFunctionsOpen(!functionsOpen), 'Toggle functions')}
             </div>
-          )}
 
-          {/* Analyzed Functions */}
-          {functionsOpen && ghidra_analysis.ai_analysis.analyzed_functions && (
-            <div className="space-y-3">
-              {ghidra_analysis.ai_analysis.analyzed_functions.map((func, idx) => (
-                <div key={idx} className="bg-slate-700/50 p-4 rounded border border-slate-600">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="font-mono text-cyan-300">{func.name}</span>
-                      {func.address && func.address !== 'UNKNOWN' && (
-                        <span className="text-slate-500 text-sm ml-2">@ {func.address}</span>
+            {/* Key Findings */}
+            {aiAnalysis.key_findings && aiAnalysis.key_findings.length > 0 && (
+              <div className="bg-slate-700/50 p-4 rounded border-l-4 border-rose-500 mb-4">
+                <h3 className="font-bold text-lg text-white mb-2">Key Findings</h3>
+                <ul className="list-disc list-inside space-y-1 text-slate-300">
+                  {aiAnalysis.key_findings.map((finding, idx) => (
+                    <li key={finding.id || idx}>
+                      <span className="font-medium">{finding.title || finding.category || 'Finding'}</span>
+                      {finding.severity && (
+                        <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                          finding.severity.toLowerCase() === 'critical' || finding.severity.toLowerCase() === 'high'
+                            ? 'bg-red-500/20 text-red-400'
+                            : finding.severity.toLowerCase() === 'medium'
+                            ? 'bg-orange-500/20 text-orange-400'
+                            : 'bg-slate-500/20 text-slate-400'
+                        }`}>
+                          {finding.severity}
+                        </span>
+                      )}
+                      <span className="text-slate-400 ml-2">- {finding.description}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Analyzed Functions */}
+            {functionsOpen && aiAnalysis.analyzed_functions && (
+              <div className="space-y-3">
+                {aiAnalysis.analyzed_functions.map((func, idx) => (
+                  <div key={idx} className="bg-slate-700/50 p-4 rounded border border-slate-600">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <span className="font-mono text-cyan-300">{func.name}</span>
+                        {func.address && func.address !== 'UNKNOWN' && (
+                          <span className="text-slate-500 text-sm ml-2">@ {func.address}</span>
+                        )}
+                      </div>
+                      {func.risk && (
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
+                          func.risk.toLowerCase().includes('critical') || func.risk.toLowerCase().includes('high')
+                            ? 'bg-red-900 text-red-100'
+                            : func.risk.toLowerCase().includes('medium')
+                            ? 'bg-orange-800 text-orange-100'
+                            : 'bg-slate-600 text-slate-200'
+                        }`}>
+                          {func.risk}
+                        </span>
                       )}
                     </div>
-                    {func.risk && (
-                      <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
-                        func.risk.toLowerCase().includes('critical') || func.risk.toLowerCase().includes('high')
-                          ? 'bg-red-900 text-red-100'
-                          : func.risk.toLowerCase().includes('medium')
-                          ? 'bg-orange-800 text-orange-100'
-                          : 'bg-slate-600 text-slate-200'
-                      }`}>
-                        {func.risk}
-                      </span>
+                    {func.purpose && (
+                      <p className="text-slate-300 text-sm mt-2">{func.purpose}</p>
+                    )}
+                    {func.analysis && (
+                      <p className="text-slate-400 text-xs mt-1">{func.analysis}</p>
                     )}
                   </div>
-                  {func.purpose && (
-                    <p className="text-slate-300 text-sm mt-2">{func.purpose}</p>
-                  )}
-                  {func.analysis && (
-                    <p className="text-slate-400 text-xs mt-1">{func.analysis}</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 7. YARA Matches */}
       {static_analysis?.yara?.matches && static_analysis.yara.matches.length > 0 && (

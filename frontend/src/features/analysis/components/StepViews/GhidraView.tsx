@@ -63,10 +63,24 @@ export function GhidraView({ data }: GhidraViewProps) {
     );
   }
 
-  // Prefer ai_analysis data if available, fallback to top-level
-  const functions = (data.ai_analysis?.analyzed_functions?.length ? data.ai_analysis.analyzed_functions : data.analyzed_functions) || [];
-  const findings = (data.ai_analysis?.key_findings?.length ? data.ai_analysis.key_findings : data.key_findings) || [];
+  // Parse ai_analysis - handle case where $defs contains JSON string
+  let aiAnalysis = data.ai_analysis;
+  if (aiAnalysis && '$defs' in aiAnalysis) {
+    const defs = (aiAnalysis as Record<string, unknown>)['$defs'];
+    if (typeof defs === 'string') {
+      try {
+        aiAnalysis = JSON.parse(defs);
+      } catch {
+        aiAnalysis = undefined;
+      }
+    } else if (typeof defs === 'object' && defs !== null) {
+      aiAnalysis = defs as typeof aiAnalysis;
+    }
+  }
 
+  // Prefer ai_analysis data if available, fallback to top-level
+  const functions = (aiAnalysis?.analyzed_functions?.length ? aiAnalysis.analyzed_functions : data.analyzed_functions) || [];
+  const findings = (aiAnalysis?.key_findings?.length ? aiAnalysis.key_findings : data.key_findings) || [];
   if (functions.length === 0 && findings.length === 0) {
     return (
       <div className="bg-emerald-900/20 rounded-lg p-4 border border-emerald-800/50">
