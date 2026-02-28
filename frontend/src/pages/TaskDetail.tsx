@@ -137,7 +137,7 @@ export default function TaskDetail() {
               </div>
               <div>
                 <p className="text-xs text-slate-500">Status</p>
-                <p className="text-sm text-slate-300">{STATUS_DISPLAY[task.status]?.label || task.status}</p>
+                <p className="text-sm text-slate-300">{task.current_step || STATUS_DISPLAY[task.status]?.label || task.status}</p>
               </div>
             </div>
           </div>
