@@ -1,6 +1,6 @@
 """Langfuse observability integration for AI agents.
 
-This module provides OpenTelemetry-based tracing for all Anthropic/Claude API calls.
+This module provides tracing for Claude Agent SDK calls via Langfuse.
 When enabled, all LLM interactions are automatically traced and sent to Langfuse.
 
 Configuration via environment variables:
@@ -23,12 +23,13 @@ _initialized: bool = False
 
 
 def init_langfuse() -> "Langfuse | None":
-    """Initialize Langfuse observability with OpenTelemetry instrumentation.
+    """Initialize Langfuse observability with Claude Agent SDK instrumentation.
 
     This function:
     1. Checks if Langfuse credentials are configured
-    2. Instruments the Anthropic SDK with OpenTelemetry
-    3. Initializes and verifies the Langfuse client
+    2. Sets up environment variables for langsmith OTEL integration
+    3. Configures Claude Agent SDK instrumentation
+    4. Initializes and verifies the Langfuse client
 
     Returns:
         Langfuse client if successfully initialized, None otherwise.
@@ -56,14 +57,28 @@ def init_langfuse() -> "Langfuse | None":
         return None
 
     try:
-        # Import Langfuse and OpenTelemetry instrumentation
-        from langfuse import get_client
-        from opentelemetry.instrumentation.anthropic import AnthropicInstrumentor
+        # Set up langsmith OTEL environment variables for Claude Agent SDK
+        # These must be set BEFORE importing langsmith
+        os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
+        os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
+        os.environ.setdefault("LANGSMITH_TRACING", "true")
 
-        # Instrument Anthropic SDK - this automatically traces all API calls
-        if not AnthropicInstrumentor().is_instrumented_by_opentelemetry:
-            AnthropicInstrumentor().instrument()
-            logger.debug("Anthropic SDK instrumented with OpenTelemetry")
+        # Import Langfuse
+        from langfuse import get_client
+
+        # Configure Claude Agent SDK instrumentation via langsmith
+        try:
+            from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
+
+            configure_claude_agent_sdk()
+            logger.debug("Claude Agent SDK instrumented with langsmith OTEL")
+        except ImportError:
+            logger.info(
+                "langsmith[claude-agent-sdk] not available. "
+                "Install with: pip install 'langsmith[claude-agent-sdk]' 'langsmith[otel]'"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to configure Claude Agent SDK instrumentation: {e}")
 
         # Get Langfuse client
         _langfuse_client = get_client()
@@ -81,7 +96,7 @@ def init_langfuse() -> "Langfuse | None":
     except ImportError as e:
         logger.warning(
             f"Langfuse dependencies not installed: {e}. "
-            "Install with: pip install langfuse opentelemetry-instrumentation-anthropic"
+            "Install with: pip install langfuse 'langsmith[claude-agent-sdk]' 'langsmith[otel]'"
         )
         return None
     except Exception as e:
