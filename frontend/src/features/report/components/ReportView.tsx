@@ -41,7 +41,7 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
   const [stringsOpen, setStringsOpen] = useState(false);
   const [functionsOpen, setFunctionsOpen] = useState(false);
 
-  const { metadata, static_analysis, malware_report, ghidra_analysis } = result;
+  const { metadata, static_analysis, malware_report, ghidra_analysis, hashes, elf } = result;
 
   const renderChevronButton = (
     open: boolean, 
@@ -101,19 +101,19 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
             </span>
           </div>
           
-          {static_analysis?.elf && (
+          {(elf || static_analysis?.elf) && (
             <>
               <div className="bg-slate-700 p-3 rounded">
                 <span className="block text-slate-400 text-xs">Format</span>
-                <span className="font-mono text-cyan-300">{static_analysis.elf.format || 'N/A'}</span>
+                <span className="font-mono text-cyan-300">{elf?.format || static_analysis?.elf?.format || 'N/A'}</span>
               </div>
               <div className="bg-slate-700 p-3 rounded">
                 <span className="block text-slate-400 text-xs">Architecture</span>
-                <span className="font-mono text-purple-300">{static_analysis.elf.arch || 'N/A'}</span>
+                <span className="font-mono text-purple-300">{elf?.arch || static_analysis?.elf?.arch || 'N/A'}</span>
               </div>
               <div className="bg-slate-700 p-3 rounded">
                 <span className="block text-slate-400 text-xs">Entry Point</span>
-                <span className="font-mono text-yellow-300">{static_analysis.elf.entry_point || 'N/A'}</span>
+                <span className="font-mono text-yellow-300">{elf?.entry_point || static_analysis?.elf?.entry_point || 'N/A'}</span>
               </div>
             </>
           )}
@@ -121,14 +121,14 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
           <div className="bg-slate-700 p-3 rounded col-span-2 lg:col-span-4">
             <span className="block text-slate-400 text-xs">SHA256</span>
             <span className="font-mono text-slate-200 break-all text-[10px] sm:text-xs">
-              {metadata?.hashes?.sha256 || static_analysis?.hashes?.sha256 || 'N/A'}
+              {hashes?.sha256 || metadata?.hashes?.sha256 || static_analysis?.hashes?.sha256 || 'N/A'}
             </span>
           </div>
           
           <div className="bg-slate-700 p-3 rounded col-span-2">
             <span className="block text-slate-400 text-xs">MD5</span>
             <span className="font-mono text-slate-200 break-all text-xs">
-              {metadata?.hashes?.md5 || static_analysis?.hashes?.md5 || 'N/A'}
+              {hashes?.md5 || metadata?.hashes?.md5 || static_analysis?.hashes?.md5 || 'N/A'}
             </span>
           </div>
         </div>

@@ -2,14 +2,31 @@ import { Target, ChevronRight } from 'lucide-react';
 
 interface MitreViewProps {
   data: {
+    // New format from backend
+    mappings?: Array<{
+      tactic: string;
+      technique: string;
+      matched_apis?: string[];
+      confidence?: number;
+    }>;
+    // Legacy format
     techniques?: Array<{
       id: string;
       name: string;
       tactic?: string;
       description?: string;
+      confidence?: number;
     }>;
     tactics?: string[];
   };
+}
+
+interface NormalizedTechnique {
+  id: string;
+  name: string;
+  tactic?: string;
+  description?: string;
+  confidence?: number;
 }
 
 const TACTIC_COLORS: Record<string, string> = {
@@ -28,7 +45,16 @@ const TACTIC_COLORS: Record<string, string> = {
 };
 
 export function MitreView({ data }: MitreViewProps) {
-  const techniques = data.techniques || [];
+  // Normalize data - handle both 'mappings' (backend) and 'techniques' (legacy) formats
+  const techniques: NormalizedTechnique[] = data.mappings?.map(m => ({
+    id: '', // Backend doesn't provide technique ID
+    name: m.technique,
+    tactic: m.tactic,
+    description: m.matched_apis?.length 
+      ? `Matched APIs: ${m.matched_apis.join(', ')}` 
+      : undefined,
+    confidence: m.confidence,
+  })) || data.techniques || [];
 
   if (techniques.length === 0) {
     return (
@@ -45,7 +71,7 @@ export function MitreView({ data }: MitreViewProps) {
     if (!acc[tactic]) acc[tactic] = [];
     acc[tactic].push(tech);
     return acc;
-  }, {} as Record<string, typeof techniques>);
+  }, {} as Record<string, NormalizedTechnique[]>);
 
   return (
     <div className="space-y-4">
@@ -68,10 +94,17 @@ export function MitreView({ data }: MitreViewProps) {
               {techs.map((tech, i) => (
                 <div key={i} className="bg-slate-900/50 rounded px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono bg-slate-800 px-1.5 py-0.5 rounded text-cyan-400">
-                      {tech.id}
-                    </span>
+                    {tech.id && (
+                      <span className="text-xs font-mono bg-slate-800 px-1.5 py-0.5 rounded text-cyan-400">
+                        {tech.id}
+                      </span>
+                    )}
                     <span className="text-sm text-slate-200">{tech.name}</span>
+                    {tech.confidence !== undefined && (
+                      <span className="text-xs text-slate-500 ml-auto">
+                        {Math.round(tech.confidence * 100)}% confidence
+                      </span>
+                    )}
                   </div>
                   {tech.description && (
                     <p className="text-xs text-slate-400 mt-1 line-clamp-2">{tech.description}</p>
