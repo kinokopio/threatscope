@@ -126,23 +126,38 @@ export function inferStepStates(
     };
   }
 
-  // Dynamic Analysis
-  if (result.dynamic_analysis !== undefined && !newStates.dynamic?.status) {
+  // Dynamic Analysis - only set status when we have actual results
+  if (result.dynamic_analysis && !newStates.dynamic?.status) {
     const dynamic = result.dynamic_analysis;
-    if (!dynamic || Object.keys(dynamic).length === 0) {
-      newStates.dynamic = { status: 'completed', preview: { status: 'Skipped' } };
-    } else if (dynamic.error) {
-      newStates.dynamic = { status: 'completed', preview: { status: 'Skipped', reason: dynamic.error } };
-    } else {
-      const syscalls = dynamic?.syscalls || [];
+    
+    // Check if it was skipped (has error or skipped flag)
+    if (dynamic.skipped || dynamic.error) {
       newStates.dynamic = {
         status: 'completed',
         preview: {
-          syscalls: Array.isArray(syscalls) ? syscalls.length : 0,
-          network: Array.isArray(dynamic?.network_activity) ? dynamic.network_activity.length : 0,
+          status: 'Skipped',
+          reason: dynamic.error || 'Not available',
+        },
+      };
+    } else if (dynamic.success !== undefined) {
+      // Has actual results
+      const syscallCount = dynamic.syscall_summary?.total_count || 
+        (Array.isArray(dynamic.syscalls) ? dynamic.syscalls.length : 0);
+      const networkCount = dynamic.network_summary?.total_connections || 
+        (Array.isArray(dynamic.network_activity) ? dynamic.network_activity.length : 0);
+      
+      newStates.dynamic = {
+        status: 'completed',
+        preview: {
+          duration: dynamic.duration_seconds ? `${dynamic.duration_seconds.toFixed(1)}s` : undefined,
+          events: dynamic.raw_events_count || 0,
+          security_alerts: Array.isArray(dynamic.security_events) ? dynamic.security_events.length : 0,
+          syscalls: syscallCount,
+          network: networkCount,
         },
       };
     }
+    // If dynamic_analysis exists but has no meaningful data, don't set status yet
   }
 
   // Ghidra Analysis
