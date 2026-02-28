@@ -838,11 +838,26 @@ class GhidraAgent(BaseAgent):
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse JSON from text response")
 
-            # Last resort: return findings from memory
+            # Last resort: return findings from memory, normalized to correct format
+            memory_findings = self.memory_store.get_findings()
+            normalized_findings = []
+            for f in memory_findings:
+                normalized_findings.append({
+                    "id": f.get("id", f"finding_{len(normalized_findings)+1:03d}"),
+                    "title": f.get("title") or f.get("type") or f.get("summary", "Finding")[:50],
+                    "category": f.get("category") or f.get("type", "Unknown"),
+                    "description": f.get("description") or f.get("summary", ""),
+                    "severity": f.get("severity", "MEDIUM").upper(),
+                    # Ensure evidence is always a list
+                    "evidence": f.get("evidence", []) if isinstance(f.get("evidence"), list) else [f.get("evidence")] if f.get("evidence") else [],
+                    "impact": f.get("impact"),
+                    "recommendation": f.get("recommendation"),
+                })
+            
             return {
                 "raw_analysis": result_text,
                 "analyzed_functions": [],
-                "key_findings": self.memory_store.get_findings(),
+                "key_findings": normalized_findings,
             }
 
         # Run with timeout
@@ -979,11 +994,29 @@ class GhidraAgent(BaseAgent):
             [
                 "## Instructions",
                 "1. Use memory_get_function to check if a function was already analyzed",
-                "2. Use memory_save_finding to save important discoveries",
+                "2. Use memory_save_finding to save important discoveries as you find them",
                 "3. Use memory_cache_function after analyzing each function",
                 "4. Focus on suspicious functions identified in static analysis",
-                "5. Output final results as JSON with: analyzed_functions, "
-                "callgraph, analysis_path, key_findings",
+                "",
+                "## CRITICAL: Final Output Format",
+                "After completing your analysis, you MUST output a JSON object with this EXACT structure:",
+                "```json",
+                "{",
+                '  "analyzed_functions": [',
+                '    {"name": "func_name", "address": "0x...", "purpose": "...", "risk": "critical|high|medium|low"}',
+                "  ],",
+                '  "key_findings": [',
+                '    {"id": "finding_001", "title": "...", "category": "...", "description": "...", "severity": "CRITICAL|HIGH|MEDIUM|LOW", "evidence": ["item1", "item2"]}',
+                "  ],",
+                '  "analysis_path": ["Step 1: ...", "Step 2: ..."]',
+                "}",
+                "```",
+                "",
+                "IMPORTANT:",
+                "- evidence MUST be an array of strings, never a single string",
+                "- risk uses lowercase: critical, high, medium, low",
+                "- severity uses UPPERCASE: CRITICAL, HIGH, MEDIUM, LOW",
+                "- Output valid JSON at the end of your analysis",
             ]
         )
 
