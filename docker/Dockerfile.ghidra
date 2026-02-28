@@ -51,5 +51,5 @@ ENV GHIDRA_HTTP_URL=http://localhost:8000
 # Expose ports
 EXPOSE 8000 9000
 
-# Run both HTTP and MCP servers using the correct module path
-CMD ["bash", "-lc", "python -c 'import uvicorn; uvicorn.run(\"src.threatscope.ghidra.http_server:app\", host=\"0.0.0.0\", port=8000)' & sleep 2 && python -c 'from src.threatscope.ghidra.mcp_server import mcp, MCP_HOST, MCP_PORT; import uvicorn; uvicorn.run(mcp.get_app(), host=MCP_HOST, port=MCP_PORT)'"]
+# Run both HTTP and MCP servers
+CMD ["bash", "-lc", "uvicorn src.threatscope.ghidra.http_server:app --host 0.0.0.0 --port 8000 & sleep 2 && python -m src.threatscope.ghidra.mcp_server"]
