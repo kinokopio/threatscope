@@ -106,9 +106,21 @@ export interface ThreatIntel {
 }
 
 export interface DynamicAnalysis {
+  success?: boolean;
+  skipped?: boolean;
   syscalls?: string[];
+  syscall_summary?: {
+    total_count?: number;
+  };
   network_connections?: string[];
+  network_activity?: Array<unknown>;
+  network_summary?: {
+    total_connections?: number;
+  };
   file_operations?: string[];
+  security_events?: Array<unknown>;
+  raw_events_count?: number;
+  duration_seconds?: number;
   error?: string;
   help?: string;
 }

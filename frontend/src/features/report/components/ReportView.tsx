@@ -337,7 +337,21 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
               <h3 className="font-bold text-lg text-white mb-2">Key Findings</h3>
               <ul className="list-disc list-inside space-y-1 text-slate-300">
                 {ghidra_analysis.ai_analysis.key_findings.map((finding, idx) => (
-                  <li key={idx}>{finding}</li>
+                  <li key={finding.id || idx}>
+                    <span className="font-medium">{finding.title || finding.category || 'Finding'}</span>
+                    {finding.severity && (
+                      <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${
+                        finding.severity.toLowerCase() === 'critical' || finding.severity.toLowerCase() === 'high'
+                          ? 'bg-red-500/20 text-red-400'
+                          : finding.severity.toLowerCase() === 'medium'
+                          ? 'bg-orange-500/20 text-orange-400'
+                          : 'bg-slate-500/20 text-slate-400'
+                      }`}>
+                        {finding.severity}
+                      </span>
+                    )}
+                    <span className="text-slate-400 ml-2">- {finding.description}</span>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -351,34 +365,27 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
                   <div className="flex items-start justify-between">
                     <div>
                       <span className="font-mono text-cyan-300">{func.name}</span>
-                      <span className="text-slate-500 text-sm ml-2">@ {func.address}</span>
+                      {func.address && func.address !== 'UNKNOWN' && (
+                        <span className="text-slate-500 text-sm ml-2">@ {func.address}</span>
+                      )}
                     </div>
-                    {func.behavior?.risk_level && (
+                    {func.risk && (
                       <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase ${
-                        func.behavior.risk_level === 'high' || func.behavior.risk_level === 'critical'
+                        func.risk.toLowerCase().includes('critical') || func.risk.toLowerCase().includes('high')
                           ? 'bg-red-900 text-red-100'
-                          : func.behavior.risk_level === 'medium'
+                          : func.risk.toLowerCase().includes('medium')
                           ? 'bg-orange-800 text-orange-100'
                           : 'bg-slate-600 text-slate-200'
                       }`}>
-                        {func.behavior.risk_level}
+                        {func.risk}
                       </span>
                     )}
                   </div>
-                  {func.summary && (
-                    <p className="text-slate-300 text-sm mt-2">{func.summary}</p>
+                  {func.purpose && (
+                    <p className="text-slate-300 text-sm mt-2">{func.purpose}</p>
                   )}
-                  {func.behavior?.actions && func.behavior.actions.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {func.behavior.actions.map((action, aidx) => (
-                        <span 
-                          key={aidx} 
-                          className="px-2 py-0.5 rounded text-xs bg-slate-600 text-slate-200"
-                        >
-                          {action}
-                        </span>
-                      ))}
-                    </div>
+                  {func.analysis && (
+                    <p className="text-slate-400 text-xs mt-1">{func.analysis}</p>
                   )}
                 </div>
               ))}

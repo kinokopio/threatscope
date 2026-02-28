@@ -106,8 +106,8 @@ export const StepDetailContent = memo(function StepDetailContent({
           return (
             <div className="bg-yellow-900/20 rounded-lg p-4 border border-yellow-800/50">
               <p className="text-yellow-400 text-sm font-medium">⚠️ {String(dynData.error)}</p>
-              {dynData.help && (
-                <p className="text-slate-400 text-xs mt-2">{String(dynData.help)}</p>
+              {typeof dynData.help === 'string' && dynData.help && (
+                <p className="text-slate-400 text-xs mt-2">{dynData.help}</p>
               )}
             </div>
           );
