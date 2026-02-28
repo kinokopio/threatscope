@@ -232,6 +232,58 @@ def get_global_callgraph() -> dict[str, Any]:
     return _request("GET", "/callgraph")
 
 
+@mcp.tool
+def run_script(code: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Execute a Python script in the Ghidra context.
+
+    The script has access to program, flat_api, listing, func_manager,
+    symbol_table, memory, args, and results dict.
+
+    Args:
+        code: Python code to execute
+        args: Optional arguments passed to the script
+
+    Returns:
+        Dict with success, results, and optionally error
+
+    Example:
+        code = '''
+        for func in func_manager.getFunctions(True):
+            if 'connect' in func.getName().lower():
+                results['found'] = func.getName()
+                break
+        '''
+    """
+    return _request("POST", "/script/run", json={"code": code, "args": args})
+
+
+@mcp.tool
+def clear_flow_overrides(target: str | None = None) -> dict[str, Any]:
+    """Clear incorrect flow overrides that prevent proper control flow analysis.
+
+    Args:
+        target: Optional function name/address. If None, clears all.
+
+    Returns:
+        Dict with cleared count and details
+    """
+    params = {"target": target} if target else None
+    return _request("POST", "/utils/clear_flow_overrides", params=params)
+
+
+@mcp.tool
+def find_orphan_code(min_size: int = 10) -> list[dict[str, Any]]:
+    """Find potential orphan code regions not in any function.
+
+    Args:
+        min_size: Minimum size in bytes for orphan regions
+
+    Returns:
+        List of orphan code regions with address and size
+    """
+    return _request("GET", "/utils/orphan_code", params={"min_size": min_size})
+
+
 def _build_http_app():
     """Build HTTP app with CORS middleware."""
     if ALLOW_ORIGINS.strip() == "*":
