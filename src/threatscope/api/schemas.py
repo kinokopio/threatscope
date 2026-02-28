@@ -141,11 +141,26 @@ class DynamicAnalysisResult(BaseModel):
 
     success: bool = False
     method: str | None = None
-    syscalls: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
+    duration_seconds: float = 0.0
+    # Process information
+    process_tree: list[dict[str, Any]] = Field(default_factory=list)
+    # Network information
+    network_summary: dict[str, Any] = Field(default_factory=dict)
     network_activity: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
-    file_activity: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
+    # Security events
+    security_events: list[dict[str, Any]] = Field(default_factory=list)
+    # Syscall information
+    syscall_summary: dict[str, Any] = Field(default_factory=dict)
+    syscalls: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
+    # File activity
+    file_activity: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=dict)
+    # Raw data
+    raw_events_count: int = 0
+    event_types: list[str] = Field(default_factory=list)
+    # Error handling
     error: str | None = None
-
+    skipped: bool = False
+    help: str | None = None
 class GhidraAnalysisResult(BaseModel):
     """Ghidra analysis results."""
 
