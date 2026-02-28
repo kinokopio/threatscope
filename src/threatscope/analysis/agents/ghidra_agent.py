@@ -30,8 +30,8 @@ from src.threatscope.ghidra.client import GhidraClient
 
 logger = logging.getLogger(__name__)
 
-# Default timeout for AI analysis (5 minutes for complex binary analysis)
-DEFAULT_AI_TIMEOUT = 300
+# Default timeout for AI analysis (10 minutes for complex binary analysis)
+DEFAULT_AI_TIMEOUT = 600
 
 
 # =============================================================================
