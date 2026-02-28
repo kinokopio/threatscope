@@ -623,7 +623,10 @@ class GhidraAgent(BaseAgent):
         memory_server = create_memory_tools_server(self.memory_store)
 
         # Configure agent options with structured output
+        # tools=[] disables all built-in tools (Bash, Read, Write, etc.)
+        # We only want AI to use our MCP tools for controlled analysis
         options = ClaudeAgentOptions(
+            tools=[],  # Disable built-in tools - only use MCP tools
             system_prompt=system_prompt,
             model="claude-sonnet-4-20250514",
             mcp_servers={
