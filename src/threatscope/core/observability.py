@@ -1,7 +1,8 @@
 """Langfuse observability integration for AI agents.
 
 This module provides tracing for Claude Agent SDK calls via Langfuse.
-When enabled, all LLM interactions are automatically traced and sent to Langfuse.
+Uses langsmith's Claude Agent SDK integration which automatically traces
+all tool calls, model runs, and conversation flows.
 
 Configuration via environment variables:
     LANGFUSE_PUBLIC_KEY: Your Langfuse public key
@@ -27,9 +28,13 @@ def init_langfuse() -> "Langfuse | None":
 
     This function:
     1. Checks if Langfuse credentials are configured
-    2. Sets up environment variables for langsmith OTEL integration
-    3. Configures Claude Agent SDK instrumentation
-    4. Initializes and verifies the Langfuse client
+    2. Configures langsmith's Claude Agent SDK instrumentation
+    3. Initializes and verifies the Langfuse client
+
+    The langsmith integration automatically traces:
+    - Chain runs for each conversation stream
+    - Model runs for each assistant turn
+    - All tool calls (built-in, MCP, SDK tools)
 
     Returns:
         Langfuse client if successfully initialized, None otherwise.
@@ -57,8 +62,8 @@ def init_langfuse() -> "Langfuse | None":
         return None
 
     try:
-        # Set up langsmith OTEL environment variables for Claude Agent SDK
-        # These must be set BEFORE importing langsmith
+        # Set up langsmith OTEL environment variables
+        # These enable OpenTelemetry export to Langfuse
         os.environ.setdefault("LANGSMITH_OTEL_ENABLED", "true")
         os.environ.setdefault("LANGSMITH_OTEL_ONLY", "true")
         os.environ.setdefault("LANGSMITH_TRACING", "true")
@@ -66,37 +71,41 @@ def init_langfuse() -> "Langfuse | None":
         # Import Langfuse
         from langfuse import get_client
 
+        # Get Langfuse client first to verify connection
+        _langfuse_client = get_client()
+
+        # Verify connection before configuring instrumentation
+        if not _langfuse_client.auth_check():
+            logger.warning("Langfuse authentication failed - check your API keys")
+            _langfuse_client = None
+            return None
+
         # Configure Claude Agent SDK instrumentation via langsmith
+        # This patches ClaudeSDKClient to automatically trace all calls
         try:
             from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 
-            configure_claude_agent_sdk()
-            logger.debug("Claude Agent SDK instrumented with langsmith OTEL")
+            if configure_claude_agent_sdk():
+                logger.info("Claude Agent SDK instrumentation enabled")
+            else:
+                logger.warning("Failed to configure Claude Agent SDK instrumentation")
         except ImportError:
             logger.info(
                 "langsmith[claude-agent-sdk] not available. "
                 "Install with: pip install 'langsmith[claude-agent-sdk]' 'langsmith[otel]'"
             )
         except Exception as e:
+            # Log but continue - Langfuse client is still usable for manual tracing
             logger.warning(f"Failed to configure Claude Agent SDK instrumentation: {e}")
 
-        # Get Langfuse client
-        _langfuse_client = get_client()
-
-        # Verify connection
-        if _langfuse_client.auth_check():
-            base_url = os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
-            logger.info(f"Langfuse observability enabled ({base_url})")
-            return _langfuse_client
-        else:
-            logger.warning("Langfuse authentication failed - check your API keys")
-            _langfuse_client = None
-            return None
+        base_url = os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+        logger.info(f"Langfuse observability enabled ({base_url})")
+        return _langfuse_client
 
     except ImportError as e:
         logger.warning(
-            f"Langfuse dependencies not installed: {e}. "
-            "Install with: pip install langfuse 'langsmith[claude-agent-sdk]' 'langsmith[otel]'"
+            f"Langfuse not installed: {e}. "
+            "Install with: pip install langfuse"
         )
         return None
     except Exception as e:
