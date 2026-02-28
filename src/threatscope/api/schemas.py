@@ -161,14 +161,32 @@ class DynamicAnalysisResult(BaseModel):
     error: str | None = None
     skipped: bool = False
     help: str | None = None
+class GhidraAIAnalysis(BaseModel):
+    """AI analysis results from Ghidra agent."""
+
+    analyzed_functions: list[dict[str, Any]] = Field(default_factory=list)
+    key_findings: list[dict[str, Any]] = Field(default_factory=list)
+    malware_classification: dict[str, Any] | None = None
+    call_graph: dict[str, Any] | None = None
+    analysis_path: list[str] = Field(default_factory=list)
+    analysis_metadata: dict[str, Any] | None = None
+
+
 class GhidraAnalysisResult(BaseModel):
     """Ghidra analysis results."""
 
     status: str | None = None
     ghidra_available: bool = False
+    ghidra_info: dict[str, Any] | None = None
+    ai_analysis: GhidraAIAnalysis | None = None
+    # Fallback fields for direct access (backward compatibility)
     analyzed_functions: list[dict[str, Any]] = Field(default_factory=list)
     key_findings: list[dict[str, Any]] = Field(default_factory=list)
-
+    # Additional fields
+    cached_functions: list[str] = Field(default_factory=list)
+    findings_count: int = 0
+    message: str | None = None
+    error: str | None = None
 
 class MalwareReport(BaseModel):
     """Final malware analysis report."""

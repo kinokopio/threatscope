@@ -328,6 +328,16 @@ def _run_analysis_background(
             if status == 'running':
                 # Update current step
                 db.update_current_step(task_id, step_name)
+                
+                # Update task status based on step_id for major phases
+                step_to_status = {
+                    "ghidra_analysis": TaskStatus.GHIDRA_ANALYSIS.value,
+                    "report_generation": TaskStatus.REPORT_GENERATION.value,
+                }
+                new_status = step_to_status.get(step_id)
+                if new_status:
+                    db.update_task_status(task_id, new_status)
+                    logger.debug(f"Updated task status to {new_status}")
             
             if status == 'completed' and current_results:
                 # Map step_id to database field and save

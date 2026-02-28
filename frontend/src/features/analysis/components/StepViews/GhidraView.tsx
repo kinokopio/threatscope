@@ -59,8 +59,9 @@ export function GhidraView({ data }: GhidraViewProps) {
     );
   }
 
-  const functions = data.analyzed_functions || data.ai_analysis?.analyzed_functions || [];
-  const findings = data.key_findings || data.ai_analysis?.key_findings || [];
+  // Prefer ai_analysis data if available, fallback to top-level
+  const functions = (data.ai_analysis?.analyzed_functions?.length ? data.ai_analysis.analyzed_functions : data.analyzed_functions) || [];
+  const findings = (data.ai_analysis?.key_findings?.length ? data.ai_analysis.key_findings : data.key_findings) || [];
 
   if (functions.length === 0 && findings.length === 0) {
     return (

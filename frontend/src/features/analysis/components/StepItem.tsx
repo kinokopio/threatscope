@@ -113,16 +113,24 @@ export const StepItem = memo(function StepItem({
             </p>
 
             {/* Step Preview (only when collapsed) */}
-            {!isExpanded && effectiveStatus === 'completed' && stepState?.preview && (
-              <StepPreview preview={stepState.preview} />
-            )}
+            {(() => {
+              if (!isExpanded && effectiveStatus === 'completed' && stepState?.preview) {
+                return <StepPreview preview={stepState.preview} />;
+              }
+              return null;
+            })()}
 
             {/* Running state preview - show current step */}
-            {effectiveStatus === 'running' && stepState?.preview?.currentStep && (
-              <div className="mt-2 text-xs text-cyan-400 animate-pulse">
-                {String(stepState.preview.currentStep)}
-              </div>
-            )}
+            {(() => {
+              if (effectiveStatus === 'running' && stepState?.preview?.currentStep) {
+                return (
+                  <div className="mt-2 text-xs text-cyan-400 animate-pulse">
+                    {String(stepState.preview.currentStep)}
+                  </div>
+                );
+              }
+              return null;
+            })()}
           </div>
         </div>
       </div>
