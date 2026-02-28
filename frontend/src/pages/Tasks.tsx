@@ -19,7 +19,7 @@ import {
 import { useTasks, useTask } from '../shared/api';
 import { Spinner } from '../shared/ui';
 
-type TaskStatus = 'pending' | 'queued' | 'stage_1_4' | 'stage_5' | 'stage_6' | 'completed' | 'failed';
+type TaskStatus = 'pending' | 'queued' | 'static_analysis' | 'ghidra_analysis' | 'report_generation' | 'completed' | 'failed';
 type FilterType = 'all' | 'in_progress' | 'completed' | 'failed';
 
 interface Task {
@@ -54,7 +54,7 @@ const STATUS_CONFIG: Record<TaskStatus, {
     label: 'Queued',
     description: 'In queue'
   },
-  stage_1_4: { 
+  static_analysis: { 
     icon: Activity, 
     color: 'text-cyan-400', 
     bg: 'bg-cyan-500/10', 
@@ -62,7 +62,7 @@ const STATUS_CONFIG: Record<TaskStatus, {
     label: 'Static Analysis',
     description: 'Analyzing binary structure'
   },
-  stage_5: { 
+  ghidra_analysis: { 
     icon: Cpu, 
     color: 'text-violet-400', 
     bg: 'bg-violet-500/10', 
@@ -70,7 +70,7 @@ const STATUS_CONFIG: Record<TaskStatus, {
     label: 'Ghidra Analysis',
     description: 'Deep reverse engineering'
   },
-  stage_6: { 
+  report_generation: { 
     icon: Brain, 
     color: 'text-pink-400', 
     bg: 'bg-pink-500/10', 
@@ -103,7 +103,7 @@ const FILTER_OPTIONS: { value: FilterType; label: string; icon: typeof Filter }[
   { value: 'failed', label: 'Failed', icon: XCircle },
 ];
 
-const IN_PROGRESS_STATUSES = ['pending', 'queued', 'stage_1_4', 'stage_5', 'stage_6'];
+const IN_PROGRESS_STATUSES = ['pending', 'queued', 'static_analysis', 'ghidra_analysis', 'report_generation'];
 
 interface TaskRowProps {
   task: Task;
