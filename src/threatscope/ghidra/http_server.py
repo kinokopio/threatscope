@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from src.threatscope.ghidra.analyzer import GhidraAnalyzer
 
@@ -202,6 +203,20 @@ def decompile_batch(targets: list[str]) -> list[dict[str, Any]]:
         return require_analyzer().decompile_batch(targets)
 
 
+@app.post("/functions/xrefs_batch")
+def get_xrefs_batch(targets: list[str]) -> list[dict[str, Any]]:
+    """Batch get cross-references for multiple functions."""
+    with analyzer_lock:
+        return require_analyzer().get_function_xrefs_batch(targets)
+
+
+@app.get("/functions/with_callers")
+def get_functions_with_callers(min_callers: int = 1, limit: int = 100) -> list[dict[str, Any]]:
+    """Get functions that have at least min_callers callers."""
+    with analyzer_lock:
+        return require_analyzer().get_functions_with_callers(min_callers, limit)
+
+
 # --- Strings ---
 
 
@@ -261,6 +276,84 @@ def get_sections() -> list[dict[str, Any]]:
     """Get program sections."""
     with analyzer_lock:
         return require_analyzer().get_sections()
+
+
+# --- Entry Points & Variables ---
+
+
+@app.get("/entry_points")
+def get_entry_points() -> list[dict[str, Any]]:
+    """Get program entry points."""
+    with analyzer_lock:
+        return require_analyzer().get_entry_points()
+
+
+@app.get("/functions/{target}/variables")
+def get_function_variables(target: str) -> dict[str, Any]:
+    """Get function variables (parameters and locals)."""
+    with analyzer_lock:
+        result = require_analyzer().get_function_variables(target)
+        if result is None:
+            raise HTTPException(404, f"Function not found: {target}")
+        return result
+
+
+@app.get("/functions/{target}/hash")
+def get_function_hash(target: str) -> dict[str, Any]:
+    """Get SHA-256 hash of normalized function opcodes."""
+    with analyzer_lock:
+        result = require_analyzer().get_function_hash(target)
+        if result is None:
+            raise HTTPException(404, f"Function not found: {target}")
+        return result
+
+
+# --- Search & Globals ---
+
+
+@app.post("/search/bytes")
+def search_byte_patterns(pattern_hex: str, max_results: int = 100) -> list[dict[str, Any]]:
+    """Search for byte patterns in memory."""
+    with analyzer_lock:
+        return require_analyzer().search_byte_patterns(pattern_hex, max_results)
+
+
+@app.get("/globals")
+def list_globals(limit: int = 500) -> list[dict[str, Any]]:
+    """Get global variables."""
+    with analyzer_lock:
+        return require_analyzer().list_globals(limit)
+
+
+# --- Script Execution & Utilities ---
+
+
+class ScriptRequest(BaseModel):
+    """Request model for script execution."""
+
+    code: str
+    args: dict[str, Any] | None = None
+
+
+@app.post("/script/run")
+def run_script(request: ScriptRequest) -> dict[str, Any]:
+    """Execute a Python script in the Ghidra context."""
+    with analyzer_lock:
+        return require_analyzer().run_script(request.code, request.args)
+
+
+@app.post("/utils/clear_flow_overrides")
+def clear_flow_overrides(target: str | None = None) -> dict[str, Any]:
+    """Clear incorrect flow overrides that prevent proper control flow analysis."""
+    with analyzer_lock:
+        return require_analyzer().clear_flow_overrides(target)
+
+
+@app.get("/utils/orphan_code")
+def find_orphan_code(min_size: int = 10) -> list[dict[str, Any]]:
+    """Find potential orphan code regions not in any function."""
+    with analyzer_lock:
+        return require_analyzer().find_orphan_code(min_size)
 
 
 # --- Entry Point ---

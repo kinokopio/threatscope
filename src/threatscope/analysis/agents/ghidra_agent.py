@@ -6,8 +6,6 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Literal
 
-from pydantic import BaseModel, Field
-
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
@@ -23,6 +21,7 @@ from claude_agent_sdk import (
     create_sdk_mcp_server,
     tool,
 )
+from pydantic import BaseModel, Field
 
 from src.threatscope.analysis.agents.base import AgentConfig, AgentResult, BaseAgent
 from src.threatscope.analysis.agents.memory_store import MemoryStore
@@ -46,7 +45,9 @@ class AnalyzedFunction(BaseModel):
     name: str = Field(description="Function name")
     address: str = Field(description="Hex address like 0x12345678 or 'unknown'")
     purpose: str = Field(description="Brief description of what this function does")
-    analysis: str | None = Field(default=None, description="Detailed analysis of the function behavior")
+    analysis: str | None = Field(
+        default=None, description="Detailed analysis of the function behavior"
+    )
     risk: Literal["critical", "high", "medium", "low"] = Field(description="Risk level")
 
 
@@ -75,55 +76,22 @@ class GhidraAnalysisOutput(BaseModel):
     """Structured output schema for Ghidra AI analysis."""
 
     analyzed_functions: list[AnalyzedFunction] = Field(
-        default_factory=list,
-        description="List of analyzed functions with their details"
+        default_factory=list, description="List of analyzed functions with their details"
     )
     key_findings: list[KeyFinding] = Field(
-        default_factory=list,
-        description="Key security findings from the analysis"
+        default_factory=list, description="Key security findings from the analysis"
     )
     malware_classification: MalwareClassification | None = Field(
-        default=None,
-        description="Malware classification if malicious"
+        default=None, description="Malware classification if malicious"
     )
     analysis_path: list[str] = Field(
         default_factory=list,
-        description="Steps taken during analysis (e.g., 'Step 1: Analyzed entry point')"
+        description="Steps taken during analysis (e.g., 'Step 1: Analyzed entry point')",
     )
-
-
-
-import asyncio
-import json
-import logging
-from pathlib import Path
-from typing import Any, Callable
-
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ClaudeSDKClient,
-    ClaudeSDKError,
-    CLIConnectionError,
-    CLINotFoundError,
-    HookMatcher,
-    ProcessError,
-    ResultMessage,
-    TextBlock,
-    ToolUseBlock,
-    create_sdk_mcp_server,
-    tool,
-)
-
-from src.threatscope.analysis.agents.base import AgentConfig, AgentResult, BaseAgent
-from src.threatscope.analysis.agents.memory_store import MemoryStore
-from src.threatscope.analysis.agents.utils_tools import create_utils_mcp_server
-from src.threatscope.ghidra.client import GhidraClient
-
-logger = logging.getLogger(__name__)
-
-# Default timeout for AI analysis (5 minutes for complex binary analysis)
-DEFAULT_AI_TIMEOUT = 300
+    attack_chain: str | None = Field(
+        default=None,
+        description="Attack flow chain: FuncA (purpose) -> FuncB (purpose) -> FuncC (purpose)",
+    )
 
 
 def create_memory_tools_server(memory_store: MemoryStore):
@@ -388,7 +356,10 @@ class GhidraAgent(BaseAgent):
                                 "ghidra_upload",
                                 f"Uploading binary ({file_size_mb:.1f} MB)",
                                 "running",
-                                {"file_size_bytes": file_size, "file_size_mb": round(file_size_mb, 2)},
+                                {
+                                    "file_size_bytes": file_size,
+                                    "file_size_mb": round(file_size_mb, 2),
+                                },
                             )
                         except Exception:
                             pass
@@ -584,6 +555,7 @@ class GhidraAgent(BaseAgent):
         """
         # Check for API key first to fail fast
         from src.threatscope.core.config import get_settings
+
         settings = get_settings()
         if not settings.llm.api_key:
             raise ValueError("ANTHROPIC_API_KEY not configured in .env or environment")
@@ -756,10 +728,10 @@ class GhidraAgent(BaseAgent):
                         )
 
                         # Try structured output first (preferred)
-                        if hasattr(msg, 'structured_output') and msg.structured_output:
+                        if hasattr(msg, "structured_output") and msg.structured_output:
                             logger.info("Using structured output from Claude")
                             structured_result = msg.structured_output
-                            
+
                             # Send completion notification
                             if self._progress_callback:
                                 try:
@@ -769,15 +741,19 @@ class GhidraAgent(BaseAgent):
                                         "completed",
                                         {
                                             "tool_call_count": tool_call_count,
-                                            "functions_analyzed": len(structured_result.get('analyzed_functions', [])),
-                                            "findings_saved": len(structured_result.get('key_findings', [])),
+                                            "functions_analyzed": len(
+                                                structured_result.get("analyzed_functions", [])
+                                            ),
+                                            "findings_saved": len(
+                                                structured_result.get("key_findings", [])
+                                            ),
                                             "num_turns": getattr(msg, "num_turns", 0),
                                             "cost_usd": getattr(msg, "total_cost_usd", 0),
                                         },
                                     )
                                 except Exception as e:
                                     logger.debug(f"Progress callback failed: {e}")
-                            
+
                             return structured_result
 
                         # Send completion notification for non-structured
@@ -842,18 +818,26 @@ class GhidraAgent(BaseAgent):
             memory_findings = self.memory_store.get_findings()
             normalized_findings = []
             for f in memory_findings:
-                normalized_findings.append({
-                    "id": f.get("id", f"finding_{len(normalized_findings)+1:03d}"),
-                    "title": f.get("title") or f.get("type") or f.get("summary", "Finding")[:50],
-                    "category": f.get("category") or f.get("type", "Unknown"),
-                    "description": f.get("description") or f.get("summary", ""),
-                    "severity": f.get("severity", "MEDIUM").upper(),
-                    # Ensure evidence is always a list
-                    "evidence": f.get("evidence", []) if isinstance(f.get("evidence"), list) else [f.get("evidence")] if f.get("evidence") else [],
-                    "impact": f.get("impact"),
-                    "recommendation": f.get("recommendation"),
-                })
-            
+                normalized_findings.append(
+                    {
+                        "id": f.get("id", f"finding_{len(normalized_findings) + 1:03d}"),
+                        "title": f.get("title")
+                        or f.get("type")
+                        or f.get("summary", "Finding")[:50],
+                        "category": f.get("category") or f.get("type", "Unknown"),
+                        "description": f.get("description") or f.get("summary", ""),
+                        "severity": f.get("severity", "MEDIUM").upper(),
+                        # Ensure evidence is always a list
+                        "evidence": f.get("evidence", [])
+                        if isinstance(f.get("evidence"), list)
+                        else [f.get("evidence")]
+                        if f.get("evidence")
+                        else [],
+                        "impact": f.get("impact"),
+                        "recommendation": f.get("recommendation"),
+                    }
+                )
+
             return {
                 "raw_analysis": result_text,
                 "analyzed_functions": [],
@@ -990,24 +974,75 @@ class GhidraAgent(BaseAgent):
                 ]
             )
 
+        # Build suspicious functions list from static analysis
+        suspicious_funcs = []
+        func_categories = static_results.get("function_categories", {})
+        for category in ["Networking", "Cryptography", "Evasion", "Process", "Persistence"]:
+            if category in func_categories:
+                suspicious_funcs.extend(func_categories[category][:5])
+
         parts.extend(
             [
+                "## Investigation Protocol (MANDATORY)",
+                "",
+                "### 1. Evidence Verification",
+                "- Any function flagged as suspicious MUST be verified with decompile_function",
+                "- Do NOT trust static analysis classifications blindly",
+                "",
+                "### 2. Upstream Tracing (CRITICAL)",
+                "- For ANY suspicious function, MUST call function_xrefs to find its callers",
+                "- Trace until you find: entry point, exported function, or thread creation",
+                "- Build complete chain: decrypt -> inject -> communicate",
+                "",
+                "### 3. Falsification Logic",
+                "- If decompilation shows legitimate operations, DOWNGRADE risk level",
+                "- Be skeptical, verify everything",
+                "",
+            ]
+        )
+
+        if suspicious_funcs:
+            parts.extend(
+                [
+                    "## Suspicious Functions to Investigate",
+                    "These were flagged by static analysis - VERIFY with decompile_function:",
+                    ", ".join(suspicious_funcs[:20]),
+                    "",
+                ]
+            )
+
+        parts.extend(
+            [
+                "## Tool Usage Guidelines",
+                "",
+                "### MUST call decompile_function when:",
+                "- Function involves sensitive APIs (VirtualAllocEx, CreateRemoteThread, etc.)",
+                "- String encryption/decryption logic detected",
+                "- Function description is vague",
+                "",
+                "### MUST call function_xrefs when:",
+                "- Function is identified as attack chain node",
+                "- Need to determine trigger conditions",
+                "- Building call relationships",
+                "",
                 "## Instructions",
-                "1. Use memory_get_function to check if a function was already analyzed",
-                "2. Use memory_save_finding to save important discoveries as you find them",
-                "3. Use memory_cache_function after analyzing each function",
-                "4. Focus on suspicious functions identified in static analysis",
+                "1. Start with entry points: main, _start, exported functions",
+                "2. Use function_xrefs to trace call chains - don't guess relationships",
+                "3. Verify suspicious functions with decompile_function before flagging",
+                "4. Use memory_save_finding to save discoveries as you find them",
+                "5. Use memory_cache_function after analyzing each function",
                 "",
                 "## CRITICAL: Final Output Format",
                 "After completing your analysis, you MUST output a JSON object with this EXACT structure:",
                 "```json",
                 "{",
                 '  "analyzed_functions": [',
-                '    {"name": "func_name", "address": "0x...", "purpose": "...", "risk": "critical|high|medium|low"}',
+                '    {"name": "func_name", "address": "0x...", "purpose": "...", "analysis": "...", "risk": "critical|high|medium|low"}',
                 "  ],",
                 '  "key_findings": [',
                 '    {"id": "finding_001", "title": "...", "category": "...", "description": "...", "severity": "CRITICAL|HIGH|MEDIUM|LOW", "evidence": ["item1", "item2"]}',
                 "  ],",
+                '  "attack_chain": "FuncA (purpose) -> FuncB (purpose) -> FuncC (purpose)",',
                 '  "analysis_path": ["Step 1: ...", "Step 2: ..."]',
                 "}",
                 "```",
@@ -1016,6 +1051,7 @@ class GhidraAgent(BaseAgent):
                 "- evidence MUST be an array of strings, never a single string",
                 "- risk uses lowercase: critical, high, medium, low",
                 "- severity uses UPPERCASE: CRITICAL, HIGH, MEDIUM, LOW",
+                "- attack_chain should describe the execution flow with function relationships",
                 "- Output valid JSON at the end of your analysis",
             ]
         )
