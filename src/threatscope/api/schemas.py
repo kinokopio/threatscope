@@ -169,7 +169,7 @@ class GhidraAIAnalysis(BaseModel):
     key_findings: list[dict[str, Any]] = Field(default_factory=list)
     malware_classification: dict[str, Any] | None = None
     call_graph: dict[str, Any] | None = None
-    analysis_path: list[str] = Field(default_factory=list)
+    analysis_path: list[str] | list[dict[str, Any]] = Field(default_factory=list)
     analysis_metadata: dict[str, Any] | None = None
 
 
