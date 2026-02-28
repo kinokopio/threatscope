@@ -1,8 +1,7 @@
 """Langfuse observability integration for AI agents.
 
-This module provides tracing for AI agent calls via Langfuse native SDK.
-Due to network latency issues with OTEL export, we use Langfuse's native
-tracing API instead of OpenTelemetry auto-instrumentation.
+This module provides tracing for AI agent calls via Langfuse v3 SDK.
+Uses @observe decorator for automatic function tracing.
 
 Configuration via environment variables:
     LANGFUSE_PUBLIC_KEY: Your Langfuse public key
@@ -24,28 +23,22 @@ _initialized: bool = False
 
 
 def init_langfuse() -> "Langfuse | None":
-    """Initialize Langfuse observability using native SDK.
+    """Initialize Langfuse observability using v3 SDK.
 
     This function:
     1. Checks if Langfuse credentials are configured
-    2. Initializes the Langfuse client with native SDK (not OTEL)
+    2. Initializes the Langfuse client
+
+    After initialization, use @observe decorator in your code:
+
+        from langfuse import observe
+
+        @observe(name="my-function")
+        async def my_function():
+            ...
 
     Returns:
         Langfuse client if successfully initialized, None otherwise.
-
-    Example:
-        # In app startup
-        from src.threatscope.core.observability import init_langfuse
-        langfuse = init_langfuse()
-        if langfuse:
-            print("Langfuse tracing enabled")
-
-        # In your agent code, create traces manually:
-        trace = langfuse.trace(name="ghidra-analysis")
-        generation = trace.generation(name="claude-call", model="claude-sonnet-4")
-        # ... do work ...
-        generation.end(output=result)
-        trace.update(output=final_result)
     """
     global _langfuse_client, _initialized
 
@@ -63,19 +56,15 @@ def init_langfuse() -> "Langfuse | None":
         return None
 
     try:
-        from langfuse import Langfuse
+        from langfuse import get_client
 
-        # Get host from environment
+        # Get host from environment and set it
         host = os.environ.get("LANGFUSE_HOST") or os.environ.get("LANGFUSE_BASE_URL")
+        if host:
+            os.environ.setdefault("LANGFUSE_HOST", host)
 
-        # Initialize Langfuse client with native SDK (not OTEL)
-        # This avoids the OTEL export timeout issues
-        _langfuse_client = Langfuse(
-            public_key=public_key,
-            secret_key=secret_key,
-            host=host,
-            enabled=True,
-        )
+        # Initialize Langfuse client using v3 get_client()
+        _langfuse_client = get_client()
 
         # Verify connection
         if _langfuse_client.auth_check():

@@ -28,6 +28,20 @@ from src.threatscope.analysis.agents.memory_store import MemoryStore
 from src.threatscope.analysis.agents.utils_tools import create_utils_mcp_server
 from src.threatscope.ghidra.client import GhidraClient
 
+# Try to import Langfuse observe decorator
+try:
+    from langfuse import observe as langfuse_observe
+    LANGFUSE_AVAILABLE = True
+except ImportError:
+    LANGFUSE_AVAILABLE = False
+    # Create a no-op decorator if langfuse not available
+    def langfuse_observe(*args, **kwargs):
+        def decorator(func):
+            return func
+        if args and callable(args[0]):
+            return args[0]
+        return decorator
+
 logger = logging.getLogger(__name__)
 
 # Default timeout for AI analysis (10 minutes for complex binary analysis)
@@ -317,6 +331,7 @@ class GhidraAgent(BaseAgent):
     def name(self) -> str:
         return "ghidra_agent"
 
+    @langfuse_observe(name="ghidra-deep-analysis", as_type="span")
     async def analyze(
         self,
         context: dict[str, Any],
@@ -763,29 +778,50 @@ class GhidraAgent(BaseAgent):
                             logger.info("Using structured output from Claude")
                             structured_result = msg.structured_output
 
-                            # Send completion notification
-                            if self._progress_callback:
-                                try:
-                                    await self._progress_callback(
-                                        "ghidra_tool",
-                                        "AI Analysis Complete",
-                                        "completed",
-                                        {
-                                            "tool_call_count": tool_call_count,
-                                            "functions_analyzed": len(
-                                                structured_result.get("analyzed_functions", [])
-                                            ),
-                                            "findings_saved": len(
-                                                structured_result.get("key_findings", [])
-                                            ),
-                                            "num_turns": getattr(msg, "num_turns", 0),
-                                            "cost_usd": getattr(msg, "total_cost_usd", 0),
-                                        },
-                                    )
-                                except Exception as e:
-                                    logger.debug(f"Progress callback failed: {e}")
+                            # Handle case where structured_output contains $defs (schema) instead of data
+                            # This happens when Claude returns the schema format instead of actual data
+                            if isinstance(structured_result, dict):
+                                if "$defs" in structured_result:
+                                    # Try to parse the $defs value as JSON
+                                    defs_value = structured_result.get("$defs", "")
+                                    if isinstance(defs_value, str):
+                                        try:
+                                            structured_result = json.loads(defs_value)
+                                            logger.info("Parsed structured output from $defs string")
+                                        except json.JSONDecodeError:
+                                            logger.warning("Failed to parse $defs as JSON")
+                                            structured_result = None
+                                    elif isinstance(defs_value, dict):
+                                        structured_result = defs_value
 
-                            return structured_result
+                            # Validate we have the expected structure
+                            if structured_result and isinstance(structured_result, dict):
+                                if "analyzed_functions" in structured_result or "key_findings" in structured_result:
+                                    # Send completion notification
+                                    if self._progress_callback:
+                                        try:
+                                            await self._progress_callback(
+                                                "ghidra_tool",
+                                                "AI Analysis Complete",
+                                                "completed",
+                                                {
+                                                    "tool_call_count": tool_call_count,
+                                                    "functions_analyzed": len(
+                                                        structured_result.get("analyzed_functions", [])
+                                                    ),
+                                                    "findings_saved": len(
+                                                        structured_result.get("key_findings", [])
+                                                    ),
+                                                    "num_turns": getattr(msg, "num_turns", 0),
+                                                    "cost_usd": getattr(msg, "total_cost_usd", 0),
+                                                },
+                                            )
+                                        except Exception as e:
+                                            logger.debug(f"Progress callback failed: {e}")
+
+                                    return structured_result
+                                else:
+                                    logger.warning(f"Structured output missing expected keys: {list(structured_result.keys())}")
 
                         # Send completion notification for non-structured
                         if self._progress_callback:

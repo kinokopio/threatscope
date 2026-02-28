@@ -36,7 +36,7 @@ api = [
 ]
 ai = [
     "claude-agent-sdk>=0.1.40",
-    "langfuse>=2.0.0,<3.0.0",  # Use v2 native SDK (no OTEL)
+    "langfuse>=3.0.0",  # v3 with @observe decorator
 ]
 ghidra = [
     "pyghidra>=1.0.0",
