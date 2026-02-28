@@ -65,3 +65,6 @@ node_modules/
 
 # Frontend build
 frontend/dist/
+tasks.db
+tasks.db-shm
+tasks.db-wal
