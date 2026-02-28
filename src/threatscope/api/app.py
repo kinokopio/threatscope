@@ -11,6 +11,12 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s",
+)
+
 from dotenv import load_dotenv
 
 # Load .env file BEFORE importing settings
