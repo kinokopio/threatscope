@@ -273,11 +273,26 @@ class AnalysisCoordinator:
         elf_info = static_results.get("elf", {})
         arch = elf_info.get("arch", "").lower()
 
+        # Check if ELF parsing failed or file is not ELF
+        if elf_info.get("error") or not arch:
+            error_msg = "File is not a valid ELF binary or architecture could not be determined"
+            if elf_info.get("error"):
+                error_msg = f"ELF parsing failed: {elf_info.get('error')}"
+            return {
+                "success": False,
+                "error": error_msg,
+                "help": "Dynamic analysis requires a valid ELF binary (Linux executable)",
+                "skipped": True,
+                "method": "tracee",
+            }
+
         arch_mapping = {
             "x86_64": "x86_64",
             "amd64": "x86_64",
             "i386": "i386",
             "i686": "i386",
+            "aarch64": "aarch64",
+            "arm64": "aarch64",
         }
 
         target_arch = None
@@ -290,7 +305,8 @@ class AnalysisCoordinator:
             logger.warning(f"Unsupported architecture for Tracee: {arch}")
             return {
                 "success": False,
-                "error": f"Tracee only supports x86_64, got: {arch}",
+                "error": f"Unsupported architecture: {arch}",
+                "help": "Tracee currently supports x86_64 and i386 architectures",
                 "skipped": True,
                 "method": "tracee",
             }
