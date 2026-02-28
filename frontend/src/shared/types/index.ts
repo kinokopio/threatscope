@@ -5,6 +5,7 @@ export interface AnalysisTask {
   id?: string;
   task_id?: string;
   status: TaskStatus;
+  current_step?: string;
   file_name?: string;
   result?: AnalysisResult;
   error?: string;

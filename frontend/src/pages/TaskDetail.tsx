@@ -107,7 +107,7 @@ export default function TaskDetail() {
       </button>
 
       <div className="space-y-6">
-        <TaskHeader status={task.status} fileName={task.file_name} stepStates={stepStates} />
+        <TaskHeader status={task.status} currentStep={task.current_step} fileName={task.file_name} />
 
         {/* Task Info Card */}
         <div className="bg-slate-800/50 rounded-xl border border-slate-700/50 p-5">

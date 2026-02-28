@@ -192,12 +192,15 @@ class AnalysisResult(BaseModel):
 
     task_id: str
     status: TaskStatus
+    current_step: str | None = None
     file_name: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     hashes: HashesResult | None = None
     strings: StringsResult | None = None
     elf: ELFResult | None = None
     yara: YaraResult | None = None
+    function_categories: dict[str, Any] | None = None
+    mitre_mapping: dict[str, Any] | None = None
     threat_intel: ThreatIntelResult | None = None
     dynamic_analysis: DynamicAnalysisResult | None = None
     ghidra_analysis: GhidraAnalysisResult | None = None

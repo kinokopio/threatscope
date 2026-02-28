@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Shield, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import type { TaskStatus, StepStatus } from '../../../shared/types';
-import { STATUS_DISPLAY, isInProgress, ANALYSIS_STEPS } from '../constants';
+import { STATUS_DISPLAY, isInProgress } from '../constants';
 
 interface StepState {
   status: StepStatus;
@@ -10,6 +10,7 @@ interface StepState {
 
 interface TaskHeaderProps {
   status: TaskStatus;
+  currentStep?: string;
   fileName?: string;
   stepStates?: Record<string, StepState>;
 }
@@ -17,7 +18,7 @@ interface TaskHeaderProps {
 /**
  * Task detail header showing status and file info
  */
-export const TaskHeader = memo(function TaskHeader({ status, fileName, stepStates }: TaskHeaderProps) {
+export const TaskHeader = memo(function TaskHeader({ status, currentStep, fileName }: TaskHeaderProps) {
   const statusInfo = STATUS_DISPLAY[status] || STATUS_DISPLAY.pending;
   const inProgress = isInProgress(status);
 
@@ -26,40 +27,6 @@ export const TaskHeader = memo(function TaskHeader({ status, fileName, stepState
     if (status === 'completed') return 'Analysis Complete';
     return 'Analysis Failed';
   };
-
-  // Find the current running step based on task status and completed steps
-  const getCurrentStep = (): string | null => {
-    if (!inProgress) return null;
-    
-    // Define step groups by stage
-    const stageSteps: Record<string, string[]> = {
-      static_analysis: ['hash', 'strings', 'elf', 'func_class', 'mitre', 'yara', 'threat_intel', 'dynamic'],
-      ghidra_analysis: ['ghidra'],
-      report_generation: ['report'],
-    };
-    
-    // Get steps for current stage
-    const currentStageSteps = stageSteps[status] || [];
-    if (currentStageSteps.length === 0) return null;
-    
-    // If we have stepStates, find the first non-completed step in current stage
-    if (stepStates) {
-      for (const stepId of currentStageSteps) {
-        const state = stepStates[stepId];
-        const step = ANALYSIS_STEPS.find(s => s.id === stepId);
-        if (!state || state.status === 'pending' || state.status === 'running') {
-          return step?.name || null;
-        }
-      }
-    }
-    
-    // Fallback: return first step of current stage
-    const firstStepId = currentStageSteps[0];
-    const firstStep = ANALYSIS_STEPS.find(s => s.id === firstStepId);
-    return firstStep?.name || null;
-  };
-
-  const currentStep = getCurrentStep();
 
   return (
     <div className="bg-slate-800 p-6 rounded-xl border border-slate-700">

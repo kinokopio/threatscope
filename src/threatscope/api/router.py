@@ -205,6 +205,7 @@ async def get_task(
     return AnalysisResult(
         task_id=task_id,
         status=TaskStatus(task["status"]),
+        current_step=task.get("current_step"),
         file_name=task.get("file_name"),
         metadata=task.get("metadata", {}),
         error=task.get("error"),

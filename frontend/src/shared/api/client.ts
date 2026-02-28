@@ -96,6 +96,7 @@ export async function getTask(taskId: string): Promise<AnalysisTask> {
     id: data.task_id || data.id,
     task_id: data.task_id,
     status: data.status,
+    current_step: data.current_step,
     file_name: data.file_name,
     error: data.error,
     result,
