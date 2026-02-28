@@ -209,7 +209,8 @@ export function getEffectiveStepStatus(
   stepId: string,
   stepGroup: string,
   currentStatus: TaskStatus,
-  stepStates: Record<string, StepState>
+  stepStates: Record<string, StepState>,
+  allSteps?: { id: string; group: string }[]
 ): StepStatus {
   const STAGE_ORDER = ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation', 'completed'];
   const currentStageIndex = STAGE_ORDER.indexOf(currentStatus);
@@ -226,8 +227,26 @@ export function getEffectiveStepStatus(
       return 'completed';
     }
     if (currentStatus === 'static_analysis') {
+      // If this step has a status from backend, use it
       if (wsStatus && wsStatus !== 'pending') {
         return wsStatus;
+      }
+      
+      // Find if this is the first pending step (should be running)
+      if (allSteps) {
+        const staticSteps = allSteps.filter(s => 
+          s.group === 'static' || s.group === 'intel' || s.group === 'dynamic'
+        );
+        for (const step of staticSteps) {
+          const state = stepStates[step.id];
+          if (!state || state.status === 'pending') {
+            // This is the first pending step
+            if (step.id === stepId) {
+              return 'running';
+            }
+            break;
+          }
+        }
       }
       return 'pending';
     }

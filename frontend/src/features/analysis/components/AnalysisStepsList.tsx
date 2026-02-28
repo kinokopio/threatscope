@@ -46,7 +46,8 @@ export const AnalysisStepsList = memo(function AnalysisStepsList({
           step.id,
           step.group,
           currentStatus,
-          stepStates
+          stepStates,
+          ANALYSIS_STEPS
         );
         const stepState = stepStates[step.id];
         const isExpanded = expandedSteps.has(step.id);
