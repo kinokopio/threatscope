@@ -1,13 +1,13 @@
 """Langfuse observability integration for AI agents.
 
-This module provides tracing for Claude Agent SDK calls via Langfuse.
-Uses langsmith's Claude Agent SDK integration which automatically traces
-all tool calls, model runs, and conversation flows.
+This module provides tracing for AI agent calls via Langfuse native SDK.
+Due to network latency issues with OTEL export, we use Langfuse's native
+tracing API instead of OpenTelemetry auto-instrumentation.
 
 Configuration via environment variables:
     LANGFUSE_PUBLIC_KEY: Your Langfuse public key
     LANGFUSE_SECRET_KEY: Your Langfuse secret key
-    LANGFUSE_BASE_URL: Langfuse server URL (default: https://cloud.langfuse.com)
+    LANGFUSE_HOST: Langfuse server URL (default: https://cloud.langfuse.com)
 """
 
 import logging
@@ -24,18 +24,11 @@ _initialized: bool = False
 
 
 def init_langfuse() -> "Langfuse | None":
-    """Initialize Langfuse observability with Claude Agent SDK instrumentation.
+    """Initialize Langfuse observability using native SDK.
 
     This function:
     1. Checks if Langfuse credentials are configured
-    2. Sets up langsmith OTEL environment variables
-    3. Initializes and verifies the Langfuse client
-    4. Configures Claude Agent SDK instrumentation
-
-    The langsmith integration automatically traces:
-    - Chain runs for each conversation stream
-    - Model runs for each assistant turn
-    - All tool calls (built-in, MCP, SDK tools)
+    2. Initializes the Langfuse client with native SDK (not OTEL)
 
     Returns:
         Langfuse client if successfully initialized, None otherwise.
@@ -46,6 +39,13 @@ def init_langfuse() -> "Langfuse | None":
         langfuse = init_langfuse()
         if langfuse:
             print("Langfuse tracing enabled")
+
+        # In your agent code, create traces manually:
+        trace = langfuse.trace(name="ghidra-analysis")
+        generation = trace.generation(name="claude-call", model="claude-sonnet-4")
+        # ... do work ...
+        generation.end(output=result)
+        trace.update(output=final_result)
     """
     global _langfuse_client, _initialized
 
@@ -63,51 +63,31 @@ def init_langfuse() -> "Langfuse | None":
         return None
 
     try:
-        # Step 1: Set up langsmith OTEL environment variables (BEFORE importing langfuse)
-        # These enable OpenTelemetry export to Langfuse
-        os.environ["LANGSMITH_OTEL_ENABLED"] = "true"
-        os.environ["LANGSMITH_OTEL_ONLY"] = "true"
-        os.environ["LANGSMITH_TRACING"] = "true"
+        from langfuse import Langfuse
 
-        # Step 2: Import and initialize Langfuse client
-        from langfuse import get_client
+        # Get host from environment
+        host = os.environ.get("LANGFUSE_HOST") or os.environ.get("LANGFUSE_BASE_URL")
 
-        _langfuse_client = get_client()
+        # Initialize Langfuse client with native SDK (not OTEL)
+        # This avoids the OTEL export timeout issues
+        _langfuse_client = Langfuse(
+            public_key=public_key,
+            secret_key=secret_key,
+            host=host,
+            enabled=True,
+        )
 
-        # Step 3: Verify connection
+        # Verify connection
         if _langfuse_client.auth_check():
-            logger.info("Langfuse client is authenticated and ready!")
+            logger.info(f"Langfuse observability enabled ({host or 'https://cloud.langfuse.com'})")
+            return _langfuse_client
         else:
             logger.warning("Langfuse authentication failed - check your API keys")
             _langfuse_client = None
             return None
 
-        # Step 4: Configure Claude Agent SDK instrumentation via langsmith
-        # This patches ClaudeSDKClient to automatically trace all calls
-        try:
-            from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
-
-            if configure_claude_agent_sdk():
-                logger.info("Claude Agent SDK instrumentation enabled")
-            else:
-                logger.warning("Failed to configure Claude Agent SDK instrumentation")
-        except ImportError:
-            logger.warning(
-                "langsmith[claude-agent-sdk] not available. "
-                "Install with: pip install 'langsmith[claude-agent-sdk]' 'langsmith[otel]'"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to configure Claude Agent SDK instrumentation: {e}")
-
-        base_url = os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
-        logger.info(f"Langfuse observability enabled ({base_url})")
-        return _langfuse_client
-
     except ImportError as e:
-        logger.warning(
-            f"Langfuse not installed: {e}. "
-            "Install with: pip install langfuse"
-        )
+        logger.warning(f"Langfuse not installed: {e}. Install with: pip install langfuse")
         return None
     except Exception as e:
         logger.warning(f"Failed to initialize Langfuse: {e}")
@@ -153,3 +133,4 @@ def shutdown_langfuse() -> None:
         finally:
             _langfuse_client = None
             _initialized = False
+
