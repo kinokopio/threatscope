@@ -4,6 +4,99 @@ import asyncio
 import json
 import logging
 from pathlib import Path
+from typing import Any, Callable, Literal
+
+from pydantic import BaseModel, Field
+
+from claude_agent_sdk import (
+    AssistantMessage,
+    ClaudeAgentOptions,
+    ClaudeSDKClient,
+    ClaudeSDKError,
+    CLIConnectionError,
+    CLINotFoundError,
+    HookMatcher,
+    ProcessError,
+    ResultMessage,
+    TextBlock,
+    ToolUseBlock,
+    create_sdk_mcp_server,
+    tool,
+)
+
+from src.threatscope.analysis.agents.base import AgentConfig, AgentResult, BaseAgent
+from src.threatscope.analysis.agents.memory_store import MemoryStore
+from src.threatscope.analysis.agents.utils_tools import create_utils_mcp_server
+from src.threatscope.ghidra.client import GhidraClient
+
+logger = logging.getLogger(__name__)
+
+# Default timeout for AI analysis (5 minutes for complex binary analysis)
+DEFAULT_AI_TIMEOUT = 300
+
+
+# =============================================================================
+# Structured Output Models for Ghidra Analysis
+# =============================================================================
+
+
+class AnalyzedFunction(BaseModel):
+    """A function analyzed by the Ghidra agent."""
+
+    name: str = Field(description="Function name")
+    address: str = Field(description="Hex address like 0x12345678 or 'unknown'")
+    purpose: str = Field(description="Brief description of what this function does")
+    analysis: str | None = Field(default=None, description="Detailed analysis of the function behavior")
+    risk: Literal["critical", "high", "medium", "low"] = Field(description="Risk level")
+
+
+class KeyFinding(BaseModel):
+    """A key finding from the analysis."""
+
+    id: str = Field(description="Unique ID like finding_001")
+    title: str = Field(description="Short title of the finding")
+    category: str = Field(description="Category (e.g., Persistence, Network, Evasion)")
+    description: str = Field(description="Detailed description of the finding")
+    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(description="Severity level")
+    evidence: list[str] = Field(default_factory=list, description="Evidence items")
+    impact: str | None = Field(default=None, description="Impact description")
+    recommendation: str | None = Field(default=None, description="Remediation advice")
+
+
+class MalwareClassification(BaseModel):
+    """Malware classification result."""
+
+    type: str = Field(description="Malware type (e.g., Trojan, Miner, Ransomware)")
+    family: str | None = Field(default=None, description="Malware family if identified")
+    severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(description="Overall severity")
+
+
+class GhidraAnalysisOutput(BaseModel):
+    """Structured output schema for Ghidra AI analysis."""
+
+    analyzed_functions: list[AnalyzedFunction] = Field(
+        default_factory=list,
+        description="List of analyzed functions with their details"
+    )
+    key_findings: list[KeyFinding] = Field(
+        default_factory=list,
+        description="Key security findings from the analysis"
+    )
+    malware_classification: MalwareClassification | None = Field(
+        default=None,
+        description="Malware classification if malicious"
+    )
+    analysis_path: list[str] = Field(
+        default_factory=list,
+        description="Steps taken during analysis (e.g., 'Step 1: Analyzed entry point')"
+    )
+
+
+
+import asyncio
+import json
+import logging
+from pathlib import Path
 from typing import Any, Callable
 
 from claude_agent_sdk import (
@@ -511,7 +604,7 @@ class GhidraAgent(BaseAgent):
         utils_server = create_utils_mcp_server()
         memory_server = create_memory_tools_server(self.memory_store)
 
-        # Configure agent options
+        # Configure agent options with structured output
         options = ClaudeAgentOptions(
             system_prompt=system_prompt,
             model="claude-sonnet-4-20250514",
@@ -557,6 +650,10 @@ class GhidraAgent(BaseAgent):
                 "mcp__memory__memory_restore_checkpoint",
             ],
             max_turns=self.config.max_iterations,
+            output_format={
+                "type": "json_schema",
+                "schema": GhidraAnalysisOutput.model_json_schema(),
+            },
             hooks={
                 "PreCompact": [
                     HookMatcher(matcher=None, hooks=[create_pre_compact_hook(self.memory_store)])
@@ -651,14 +748,39 @@ class GhidraAgent(BaseAgent):
                             elif isinstance(block, TextBlock):
                                 result_text = block.text
 
-                    # Handle result message (final stats, no content attribute)
+                    # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
                         logger.info(
                             f"AI analysis result: turns={getattr(msg, 'num_turns', 'N/A')}, "
                             f"cost=${getattr(msg, 'total_cost_usd', 0):.4f}"
                         )
 
-                        # Send completion notification
+                        # Try structured output first (preferred)
+                        if hasattr(msg, 'structured_output') and msg.structured_output:
+                            logger.info("Using structured output from Claude")
+                            structured_result = msg.structured_output
+                            
+                            # Send completion notification
+                            if self._progress_callback:
+                                try:
+                                    await self._progress_callback(
+                                        "ghidra_tool",
+                                        "AI Analysis Complete",
+                                        "completed",
+                                        {
+                                            "tool_call_count": tool_call_count,
+                                            "functions_analyzed": len(structured_result.get('analyzed_functions', [])),
+                                            "findings_saved": len(structured_result.get('key_findings', [])),
+                                            "num_turns": getattr(msg, "num_turns", 0),
+                                            "cost_usd": getattr(msg, "total_cost_usd", 0),
+                                        },
+                                    )
+                                except Exception as e:
+                                    logger.debug(f"Progress callback failed: {e}")
+                            
+                            return structured_result
+
+                        # Send completion notification for non-structured
                         if self._progress_callback:
                             try:
                                 await self._progress_callback(
@@ -697,28 +819,31 @@ class GhidraAgent(BaseAgent):
                 f"{functions_analyzed} functions analyzed"
             )
 
-            # Parse JSON result
-            try:
-                # Extract JSON from response
-                if "```json" in result_text:
-                    start = result_text.find("```json") + 7
-                    end = result_text.find("```", start)
-                    if end > start:
-                        result_text = result_text[start:end].strip()
-                elif "```" in result_text:
-                    start = result_text.find("```") + 3
-                    end = result_text.find("```", start)
-                    if end > start:
-                        result_text = result_text[start:end].strip()
+            # Fallback: Parse JSON from text response
+            if result_text:
+                try:
+                    # Extract JSON from response
+                    if "```json" in result_text:
+                        start = result_text.find("```json") + 7
+                        end = result_text.find("```", start)
+                        if end > start:
+                            result_text = result_text[start:end].strip()
+                    elif "```" in result_text:
+                        start = result_text.find("```") + 3
+                        end = result_text.find("```", start)
+                        if end > start:
+                            result_text = result_text[start:end].strip()
 
-                return json.loads(result_text)
-            except json.JSONDecodeError:
-                # Return raw text if not valid JSON
-                return {
-                    "raw_analysis": result_text,
-                    "analyzed_functions": [],
-                    "key_findings": self.memory_store.get_findings(),
-                }
+                    return json.loads(result_text)
+                except json.JSONDecodeError:
+                    logger.warning("Failed to parse JSON from text response")
+
+            # Last resort: return findings from memory
+            return {
+                "raw_analysis": result_text,
+                "analyzed_functions": [],
+                "key_findings": self.memory_store.get_findings(),
+            }
 
         # Run with timeout
         return await asyncio.wait_for(_call_ai(), timeout=self.ai_timeout)

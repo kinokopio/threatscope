@@ -3,10 +3,14 @@ import { Brain, AlertTriangle, CheckCircle, Shield, Zap } from 'lucide-react';
 interface AnalyzedFunction {
   name: string;
   address?: string;
+  // Different AI outputs use different field names
   analysis?: string;
   purpose?: string;
+  description?: string;  // AI sometimes uses this instead of analysis/purpose
   risk?: string;
   risk_level?: string;
+  severity?: string;  // AI sometimes uses this instead of risk
+  type?: string;  // Function type (entry_point, persistence, etc.)
 }
 
 interface KeyFinding {
@@ -144,13 +148,20 @@ export function GhidraView({ data }: GhidraViewProps) {
           </h4>
           <div className="space-y-2 max-h-80 overflow-y-auto">
             {functions.slice(0, 15).map((func, i) => {
-              const risk = normalizeSeverity(func.risk || func.risk_level);
+              // Normalize field names - AI uses different names in different runs
+              const risk = normalizeSeverity(func.risk || func.risk_level || func.severity);
+              const description = func.purpose || func.analysis || func.description;
               return (
                 <div key={i} className="bg-slate-900/50 rounded-lg p-3">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-cyan-400 font-mono text-sm">{func.name}</span>
-                    {func.address && func.address !== 'UNKNOWN' && (
+                    {func.address && func.address.toLowerCase() !== 'unknown' && (
                       <span className="text-xs text-slate-500 font-mono">@ {func.address}</span>
+                    )}
+                    {func.type && (
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-slate-700/50 text-slate-400">
+                        {func.type.replace(/_/g, ' ')}
+                      </span>
                     )}
                     {risk && (
                       <span className={`text-xs px-1.5 py-0.5 rounded ml-auto ${
@@ -162,11 +173,8 @@ export function GhidraView({ data }: GhidraViewProps) {
                       </span>
                     )}
                   </div>
-                  {func.purpose && (
-                    <p className="text-xs text-slate-300 mb-1">{func.purpose}</p>
-                  )}
-                  {func.analysis && (
-                    <p className="text-xs text-slate-400 line-clamp-2">{func.analysis}</p>
+                  {description && (
+                    <p className="text-xs text-slate-400 line-clamp-2">{description}</p>
                   )}
                 </div>
               );
