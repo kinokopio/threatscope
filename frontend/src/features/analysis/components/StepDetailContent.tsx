@@ -112,13 +112,26 @@ export const StepDetailContent = memo(function StepDetailContent({
   if (stepId === 'dynamic' && typeof data === 'object' && data !== null) {
     const dynData = data as Record<string, unknown>;
 
-    // Check for error with help message
-    if (dynData.error && dynData.help) {
+    // Check for error (with or without help message)
+    if (dynData.error) {
       return (
         <div className="mt-3 pt-3 border-t border-slate-700/50">
           <div className="bg-yellow-900/20 rounded-lg p-3 border border-yellow-800/50">
             <p className="text-yellow-400 text-sm font-medium">⚠️ {String(dynData.error)}</p>
-            <p className="text-slate-400 text-xs mt-2">{String(dynData.help)}</p>
+            {dynData.help && (
+              <p className="text-slate-400 text-xs mt-2">{String(dynData.help)}</p>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // Check if dynamic analysis was skipped (no meaningful data)
+    if (!dynData.success && (!dynData.syscalls || (Array.isArray(dynData.syscalls) && dynData.syscalls.length === 0))) {
+      return (
+        <div className="mt-3 pt-3 border-t border-slate-700/50">
+          <div className="bg-slate-900/50 rounded-lg p-3">
+            <p className="text-slate-400 text-sm">Dynamic analysis was not performed or produced no results.</p>
           </div>
         </div>
       );
