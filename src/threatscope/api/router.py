@@ -306,7 +306,7 @@ async def get_queue_stats(scheduled: ScheduledCoordinatorDep) -> QueueStats:
 # =============================================================================
 
 
-async def _run_analysis_background(
+def _run_analysis_background(
     task_id: str,
     file_path: Path,
     coordinator,
@@ -317,48 +317,56 @@ async def _run_analysis_background(
 ) -> None:
     """Run analysis in background.
 
-    This function runs in a thread pool to avoid blocking the event loop.
+    This function runs in a background task.
     """
     import asyncio
 
-    # Create new event loop for this thread
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    try:
-        # Update status
-        db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
-
-        # Run analysis
-        result = await coordinator.analyze(
-            file_path=file_path,
-            enable_ghidra=enable_ghidra,
-            enable_dynamic=enable_dynamic,
-            enable_threat_intel=enable_threat_intel,
-        )
-
-        # Save results
-        if "error" in result:
-            db.update_task_status(task_id, TaskStatus.FAILED.value, error=result["error"])
-        else:
-            db.update_task_result(task_id, "stage_1_4_results", result.get("static_analysis", {}))
-            if result.get("ghidra_analysis"):
-                db.update_task_result(task_id, "ghidra_results", result["ghidra_analysis"])
-            if result.get("report"):
-                db.update_task_result(task_id, "report", result["report"])
-            db.update_task_status(task_id, TaskStatus.COMPLETED.value)
-
-    except Exception as e:
-        logger.exception(f"Background analysis failed for {task_id}")
-        db.update_task_status(task_id, TaskStatus.FAILED.value, error=str(e))
-
-    finally:
-        loop.close()
-        # Cleanup temp file
+    async def _do_analysis():
         try:
-            file_path.unlink()
-        except Exception:
-            pass
+            # Update status
+            db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
+
+            # Run analysis
+            result = await coordinator.analyze(
+                file_path=file_path,
+                enable_ghidra=enable_ghidra,
+                enable_dynamic=enable_dynamic,
+                enable_threat_intel=enable_threat_intel,
+            )
+
+            # Save results
+            if "error" in result:
+                db.update_task_status(task_id, TaskStatus.FAILED.value, error=result["error"])
+            else:
+                db.update_task_result(task_id, "stage_1_4_results", result.get("static_analysis", {}))
+                if result.get("ghidra_analysis"):
+                    db.update_task_result(task_id, "ghidra_results", result["ghidra_analysis"])
+                if result.get("report"):
+                    db.update_task_result(task_id, "report", result["report"])
+                db.update_task_status(task_id, TaskStatus.COMPLETED.value)
+
+        except Exception as e:
+            logger.exception(f"Background analysis failed for {task_id}")
+            db.update_task_status(task_id, TaskStatus.FAILED.value, error=str(e))
+
+        finally:
+            # Cleanup temp file
+            try:
+                file_path.unlink()
+            except Exception:
+                pass
+
+    # Run in event loop
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            # If loop is already running, create task
+            asyncio.create_task(_do_analysis())
+        else:
+            loop.run_until_complete(_do_analysis())
+    except RuntimeError:
+        # No event loop, create new one
+        asyncio.run(_do_analysis())
 
 
 def _extract_results(task: dict) -> dict:

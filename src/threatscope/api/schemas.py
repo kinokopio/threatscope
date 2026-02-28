@@ -141,11 +141,10 @@ class DynamicAnalysisResult(BaseModel):
 
     success: bool = False
     method: str | None = None
-    syscalls: list[dict[str, Any]] = Field(default_factory=list)
-    network_activity: list[dict[str, Any]] = Field(default_factory=list)
-    file_activity: list[dict[str, Any]] = Field(default_factory=list)
+    syscalls: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
+    network_activity: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
+    file_activity: list[dict[str, Any]] | dict[str, Any] = Field(default_factory=list)
     error: str | None = None
-
 
 class GhidraAnalysisResult(BaseModel):
     """Ghidra analysis results."""

@@ -140,7 +140,7 @@ class APISettings(BaseSettings):
 
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8080, ge=1024, le=65535)
-    cors_origins: list[str] = Field(default=["http://localhost:5173", "http://127.0.0.1:5173"])
+    cors_origins: list[str] = Field(default=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"])
     debug: bool = Field(default=False)
     docs_enabled: bool = Field(default=True)
 
