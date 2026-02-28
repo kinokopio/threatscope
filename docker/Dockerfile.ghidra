@@ -34,7 +34,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-ghidra.txt
 
 # Copy Ghidra service code
-COPY ghidra_service /app/ghidra_service
+COPY src/threatscope/ghidra /app/ghidra_service
 
 # Create data directories
 RUN mkdir -p /app/data/uploads /app/data/projects
