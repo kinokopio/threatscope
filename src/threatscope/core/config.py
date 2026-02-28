@@ -91,7 +91,7 @@ class AnalysisSettings(BaseSettings):
     dynamic_analysis_timeout: int = Field(default=30, ge=10, le=300)
     enable_dynamic_analysis: bool = Field(default=True)
     enable_ghidra_analysis: bool = Field(default=True)
-    yara_rules_path: str = Field(default="rules/yara")
+    yara_rules_path: str = Field(default="rules/yara_full")
 
 
 class TraceeSettings(BaseSettings):
