@@ -265,6 +265,9 @@ class AnalysisCoordinator:
         yara_rules_path = self.settings.analysis.yara_rules_path
         if yara_rules_path and not Path(yara_rules_path).is_absolute():
             yara_rules_path = str(self.project_dir / yara_rules_path)
+        
+        logger.info(f"YARA rules path resolved to: {yara_rules_path}")
+        logger.info(f"Project dir: {self.project_dir}")
 
         service = StaticAnalysisService(
             yara_rules_path=yara_rules_path,
