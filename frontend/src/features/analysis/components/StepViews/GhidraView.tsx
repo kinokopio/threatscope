@@ -20,7 +20,7 @@ interface KeyFinding {
   category?: string;
   description: string;
   severity?: string;
-  evidence?: string[];
+  evidence?: string[] | string;  // Can be array or string depending on AI output
   impact?: string;
   recommendation?: string;
 }
@@ -123,13 +123,17 @@ export function GhidraView({ data }: GhidraViewProps) {
                     )}
                   </div>
                   <p className="text-xs text-slate-400">{finding.description}</p>
-                  {finding.evidence && finding.evidence.length > 0 && (
+                  {finding.evidence && (
                     <div className="mt-2 text-xs">
                       <span className="text-slate-500">Evidence: </span>
-                      <span className="text-slate-400">{finding.evidence.slice(0, 3).join(', ')}</span>
-                      {finding.evidence.length > 3 && (
-                        <span className="text-slate-500"> +{finding.evidence.length - 3} more</span>
-                      )}
+                      <span className="text-slate-400">
+                        {Array.isArray(finding.evidence)
+                          ? finding.evidence.slice(0, 3).join(', ')
+                          : String(finding.evidence).slice(0, 200)}
+                        {Array.isArray(finding.evidence) && finding.evidence.length > 3 && (
+                          <span className="text-slate-500"> +{finding.evidence.length - 3} more</span>
+                        )}
+                      </span>
                     </div>
                   )}
                 </div>
