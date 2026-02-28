@@ -231,7 +231,15 @@ export function getEffectiveStepStatus(
   stepStates: Record<string, StepState>,
   allSteps?: { id: string; group: string }[]
 ): StepStatus {
-  const STAGE_ORDER = ['pending', 'static_analysis', 'queued', 'ghidra_analysis', 'report_generation', 'completed'];
+  const STAGE_ORDER = [
+    'pending',
+    'static_analysis',
+    'queued',
+    'dynamic_analysis',
+    'ghidra_analysis',
+    'report_generation',
+    'completed',
+  ];
   const currentStageIndex = STAGE_ORDER.indexOf(currentStatus);
 
   // If task is completed, all steps are completed
@@ -240,10 +248,12 @@ export function getEffectiveStepStatus(
 
   const wsStatus = stepStates[stepId]?.status;
 
-  // Static analysis steps (static, intel, dynamic)
-  if (stepGroup === 'static' || stepGroup === 'intel' || stepGroup === 'dynamic') {
+  // Static analysis steps (static, intel)
+  if (stepGroup === 'static' || stepGroup === 'intel') {
+    // If we're past static_analysis stage, these are completed
     if (currentStageIndex > STAGE_ORDER.indexOf('static_analysis')) {
-      return 'completed';
+      // Use backend status if available, otherwise completed
+      return wsStatus || 'completed';
     }
     if (currentStatus === 'static_analysis') {
       // If this step has a status from backend, use it
@@ -254,7 +264,7 @@ export function getEffectiveStepStatus(
       // Find if this is the first pending step (should be running)
       if (allSteps) {
         const staticSteps = allSteps.filter(s => 
-          s.group === 'static' || s.group === 'intel' || s.group === 'dynamic'
+          s.group === 'static' || s.group === 'intel'
         );
         for (const step of staticSteps) {
           const state = stepStates[step.id];
@@ -268,6 +278,23 @@ export function getEffectiveStepStatus(
         }
       }
       return 'pending';
+    }
+    return 'pending';
+  }
+
+  // Dynamic analysis step
+  if (stepGroup === 'dynamic') {
+    // If we're past dynamic_analysis stage, it's completed
+    if (currentStageIndex > STAGE_ORDER.indexOf('dynamic_analysis')) {
+      return wsStatus || 'completed';
+    }
+    // If we're at dynamic_analysis stage, it's running
+    if (currentStatus === 'dynamic_analysis') {
+      return wsStatus || 'running';
+    }
+    // If we're at static_analysis and have result, it's completed
+    if (currentStatus === 'static_analysis' && wsStatus) {
+      return wsStatus;
     }
     return 'pending';
   }
