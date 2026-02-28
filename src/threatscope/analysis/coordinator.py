@@ -296,7 +296,7 @@ class AnalysisCoordinator:
             }
 
         try:
-            result = self.dynamic_analyzer.analyze_sync(str(file_path), target_arch)
+            result = self.dynamic_analyzer.analyze(str(file_path), target_arch)
             return {
                 "success": result.success,
                 "method": result.method,

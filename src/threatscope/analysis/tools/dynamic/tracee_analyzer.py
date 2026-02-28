@@ -15,8 +15,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.threatscope.analysis.tools.base import AnalysisTool, ToolResult
-
 logger = logging.getLogger(__name__)
 
 
@@ -38,20 +36,20 @@ class DynamicAnalysisResult:
 
     success: bool
     duration_seconds: float = 0.0
-    # Optimized summary data (for frontend and AI)
+    # 优化后的摘要数据（给前端和AI）
     process_tree: list[dict[str, Any]] = field(default_factory=list)
     network_summary: dict[str, Any] = field(default_factory=dict)
     security_events: list[dict[str, Any]] = field(default_factory=list)
     syscall_summary: dict[str, Any] = field(default_factory=dict)
     file_activity: dict[str, Any] = field(default_factory=dict)
-    # Raw data (for debugging)
+    # 原始数据（调试用）
     raw_events_count: int = 0
     error: str | None = None
     method: str = "tracee"
     event_types: list[str] = field(default_factory=list)
 
 
-class TraceeAnalyzer(AnalysisTool):
+class TraceeAnalyzer:
     """Dynamic analysis using Aqua Tracee eBPF.
 
     Architecture:
@@ -136,38 +134,8 @@ class TraceeAnalyzer(AnalysisTool):
         self._docker_available = shutil.which("docker") is not None
         self._tracee_process: subprocess.Popen | None = None
 
-    @property
-    def name(self) -> str:
-        return "tracee_analyzer"
-
-    async def analyze(self, file_path: Path) -> ToolResult:
+    def analyze(self, binary_path: str, arch: str = "x86_64") -> DynamicAnalysisResult:
         """Run dynamic analysis on a binary using Tracee.
-
-        Args:
-            file_path: Path to the binary to analyze.
-
-        Returns:
-            ToolResult with DynamicAnalysisResult in data.
-        """
-        result = self.analyze_sync(str(file_path))
-        return ToolResult(
-            success=result.success,
-            error=result.error,
-            data={
-                "duration_seconds": result.duration_seconds,
-                "process_tree": result.process_tree,
-                "network_summary": result.network_summary,
-                "security_events": result.security_events,
-                "syscall_summary": result.syscall_summary,
-                "file_activity": result.file_activity,
-                "raw_events_count": result.raw_events_count,
-                "method": result.method,
-                "event_types": result.event_types,
-            },
-        )
-
-    def analyze_sync(self, binary_path: str, arch: str = "x86_64") -> DynamicAnalysisResult:
-        """Run dynamic analysis on a binary using Tracee (synchronous).
 
         Args:
             binary_path: Path to the binary to analyze.
@@ -199,7 +167,6 @@ class TraceeAnalyzer(AnalysisTool):
         sandbox_name = f"tracee-sandbox-{uuid.uuid4().hex[:8]}"
         tracee_name = f"tracee-monitor-{uuid.uuid4().hex[:8]}"
         output_file = None
-        network_name = ""
 
         try:
             # Create output directory
@@ -266,12 +233,9 @@ class TraceeAnalyzer(AnalysisTool):
         try:
             subprocess.run(
                 [
-                    "docker",
-                    "network",
-                    "create",
+                    "docker", "network", "create",
                     "--internal",  # No external access
-                    "--driver",
-                    "bridge",
+                    "--driver", "bridge",
                     network_name,
                 ],
                 capture_output=True,
@@ -378,33 +342,31 @@ class TraceeAnalyzer(AnalysisTool):
                 "--scope",
                 f"container={sandbox_container_id}",  # Only monitor sandbox container by ID
                 "--events",
-                ",".join(
-                    [
-                        "sched_process_exec",
-                        "sched_process_fork",
-                        "sched_process_exit",
-                        "dynamic_code_loading",
-                        "fileless_execution",
-                        "dropped_executable",
-                        "hidden_file_created",
-                        "ld_preload",
-                        "stdio_over_socket",
-                        "anti_debugging",
-                        "net_packet_dns",
-                        "net_packet_dns_request",
-                        "net_packet_dns_response",
-                        "net_packet_http",
-                        "net_packet_http_request",
-                        "net_tcp_connect",
-                        "security_socket_bind",
-                        "security_socket_connect",
-                        "security_socket_create",
-                        "security_file_open",
-                        "vfs_write",
-                        "setuid",
-                        "setgid",
-                    ]
-                ),
+                ",".join([
+                    "sched_process_exec",
+                    "sched_process_fork",
+                    "sched_process_exit",
+                    "dynamic_code_loading",
+                    "fileless_execution",
+                    "dropped_executable",
+                    "hidden_file_created",
+                    "ld_preload",
+                    "stdio_over_socket",
+                    "anti_debugging",
+                    "net_packet_dns",
+                    "net_packet_dns_request",
+                    "net_packet_dns_response",
+                    "net_packet_http",
+                    "net_packet_http_request",
+                    "net_tcp_connect",
+                    "security_socket_bind",
+                    "security_socket_connect",
+                    "security_socket_create",
+                    "security_file_open",
+                    "vfs_write",
+                    "setuid",
+                    "setgid",
+                ]),
                 "--output",
                 "json",
             ]
@@ -421,11 +383,7 @@ class TraceeAnalyzer(AnalysisTool):
             time.sleep(3)
 
             if self._tracee_process.poll() is not None:
-                stderr = (
-                    self._tracee_process.stderr.read().decode()
-                    if self._tracee_process.stderr
-                    else ""
-                )
+                stderr = self._tracee_process.stderr.read().decode() if self._tracee_process.stderr else ""
                 logger.error(f"Tracee exited early: {stderr}")
                 return False
 
@@ -488,7 +446,7 @@ class TraceeAnalyzer(AnalysisTool):
             return False
 
     def _stop_tracee(self) -> None:
-        if hasattr(self, "_tracee_process") and self._tracee_process:
+        if hasattr(self, '_tracee_process') and self._tracee_process:
             try:
                 self._tracee_process.terminate()
                 self._tracee_process.wait(timeout=10)
@@ -540,11 +498,11 @@ class TraceeAnalyzer(AnalysisTool):
             file_size = output_file.stat().st_size
             logger.info(f"Events file size: {file_size} bytes")
 
-            with open(output_file) as f:
+            with open(output_file, "r") as f:
                 content = f.read()
                 logger.info(f"Events file content preview: {content[:500]}")
 
-            with open(output_file) as f:
+            with open(output_file, "r") as f:
                 for line in f:
                     line = line.strip()
                     if line:
@@ -564,23 +522,14 @@ class TraceeAnalyzer(AnalysisTool):
     ) -> DynamicAnalysisResult:
         """Build structured result from raw Tracee events."""
         security_events = []
-        network_info: dict[str, list] = {
-            "dns_queries": [],
-            "connections": [],
-            "http_requests": [],
-        }
+        network_info = {"dns_queries": [], "connections": [], "http_requests": []}
         processes = []
-        file_activity: dict[str, list] = {
-            "created": [],
-            "modified": [],
-            "deleted": [],
-            "executed": [],
-        }
+        file_activity = {"created": [], "modified": [], "deleted": [], "executed": []}
         syscalls = []
 
-        seen_processes: set[tuple] = set()
-        seen_files: set[str] = set()
-        event_types_seen: set[str] = set()
+        seen_processes = set()
+        seen_files = set()
+        event_types_seen = set()
 
         for event in events:
             event_name = event.get("eventName", "")
@@ -632,20 +581,9 @@ class TraceeAnalyzer(AnalysisTool):
 
             # Collect interesting events as syscalls
             if event_name in (
-                "setuid",
-                "setgid",
-                "setpgid",
-                "setsid",
-                "execve",
-                "open",
-                "connect",
-                "socket",
-                "bind",
-                "fork",
-                "clone",
-                "ptrace",
-                "mmap",
-                "mprotect",
+                "setuid", "setgid", "setpgid", "setsid",
+                "execve", "open", "connect", "socket", "bind",
+                "fork", "clone", "ptrace", "mmap", "mprotect",
             ) or event_name.startswith("sys_"):
                 if len(syscalls) < 1000:
                     syscalls.append(
@@ -658,16 +596,16 @@ class TraceeAnalyzer(AnalysisTool):
                         }
                     )
 
-        # Build process tree
+        # 构建进程树
         process_tree = self._build_process_tree(processes)
 
-        # Build network summary (deduplicated)
+        # 构建网络摘要（去重）
         network_summary = self._build_network_summary(network_info)
 
-        # Build syscall summary (grouped by type)
+        # 构建 syscall 摘要（按类型分组统计）
         syscall_summary = self._build_syscall_summary(syscalls)
 
-        # Deduplicate security_events
+        # 去重 security_events
         unique_security_events = self._dedupe_security_events(security_events)
 
         return DynamicAnalysisResult(
@@ -738,19 +676,15 @@ class TraceeAnalyzer(AnalysisTool):
                         query_data = resp.get("query_data", {})
                         query = query_data.get("query", "") if isinstance(query_data, dict) else ""
                         answers = resp.get("dns_answer", [])
-                        answer_str = (
-                            ", ".join(a.get("answer", "") for a in answers if isinstance(a, dict))
-                            if isinstance(answers, list)
-                            else ""
-                        )
+                        answer_str = ", ".join(
+                            a.get("answer", "") for a in answers if isinstance(a, dict)
+                        ) if isinstance(answers, list) else ""
                         if query:
-                            network_info["dns_queries"].append(
-                                {
-                                    "domain": query,
-                                    "response": answer_str,
-                                    "timestamp": event.get("timestamp"),
-                                }
-                            )
+                            network_info["dns_queries"].append({
+                                "domain": query,
+                                "response": answer_str,
+                                "timestamp": event.get("timestamp"),
+                            })
 
         elif event_name in ("net_tcp_connect", "net_flow_tcp_begin"):
             network_info["connections"].append(
@@ -813,7 +747,7 @@ class TraceeAnalyzer(AnalysisTool):
         # Filter out noise processes (container init, our ls command)
         noise_names = {"runc:[2:INIT]", "runc:[1:CHILD]", "ls", "sleep"}
         noise_cmdlines = {"ls /sandbox", "sleep infinity"}
-
+        
         filtered = []
         for proc in processes:
             name = proc.get("name", "")
@@ -833,7 +767,7 @@ class TraceeAnalyzer(AnalysisTool):
         for proc in filtered:
             pid = proc["pid"]
             ppid = proc.get("ppid", 0)
-
+            
             node = {
                 "pid": pid,
                 "name": proc.get("name", ""),
@@ -865,7 +799,7 @@ class TraceeAnalyzer(AnalysisTool):
     def _build_network_summary(self, network_info: dict) -> dict:
         """Build deduplicated network summary."""
         # Dedupe DNS queries
-        dns_domains: dict[str, dict] = {}
+        dns_domains = {}
         for query in network_info.get("dns_queries", []):
             domain = query.get("domain", "")
             if domain and domain not in dns_domains:
@@ -878,7 +812,7 @@ class TraceeAnalyzer(AnalysisTool):
                 dns_domains[domain]["count"] += 1
 
         # Dedupe connections
-        connections: dict[str, dict] = {}
+        connections = {}
         for conn in network_info.get("connections", []):
             key = f"{conn.get('remote_ip')}:{conn.get('remote_port')}"
             if key not in connections:
@@ -892,7 +826,7 @@ class TraceeAnalyzer(AnalysisTool):
                 connections[key]["count"] += 1
 
         # Dedupe HTTP requests
-        http_requests: dict[str, dict] = {}
+        http_requests = {}
         for req in network_info.get("http_requests", []):
             key = f"{req.get('method')} {req.get('host')}{req.get('uri', '')}"
             if key not in http_requests:
@@ -915,8 +849,8 @@ class TraceeAnalyzer(AnalysisTool):
 
     def _build_syscall_summary(self, syscalls: list[dict]) -> dict:
         """Build syscall summary grouped by type."""
-        by_name: dict[str, int] = {}
-        by_pid: dict[int, list] = {}
+        by_name = {}
+        by_pid = {}
 
         for sc in syscalls:
             name = sc.get("name", "")
@@ -942,7 +876,7 @@ class TraceeAnalyzer(AnalysisTool):
 
     def _dedupe_security_events(self, events: list[dict]) -> list[dict]:
         """Deduplicate security events, keeping first occurrence with count."""
-        seen: dict[tuple, dict] = {}
+        seen = {}
         for event in events:
             key = (event.get("event"), event.get("process"), event.get("pid"))
             if key not in seen:
@@ -966,7 +900,7 @@ def analyze_with_tracee(
     """Run Tracee dynamic analysis on a binary."""
     config = TraceeConfig(timeout=timeout)
     analyzer = TraceeAnalyzer(config)
-    result = analyzer.analyze_sync(binary_path, arch)
+    result = analyzer.analyze(binary_path, arch)
 
     return {
         "success": result.success,
