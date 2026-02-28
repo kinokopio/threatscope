@@ -17,8 +17,10 @@ try:
 except ImportError:
     docker = None
     Container = None
-    logger.warning("docker package not available, pool management disabled")
-
+    # Only warn if not running inside a container (pool management is done externally)
+    import os
+    if not os.path.exists("/.dockerenv"):
+        logger.warning("docker package not available, pool management disabled")
 
 @dataclass
 class GhidraInstance:
