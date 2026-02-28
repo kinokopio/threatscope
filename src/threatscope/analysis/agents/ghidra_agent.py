@@ -107,19 +107,51 @@ def create_memory_tools_server(memory_store: MemoryStore):
 
     @tool(
         "memory_save_finding",
-        "Save an important finding to persistent memory",
+        "Save an important finding to persistent memory. Avoid duplicates - check existing findings first.",
         {"type": str, "summary": str, "evidence": dict, "severity": str},
     )
     async def save_finding(args: dict[str, Any]) -> dict:
+        findings = memory_store.get_findings()
+        new_type = args["type"]
+        new_summary = args["summary"]
+
+        # Deduplication: check if similar finding already exists
+        for existing in findings:
+            existing_type = existing.get("type", "")
+            existing_summary = existing.get("summary", "")
+
+            # Check for similar type (case-insensitive, ignore underscores)
+            type_similar = (
+                existing_type.lower().replace("_", "") == new_type.lower().replace("_", "")
+                or existing_type.lower() in new_type.lower()
+                or new_type.lower() in existing_type.lower()
+            )
+
+            # Check for similar summary (contains key phrases)
+            summary_similar = (
+                existing_summary.lower()[:50] == new_summary.lower()[:50]
+                or (len(existing_summary) > 20 and existing_summary[:20] in new_summary)
+                or (len(new_summary) > 20 and new_summary[:20] in existing_summary)
+            )
+
+            if type_similar and summary_similar:
+                return {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Finding already exists: {existing.get('id')}. Skipped duplicate.",
+                        }
+                    ]
+                }
+
         finding = {
-            "id": f"finding_{len(memory_store.get_findings()) + 1:03d}",
-            "type": args["type"],
-            "summary": args["summary"],
+            "id": f"finding_{len(findings) + 1:03d}",
+            "type": new_type,
+            "summary": new_summary,
             "evidence": args.get("evidence", {}),
             "severity": args.get("severity", "medium"),
             "discovered_at": datetime.now().isoformat(),
         }
-        findings = memory_store.get_findings()
         findings.append(finding)
         memory_store.save_findings(findings)
         return {"content": [{"type": "text", "text": f"Saved finding: {finding['id']}"}]}
@@ -814,29 +846,9 @@ class GhidraAgent(BaseAgent):
                 except json.JSONDecodeError:
                     logger.warning("Failed to parse JSON from text response")
 
-            # Last resort: return findings from memory, normalized to correct format
+            # Last resort: return findings from memory, deduplicated and normalized
             memory_findings = self.memory_store.get_findings()
-            normalized_findings = []
-            for f in memory_findings:
-                normalized_findings.append(
-                    {
-                        "id": f.get("id", f"finding_{len(normalized_findings) + 1:03d}"),
-                        "title": f.get("title")
-                        or f.get("type")
-                        or f.get("summary", "Finding")[:50],
-                        "category": f.get("category") or f.get("type", "Unknown"),
-                        "description": f.get("description") or f.get("summary", ""),
-                        "severity": f.get("severity", "MEDIUM").upper(),
-                        # Ensure evidence is always a list
-                        "evidence": f.get("evidence", [])
-                        if isinstance(f.get("evidence"), list)
-                        else [f.get("evidence")]
-                        if f.get("evidence")
-                        else [],
-                        "impact": f.get("impact"),
-                        "recommendation": f.get("recommendation"),
-                    }
-                )
+            normalized_findings = self._deduplicate_findings(memory_findings)
 
             return {
                 "raw_analysis": result_text,
@@ -1129,6 +1141,122 @@ class GhidraAgent(BaseAgent):
                 )
 
         return suspicious
+
+    def _deduplicate_findings(self, findings: list[dict]) -> list[dict]:
+        """Deduplicate and normalize findings from memory.
+
+        Groups similar findings by type/category and merges their evidence.
+        Prefers Chinese content over English when both exist.
+
+        Args:
+            findings: Raw findings from memory store.
+
+        Returns:
+            Deduplicated and normalized findings list.
+        """
+        if not findings:
+            return []
+
+        # Group findings by normalized type
+        grouped: dict[str, list[dict]] = {}
+        for f in findings:
+            # Normalize type: lowercase, remove underscores, strip common prefixes
+            raw_type = f.get("type") or f.get("category") or "unknown"
+            normalized_type = raw_type.lower().replace("_", "").strip()
+
+            # Map common variations to canonical types
+            type_mappings = {
+                "c2infrastructure": "c2",
+                "c2domain": "c2",
+                "c2communication": "c2",
+                "commandcontrol": "c2",
+                "networkcommunication": "network",
+                "networkcapabilities": "network",
+                "networkservice": "network",
+                "asyncnetworkio": "network",
+                "networkio": "network",
+                "persistencemechanism": "persistence",
+                "persistencedaemon": "persistence",
+                "hostfingerprinting": "reconnaissance",
+                "hostidentification": "reconnaissance",
+                "informationgathering": "reconnaissance",
+                "taskexecution": "execution",
+                "taskprocessing": "execution",
+                "commandexecution": "execution",
+                "systemexecution": "execution",
+                "systeminteraction": "execution",
+                "beaconimplementation": "c2",
+                "beaconinfrastructure": "c2",
+            }
+            canonical_type = type_mappings.get(normalized_type, normalized_type)
+
+            if canonical_type not in grouped:
+                grouped[canonical_type] = []
+            grouped[canonical_type].append(f)
+
+        # Merge each group into a single finding
+        result = []
+        finding_id = 1
+
+        for canonical_type, group in grouped.items():
+            # Prefer Chinese content (contains CJK characters)
+            def has_chinese(text: str) -> bool:
+                return any('\u4e00' <= c <= '\u9fff' for c in str(text))
+
+            # Sort: Chinese content first, then by severity
+            severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+            group.sort(
+                key=lambda x: (
+                    0 if has_chinese(x.get("summary", "")) else 1,
+                    severity_order.get(x.get("severity", "medium").lower(), 2),
+                )
+            )
+
+            # Use the best (first) finding as base
+            best = group[0]
+
+            # Collect all evidence from the group
+            all_evidence = []
+            for f in group:
+                ev = f.get("evidence", {})
+                if isinstance(ev, dict):
+                    # Convert dict evidence to list of strings
+                    for k, v in ev.items():
+                        if v:
+                            all_evidence.append(f"{k}: {v}")
+                elif isinstance(ev, list):
+                    all_evidence.extend([str(e) for e in ev if e])
+                elif ev:
+                    all_evidence.append(str(ev))
+
+            # Deduplicate evidence
+            seen_evidence = set()
+            unique_evidence = []
+            for e in all_evidence:
+                e_normalized = e.lower()[:50]
+                if e_normalized not in seen_evidence:
+                    seen_evidence.add(e_normalized)
+                    unique_evidence.append(e)
+
+            # Build normalized finding
+            normalized = {
+                "id": f"finding_{finding_id:03d}",
+                "title": best.get("title") or best.get("type") or best.get("summary", "Finding")[:50],
+                "category": best.get("category") or best.get("type", "Unknown"),
+                "description": best.get("description") or best.get("summary", ""),
+                "severity": best.get("severity", "MEDIUM").upper(),
+                "evidence": unique_evidence[:10],  # Limit to 10 evidence items
+                "impact": best.get("impact"),
+                "recommendation": best.get("recommendation"),
+            }
+            result.append(normalized)
+            finding_id += 1
+
+        # Sort by severity
+        severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        result.sort(key=lambda x: severity_order.get(x.get("severity", "MEDIUM"), 2))
+
+        return result
 
     def get_analysis_tools(self) -> list[dict]:
         """Get the list of tools available to this agent."""

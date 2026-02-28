@@ -27,6 +27,7 @@ from src.threatscope.core.dependencies import (  # noqa: E402
     set_ghidra_pool,
     shutdown_dependencies,
 )
+from src.threatscope.core.observability import init_langfuse, shutdown_langfuse  # noqa: E402
 from src.threatscope.shared.exceptions import ThreatScopeError  # noqa: E402
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info("Starting ThreatScope API...")
     settings = get_settings()
+
+    # Initialize Langfuse observability (must be before any AI calls)
+    init_langfuse()
 
     # Start Ghidra instance pool if enabled (Docker mode)
     ghidra_pool: GhidraInstancePool | None = None
@@ -91,6 +95,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if ghidra_pool is not None:
         logger.info("Shutting down Ghidra pool...")
         await ghidra_pool.shutdown()
+
+    # Shutdown Langfuse
+    shutdown_langfuse()
 
     await shutdown_dependencies()
     logger.info("Shutdown complete")
