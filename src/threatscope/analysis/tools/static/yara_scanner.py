@@ -48,8 +48,20 @@ class YaraScanner(AnalysisTool):
             return False
 
         try:
-            # Priority 1: Compile from source files (portable)
+            # Check for cached compiled rules first (in rules/yara/)
             if rules_path.is_dir():
+                cache_file = rules_path.parent / "yara" / "compiled_rules.yarc"
+                if cache_file.exists():
+                    try:
+                        logger.info(f"Loading cached compiled rules from {cache_file}")
+                        self._rules = yara.load(str(cache_file))
+                        self._rule_count = -1  # Unknown count from cache
+                        logger.info("Successfully loaded YARA rules from cache")
+                        return True
+                    except Exception as e:
+                        logger.warning(f"Cache load failed (will recompile): {e}")
+
+                # No cache or cache failed - compile from source
                 filepaths = {}
                 yar_files = list(rules_path.rglob("*.yar"))
                 yara_files = list(rules_path.rglob("*.yara"))
@@ -84,6 +96,18 @@ class YaraScanner(AnalysisTool):
                     self._rules = yara.compile(filepaths=filepaths)
                     self._rule_count = len(filepaths)
                     logger.info(f"Successfully compiled {self._rule_count} YARA rules")
+
+                    # Auto-save compiled rules to rules/yara directory for faster loading
+                    try:
+                        # Find project root and save to rules/yara/
+                        cache_dir = rules_path.parent / "yara"
+                        cache_dir.mkdir(parents=True, exist_ok=True)
+                        cache_file = cache_dir / "compiled_rules.yarc"
+                        self._rules.save(str(cache_file))
+                        logger.info(f"Saved compiled rules cache to {cache_file}")
+                    except Exception as e:
+                        logger.warning(f"Failed to save compiled rules cache: {e}")
+
                     return True
 
                 # Fallback: Try precompiled .yarc if no source files found
