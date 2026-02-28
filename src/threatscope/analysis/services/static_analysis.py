@@ -21,7 +21,7 @@ from src.threatscope.analysis.tools.static import (
     YaraScanner,
 )
 
-ProgressCallback = Callable[[str, str, str, dict[str, Any] | None], Awaitable[None]]
+ProgressCallback = Callable[[str, str, str, dict[str, Any] | None, dict[str, Any] | None], Awaitable[None]]
 
 
 class StaticAnalysisService:
@@ -53,7 +53,7 @@ class StaticAnalysisService:
 
         async def notify(step_id: str, step_name: str, status: str, preview: dict | None = None):
             if progress_callback:
-                await progress_callback(step_id, step_name, status, preview)
+                await progress_callback(step_id, step_name, status, preview, output)
 
         # Hash calculation
         await notify("hashing", "Hash Calculation", "running")

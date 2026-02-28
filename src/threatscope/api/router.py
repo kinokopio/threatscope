@@ -322,19 +322,27 @@ def _run_analysis_background(
     import asyncio
 
     async def _do_analysis():
+        async def save_progress(step_id: str, step_name: str, status: str, preview: dict | None, current_results: dict | None):
+            """Save progress after each step completes."""
+            if status == 'completed' and current_results:
+                # Save current results to database after each step
+                db.update_task_result(task_id, "stage_1_4_results", current_results)
+                logger.debug(f"Saved progress after {step_id}: {step_name}")
+        
         try:
             # Update status
             db.update_task_status(task_id, TaskStatus.STAGE_1_4.value)
 
-            # Run analysis
+            # Run analysis with progress callback
             result = await coordinator.analyze(
                 file_path=file_path,
                 enable_ghidra=enable_ghidra,
                 enable_dynamic=enable_dynamic,
                 enable_threat_intel=enable_threat_intel,
+                progress_callback=save_progress,
             )
 
-            # Save results
+            # Save final results
             if "error" in result:
                 db.update_task_status(task_id, TaskStatus.FAILED.value, error=result["error"])
             else:

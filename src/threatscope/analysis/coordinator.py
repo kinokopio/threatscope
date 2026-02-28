@@ -30,7 +30,8 @@ logger = logging.getLogger(__name__)
 
 
 # Type alias for progress callback
-ProgressCallback = Callable[[str, str, str, dict | None], Any] | None
+# Signature: (step_id, step_name, status, preview_data, current_results) -> Any
+ProgressCallback = Callable[[str, str, str, dict | None, dict | None], Any] | None
 
 
 class AnalysisCoordinator:
@@ -138,7 +139,7 @@ class AnalysisCoordinator:
                 task.update_status(AnalysisStatus.THREAT_INTEL)
                 if progress_callback:
                     await progress_callback(
-                        "threat_intel", "Threat Intelligence Query", "running", None
+                        "threat_intel", "Threat Intelligence Query", "running", None, static_results
                     )
                 threat_intel_results = await self._query_threat_intel(static_results)
                 static_results["threat_intel"] = threat_intel_results
@@ -153,6 +154,7 @@ class AnalysisCoordinator:
                         "Threat Intelligence Query",
                         "completed",
                         {"sources_found": found_count},
+                        static_results,
                     )
 
             # Phase 3: Dynamic Analysis
@@ -161,7 +163,7 @@ class AnalysisCoordinator:
                 task.update_status(AnalysisStatus.DYNAMIC_ANALYSIS)
                 if progress_callback:
                     await progress_callback(
-                        "dynamic_analysis", "Dynamic Analysis (Tracee)", "running", None
+                        "dynamic_analysis", "Dynamic Analysis (Tracee)", "running", None, static_results
                     )
                 dynamic_results = await self._run_dynamic_analysis(file_path, static_results)
                 static_results["dynamic_analysis"] = dynamic_results
@@ -174,6 +176,7 @@ class AnalysisCoordinator:
                             "success": dynamic_results.get("success", False),
                             "events_count": dynamic_results.get("raw_events_count", 0),
                         },
+                        static_results,
                     )
 
             task.static_results = static_results
@@ -184,7 +187,7 @@ class AnalysisCoordinator:
                 task.update_status(AnalysisStatus.GHIDRA_ANALYSIS)
                 if progress_callback:
                     await progress_callback(
-                        "ghidra_analysis", "Ghidra Deep Analysis", "running", None
+                        "ghidra_analysis", "Ghidra Deep Analysis", "running", None, static_results
                     )
                 ghidra_results = await self._run_ghidra_analysis(
                     static_results, file_path, progress_callback
@@ -196,12 +199,13 @@ class AnalysisCoordinator:
                         "Ghidra Deep Analysis",
                         "completed",
                         {"status": ghidra_results.get("status", "unknown")},
+                        static_results,
                     )
 
             # Phase 5: Report Generation
             task.update_status(AnalysisStatus.REPORT_GENERATION)
             if progress_callback:
-                await progress_callback("report_generation", "Report Generation", "running", None)
+                await progress_callback("report_generation", "Report Generation", "running", None, static_results)
             report = await self._run_report_generation(static_results, ghidra_results)
             task.report = report
             if progress_callback:
@@ -210,6 +214,7 @@ class AnalysisCoordinator:
                     "Report Generation",
                     "completed",
                     {"verdict": report.get("report", {}).get("verdict", "unknown")},
+                    static_results,
                 )
 
             task.update_status(AnalysisStatus.COMPLETED)
