@@ -265,6 +265,18 @@ class GhidraAgent(BaseAgent):
         ghidra_available = False
         ghidra_info = {}
         try:
+            # Step 1: Connect to Ghidra
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        "ghidra_connect",
+                        "Connecting to Ghidra service",
+                        "running",
+                        {"url": self.ghidra_url},
+                    )
+                except Exception:
+                    pass
+
             logger.info(f"Connecting to Ghidra at: {self.ghidra_url}")
             self.ghidra_client.health_check()
             logger.info("Ghidra health check passed")
@@ -273,20 +285,123 @@ class GhidraAgent(BaseAgent):
             # If file provided and not already loaded, upload it
             if file_path and Path(file_path).exists():
                 try:
-                    logger.info(f"Uploading {file_path}")
+                    # Step 2: Upload binary (can take time for large files)
+                    file_size = Path(file_path).stat().st_size
+                    file_size_mb = file_size / (1024 * 1024)
+
+                    if self._progress_callback:
+                        try:
+                            await self._progress_callback(
+                                "ghidra_upload",
+                                f"Uploading binary ({file_size_mb:.1f} MB)",
+                                "running",
+                                {"file_size_bytes": file_size, "file_size_mb": round(file_size_mb, 2)},
+                            )
+                        except Exception:
+                            pass
+
+                    logger.info(f"Uploading {file_path} ({file_size_mb:.1f} MB)")
                     self.ghidra_client.upload(file_path)
+
+                    if self._progress_callback:
+                        try:
+                            await self._progress_callback(
+                                "ghidra_upload",
+                                "Binary uploaded successfully",
+                                "completed",
+                                {"file_size_mb": round(file_size_mb, 2)},
+                            )
+                        except Exception:
+                            pass
+
+                    # Step 3: Run Ghidra auto-analysis (can take several minutes)
+                    if self._progress_callback:
+                        try:
+                            await self._progress_callback(
+                                "ghidra_analyze",
+                                "Running Ghidra auto-analysis (this may take several minutes)",
+                                "running",
+                                {"estimated_time": "1-10 minutes depending on file size"},
+                            )
+                        except Exception:
+                            pass
+
                     logger.info("Running Ghidra analysis")
                     self.ghidra_client.analyze()
+
+                    if self._progress_callback:
+                        try:
+                            await self._progress_callback(
+                                "ghidra_analyze",
+                                "Ghidra auto-analysis complete",
+                                "completed",
+                                None,
+                            )
+                        except Exception:
+                            pass
+
+                    # Step 4: Get binary info
                     ghidra_info = self.ghidra_client.get_info()
                     logger.info(f"Got Ghidra info: {ghidra_info}")
+
+                    if self._progress_callback:
+                        try:
+                            await self._progress_callback(
+                                "ghidra_info",
+                                "Retrieved binary metadata",
+                                "completed",
+                                {
+                                    "format": ghidra_info.get("format"),
+                                    "architecture": ghidra_info.get("processor"),
+                                    "function_count": ghidra_info.get("function_count"),
+                                },
+                            )
+                        except Exception:
+                            pass
+
                 except Exception as e:
                     logger.warning(f"Failed to load binary: {e}")
+                    if self._progress_callback:
+                        try:
+                            await self._progress_callback(
+                                "ghidra_error",
+                                f"Failed to load binary: {e}",
+                                "error",
+                                {"error": str(e)},
+                            )
+                        except Exception:
+                            pass
         except Exception as e:
             logger.warning(f"Ghidra service not available: {e}")
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        "ghidra_connect",
+                        "Ghidra service not available",
+                        "error",
+                        {"error": str(e)},
+                    )
+                except Exception:
+                    pass
 
         # If Ghidra is available, run AI-driven analysis
         if ghidra_available and ghidra_info:
             try:
+                # Notify AI analysis starting
+                if self._progress_callback:
+                    try:
+                        await self._progress_callback(
+                            "ghidra_ai_start",
+                            "Starting AI-driven deep analysis",
+                            "running",
+                            {
+                                "function_count": ghidra_info.get("function_count", 0),
+                                "estimated_time": "2-10 minutes depending on complexity",
+                            },
+                        )
+                    except Exception:
+                        pass
+
                 ai_results = await self._run_ai_analysis(
                     static_results=static_results,
                     file_path=file_path,
@@ -294,6 +409,7 @@ class GhidraAgent(BaseAgent):
                     previous_findings=previous_findings,
                     ghidra_info=ghidra_info,
                 )
+
                 return AgentResult(
                     success=True,
                     data={

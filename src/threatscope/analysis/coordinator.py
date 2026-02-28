@@ -209,7 +209,7 @@ class AnalysisCoordinator:
             task.update_status(AnalysisStatus.REPORT_GENERATION)
             if progress_callback:
                 await progress_callback("report_generation", "Report Generation", "running", None, static_results)
-            report = await self._run_report_generation(static_results, ghidra_results)
+            report = await self._run_report_generation(static_results, ghidra_results, progress_callback)
             task.report = report
             if progress_callback:
                 await progress_callback(
@@ -422,6 +422,7 @@ class AnalysisCoordinator:
         self,
         static_results: dict[str, Any],
         ghidra_results: dict[str, Any],
+        progress_callback: ProgressCallback = None,
     ) -> dict[str, Any]:
         """Run final report generation."""
         threat_intel = static_results.get("threat_intel", {})
@@ -433,7 +434,8 @@ class AnalysisCoordinator:
                 "ghidra_analysis": ghidra_results,
                 "threat_intel": threat_intel,
                 "dynamic_results": dynamic_results,
-            }
+            },
+            progress_callback=progress_callback,
         )
 
         return result.data if result.success else {"error": result.error}
