@@ -97,12 +97,14 @@ def get_coordinator(settings: SettingsDep) -> AnalysisCoordinator:
     Returns:
         AnalysisCoordinator instance.
     """
+    import logging
+    from pathlib import Path
+
+    logger = logging.getLogger(__name__)
+
     global _coordinator_instance
     if _coordinator_instance is None:
         # Import here to avoid circular imports
-        # Get project root directory (where pyproject.toml is)
-        from pathlib import Path
-
         from src.threatscope.analysis.coordinator import AnalysisCoordinator as Coordinator
 
         # Try to find project root by looking for pyproject.toml
@@ -112,11 +114,20 @@ def get_coordinator(settings: SettingsDep) -> AnalysisCoordinator:
                 project_dir = parent
                 break
 
-        _coordinator_instance = Coordinator(
-            settings,
-            project_dir=project_dir,
-            ghidra_pool=_ghidra_pool,
-        )
+        logger.info(f"Initializing AnalysisCoordinator with project_dir={project_dir}")
+
+        try:
+            _coordinator_instance = Coordinator(
+                settings,
+                project_dir=project_dir,
+                ghidra_pool=_ghidra_pool,
+            )
+            logger.info("AnalysisCoordinator initialized successfully")
+        except Exception as e:
+            logger.exception(f"Failed to initialize AnalysisCoordinator: {e}")
+            raise
+
+    return _coordinator_instance
 
 
 CoordinatorDep = Annotated[AnalysisCoordinator, Depends(get_coordinator)]

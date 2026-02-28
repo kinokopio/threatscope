@@ -323,12 +323,26 @@ def _run_analysis_background(
     import asyncio
 
     async def _do_analysis():
-        async def save_progress(step_id: str, step_name: str, status: str, preview: dict | None, current_results: dict | None):
+        # Check coordinator is valid
+        if coordinator is None:
+            logger.error(f"Coordinator is None for task {task_id}")
+            db.update_task_status(
+                task_id, TaskStatus.FAILED.value, error="Coordinator not initialized"
+            )
+            return
+
+        async def save_progress(
+            step_id: str,
+            step_name: str,
+            status: str,
+            preview: dict | None,
+            current_results: dict | None,
+        ):
             """Save progress after each step completes."""
-            if status == 'running':
+            if status == "running":
                 # Update current step
                 db.update_current_step(task_id, step_name)
-                
+
                 # Update task status based on step_id for major phases
                 step_to_status = {
                     "dynamic_analysis": TaskStatus.DYNAMIC_ANALYSIS.value,
@@ -339,8 +353,8 @@ def _run_analysis_background(
                 if new_status:
                     db.update_task_status(task_id, new_status)
                     logger.debug(f"Updated task status to {new_status}")
-            
-            if status == 'completed' and current_results:
+
+            if status == "completed" and current_results:
                 # Map step_id to database field and save
                 step_to_field = {
                     "hashing": "hashes",
@@ -354,12 +368,12 @@ def _run_analysis_background(
                     "ghidra_analysis": "ghidra_analysis",
                     "report_generation": "malware_report",
                 }
-                
+
                 field = step_to_field.get(step_id)
                 if field and field in current_results:
                     db.update_task_result(task_id, field, current_results[field])
                     logger.debug(f"Saved {field} after {step_name}")
-        
+
         try:
             # Update status
             db.update_task_status(task_id, TaskStatus.STATIC_ANALYSIS.value)
@@ -379,16 +393,24 @@ def _run_analysis_background(
             else:
                 # Save any remaining results
                 static = result.get("static_analysis", {})
-                for field in ["hashes", "strings", "elf", "yara", "function_categories", 
-                              "mitre_mapping", "threat_intel", "dynamic_analysis"]:
+                for field in [
+                    "hashes",
+                    "strings",
+                    "elf",
+                    "yara",
+                    "function_categories",
+                    "mitre_mapping",
+                    "threat_intel",
+                    "dynamic_analysis",
+                ]:
                     if static.get(field):
                         db.update_task_result(task_id, field, static[field])
-                
+
                 if result.get("ghidra_analysis"):
                     db.update_task_result(task_id, "ghidra_analysis", result["ghidra_analysis"])
                 if result.get("report"):
                     db.update_task_result(task_id, "malware_report", result["report"])
-                
+
                 db.update_task_status(task_id, TaskStatus.COMPLETED.value)
 
         except Exception as e:
@@ -402,16 +424,14 @@ def _run_analysis_background(
             except Exception:
                 pass
 
-    # Run in event loop
+    # Run in event loop - Python 3.10+ compatible
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # If loop is already running, create task
-            asyncio.create_task(_do_analysis())
-        else:
-            loop.run_until_complete(_do_analysis())
+        # Try to get running loop (works in async context)
+        loop = asyncio.get_running_loop()
+        # Schedule coroutine in the running loop
+        asyncio.ensure_future(_do_analysis(), loop=loop)
     except RuntimeError:
-        # No event loop, create new one
+        # No running loop - create new one with asyncio.run()
         asyncio.run(_do_analysis())
 
 
