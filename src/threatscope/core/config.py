@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -136,20 +136,25 @@ class DatabaseSettings(BaseSettings):
 class APISettings(BaseSettings):
     """API server configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="THREATSCOPE_API_")
+    model_config = SettingsConfigDict(
+        env_prefix="THREATSCOPE_API_",
+        populate_by_name=True,  # Allow both field name and alias
+    )
 
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8080, ge=1024, le=65535)
-    cors_origins: list[str] = Field(default=["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"])
+    # Store as string to avoid pydantic-settings JSON parsing issues
+    cors_origins_str: str = Field(
+        default="http://localhost:5173,http://localhost:5174,http://127.0.0.1:5173,http://127.0.0.1:5174",
+        validation_alias="THREATSCOPE_API_CORS_ORIGINS",
+    )
     debug: bool = Field(default=False)
     docs_enabled: bool = Field(default=True)
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def parse_cors_origins(cls, v):
-        if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
-        return v
+    @property
+    def cors_origins(self) -> list[str]:
+        """Parse CORS origins from comma-separated string."""
+        return [origin.strip() for origin in self.cors_origins_str.split(",") if origin.strip()]
 
 
 class Settings(BaseSettings):
