@@ -7,7 +7,16 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    libmagic1 \
+    wget \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
+
+# Download capa rules at build time
+RUN mkdir -p /app/rules/capa && \
+    wget -q https://github.com/mandiant/capa-rules/releases/latest/download/capa-rules.zip -O /tmp/capa-rules.zip && \
+    unzip -q /tmp/capa-rules.zip -d /app/rules/capa && \
+    rm /tmp/capa-rules.zip
 
 # Install Python dependencies
 COPY requirements.txt /app/
@@ -20,6 +29,8 @@ COPY . /app/
 ENV PYTHONPATH=/app
 ENV THREATSCOPE_GHIDRA_URL=http://ghidra:8000
 ENV THREATSCOPE_MCP_URL=http://ghidra:9000/mcp
+ENV DIEC_URL=http://diec:8000
+ENV CAPA_RULES_PATH=/app/rules/capa
 
 # Expose API port
 EXPOSE 8001
