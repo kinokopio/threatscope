@@ -22,6 +22,20 @@ services:
     mem_limit: 4g
     restart: unless-stopped
 
+  # diec file type identification service
+  diec:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.diec
+    container_name: threatscope_diec
+    ports:
+      - "127.0.0.1:8082:8000"
+    volumes:
+      - ./data/uploads:/data/uploads:ro
+    environment:
+      - DIEC_TIMEOUT=30
+    restart: unless-stopped
+
   # Backend API service
   backend:
     build:

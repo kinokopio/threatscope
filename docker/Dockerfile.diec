@@ -1,0 +1,46 @@
+# ThreatScope diec Service Dockerfile
+# File type identification service based on Detect It Easy (diec)
+
+FROM horsicq/diec:latest
+
+USER root
+
+# Install Python and dependencies for HTTP wrapper
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Create virtual environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+ENV VIRTUAL_ENV="/app/venv"
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+    fastapi>=0.100.0 \
+    uvicorn>=0.23.0 \
+    python-multipart>=0.0.6
+
+# Copy HTTP wrapper
+COPY docker/diec_server.py /app/
+
+# Create temp directory for file uploads
+RUN mkdir -p /app/temp
+
+# Environment variables
+ENV DIEC_TEMP_DIR=/app/temp
+
+# Expose HTTP port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+# Run the HTTP server
+CMD ["uvicorn", "diec_server:app", "--host", "0.0.0.0", "--port", "8000"]
