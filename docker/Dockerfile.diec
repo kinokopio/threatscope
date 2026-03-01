@@ -5,6 +5,9 @@ FROM horsicq/diec:latest
 
 USER root
 
+# Reset ENTRYPOINT from base image
+ENTRYPOINT []
+
 # Install Python and dependencies for HTTP wrapper
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
