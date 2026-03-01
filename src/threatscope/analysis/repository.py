@@ -39,40 +39,46 @@ class TaskRepository:
     def _init_schema(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
-            # Drop old table and recreate with new schema (breaking change)
-            conn.execute("DROP TABLE IF EXISTS tasks")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id TEXT PRIMARY KEY,
-                    file_path TEXT NOT NULL,
-                    file_name TEXT,
-                    status TEXT NOT NULL DEFAULT 'pending',
-                    current_step TEXT,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    error TEXT,
-                    retry_count INTEGER DEFAULT 0,
-                    -- Static analysis results (new structure)
-                    hashes TEXT,
-                    file_type TEXT,           -- diec output (format, arch, packers, etc.)
-                    capa TEXT,                -- capa output (capabilities, attack, mbc)
-                    strings TEXT,
-                    yara TEXT,
-                    -- Threat intelligence
-                    threat_intel TEXT,
-                    -- Dynamic analysis
-                    dynamic_analysis TEXT,
-                    -- Ghidra analysis
-                    ghidra_analysis TEXT,
-                    -- Final report
-                    malware_report TEXT,
-                    -- Options
-                    options TEXT
-                )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
-            conn.commit()
+            # Check if table exists and has correct schema
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='tasks'"
+            )
+            table_exists = cursor.fetchone() is not None
+
+            if not table_exists:
+                # Create new table with current schema
+                conn.execute("""
+                    CREATE TABLE tasks (
+                        id TEXT PRIMARY KEY,
+                        file_path TEXT NOT NULL,
+                        file_name TEXT,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        current_step TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        error TEXT,
+                        retry_count INTEGER DEFAULT 0,
+                        -- Static analysis results (new structure)
+                        hashes TEXT,
+                        file_type TEXT,           -- diec output (format, arch, packers, etc.)
+                        capa TEXT,                -- capa output (capabilities, attack, mbc)
+                        strings TEXT,
+                        yara TEXT,
+                        -- Threat intelligence
+                        threat_intel TEXT,
+                        -- Dynamic analysis
+                        dynamic_analysis TEXT,
+                        -- Ghidra analysis
+                        ghidra_analysis TEXT,
+                        -- Final report
+                        malware_report TEXT,
+                        -- Options
+                        options TEXT
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
+                conn.commit()
 
     @contextmanager
     def _connection(self) -> Generator[sqlite3.Connection, None, None]:

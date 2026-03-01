@@ -81,11 +81,10 @@ export async function getTask(taskId: string): Promise<AnalysisTask> {
   // Extract result fields from top level
   const result = {
     hashes: data.hashes,
+    file_type: data.file_type,
+    capa: data.capa,
     strings: data.strings,
-    elf: data.elf,
     yara: data.yara,
-    function_categories: data.function_categories,
-    mitre_mapping: data.mitre_mapping,
     threat_intel: data.threat_intel,
     dynamic_analysis: data.dynamic_analysis,
     ghidra_analysis: data.ghidra_analysis,
