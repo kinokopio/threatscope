@@ -118,10 +118,13 @@ class StaticAnalysisService:
 
         # Step 2: File type identification
         await notify("file_identification", "File Type Identification", "running")
+        logger.info(f"Starting diec analysis for {file_path}, diec_url={self.diec_analyzer.diec_url}")
         diec_result = await self.diec_analyzer.analyze(file_path)
+        logger.info(f"diec result: success={diec_result.success}, error={diec_result.error}, data={diec_result.data}")
         if diec_result.success:
             output["file_type"] = diec_result.data
             category = diec_result.data.get("category", "unknown")
+            logger.info(f"File type identified: category={category}, format={diec_result.data.get('format')}")
             await notify(
                 "file_identification",
                 "File Type Identification",
