@@ -81,22 +81,29 @@ start_diec() {
 setup_capa_rules() {
     local RULES_DIR="$PROJECT_ROOT/rules/capa"
     local RULES_ZIP="/tmp/capa-rules.zip"
+    local TEMP_DIR="/tmp/capa-rules-temp"
     
     if [ -d "$RULES_DIR" ] && [ "$(ls -A "$RULES_DIR" 2>/dev/null)" ]; then
         log_info "capa rules already exist at $RULES_DIR"
         return 0
     fi
     
-    log_info "Downloading capa rules..."
+    log_info "Downloading capa rules from GitHub..."
     
     mkdir -p "$RULES_DIR"
+    rm -rf "$TEMP_DIR"
     
-    # 下载最新规则
-    curl -sL "https://github.com/mandiant/capa-rules/releases/latest/download/capa-rules.zip" -o "$RULES_ZIP"
+    # 从 GitHub master 分支下载
+    curl -sL "https://github.com/mandiant/capa-rules/archive/refs/heads/master.zip" -o "$RULES_ZIP"
     
-    # 解压
-    unzip -q -o "$RULES_ZIP" -d "$RULES_DIR"
-    rm -f "$RULES_ZIP"
+    # 解压到临时目录
+    unzip -q -o "$RULES_ZIP" -d "$TEMP_DIR"
+    
+    # 移动规则文件（去掉 capa-rules-master 目录层级）
+    mv "$TEMP_DIR"/capa-rules-master/* "$RULES_DIR/"
+    
+    # 清理
+    rm -rf "$RULES_ZIP" "$TEMP_DIR"
     
     log_info "capa rules downloaded to $RULES_DIR"
 }
