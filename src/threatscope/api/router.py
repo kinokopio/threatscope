@@ -369,9 +369,12 @@ def _run_analysis_background(
                 }
 
                 field = step_to_field.get(step_id)
+                logger.info(f"save_progress: step_id={step_id}, field={field}, has_field={field in current_results if field else False}")
                 if field and current_results and field in current_results:
                     db.update_task_result(task_id, field, current_results[field])
                     logger.info(f"Saved {field} to database for task {task_id}")
+                else:
+                    logger.warning(f"Did not save {step_id}: field={field}, current_results keys={list(current_results.keys()) if current_results else None}")
         try:
             # Update status
             db.update_task_status(task_id, TaskStatus.STATIC_ANALYSIS.value)
