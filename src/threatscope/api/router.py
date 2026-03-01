@@ -358,10 +358,9 @@ def _run_analysis_background(
                 # Map step_id to database field and save
                 step_to_field = {
                     "hashing": "hashes",
+                    "file_identification": "file_type",
+                    "capability_analysis": "capa",
                     "string_extraction": "strings",
-                    "binary_parsing": "elf",
-                    "function_classification": "function_categories",
-                    "mitre_mapping": "mitre_mapping",
                     "yara_scanning": "yara",
                     "threat_intel": "threat_intel",
                     "dynamic_analysis": "dynamic_analysis",
@@ -370,10 +369,9 @@ def _run_analysis_background(
                 }
 
                 field = step_to_field.get(step_id)
-                if field and field in current_results:
+                if field and current_results and field in current_results:
                     db.update_task_result(task_id, field, current_results[field])
-                    logger.debug(f"Saved {field} after {step_name}")
-
+                    logger.info(f"Saved {field} to database for task {task_id}")
         try:
             # Update status
             db.update_task_status(task_id, TaskStatus.STATIC_ANALYSIS.value)
