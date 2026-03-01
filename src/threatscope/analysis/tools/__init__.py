@@ -2,10 +2,9 @@
 
 from src.threatscope.analysis.tools.base import AnalysisTool, FileType, ToolResult
 from src.threatscope.analysis.tools.static import (
-    ELFParser,
-    FunctionClassifier,
+    CapaAnalyzer,
+    DiecAnalyzer,
     HashCalculator,
-    MitreMapper,
     StringExtractor,
     YaraScanner,
 )
@@ -14,10 +13,9 @@ __all__ = [
     "AnalysisTool",
     "FileType",
     "ToolResult",
+    "CapaAnalyzer",
+    "DiecAnalyzer",
     "HashCalculator",
     "StringExtractor",
-    "ELFParser",
     "YaraScanner",
-    "FunctionClassifier",
-    "MitreMapper",
 ]
