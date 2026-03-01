@@ -40,22 +40,13 @@ async def analyze_file(file: UploadFile = File(...)) -> dict[str, Any]:
         file: The file to analyze (multipart upload)
 
     Returns:
-        JSON with file type information:
-        - format: File format (PE32, PE32+, ELF64, etc.)
-        - arch: Architecture (I386, AMD64, ARM, etc.)
-        - mode: Bit mode (32, 64)
-        - type: File type (executable, library, etc.)
-        - detects: List of detections (compilers, packers, protectors)
+        JSON with file type information
     """
-    # Save uploaded file to temp location
     temp_path = TEMP_DIR / f"{uuid.uuid4().hex}_{file.filename or 'unknown'}"
 
     try:
-        # Write file to disk
         content = await file.read()
         temp_path.write_bytes(content)
-
-        # Run diec with JSON output
         result = _run_diec(temp_path)
         return result
 
@@ -68,22 +59,13 @@ async def analyze_file(file: UploadFile = File(...)) -> dict[str, Any]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
     finally:
-        # Clean up temp file
         if temp_path.exists():
             temp_path.unlink()
 
 
 @app.post("/analyze/path")
 async def analyze_path(file_path: str) -> dict[str, Any]:
-    """
-    Analyze a file by path (for files already on disk).
-
-    Args:
-        file_path: Path to the file to analyze
-
-    Returns:
-        Same as /analyze endpoint
-    """
+    """Analyze a file by path (for files already on disk)."""
     path = Path(file_path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"File not found: {file_path}")
@@ -101,16 +83,7 @@ async def analyze_path(file_path: str) -> dict[str, Any]:
 
 
 def _run_diec(file_path: Path) -> dict[str, Any]:
-    """
-    Run diec CLI and parse output.
-
-    Args:
-        file_path: Path to file to analyze
-
-    Returns:
-        Normalized detection result
-    """
-    # Run diec with JSON output
+    """Run diec CLI and parse output."""
     proc = subprocess.run(
         ["diec", "-j", str(file_path)],
         capture_output=True,
@@ -119,10 +92,7 @@ def _run_diec(file_path: Path) -> dict[str, Any]:
         check=True,
     )
 
-    # Parse JSON output
     raw_output = json.loads(proc.stdout)
-
-    # Normalize output to our schema
     return _normalize_diec_output(raw_output)
 
 
@@ -130,9 +100,18 @@ def _normalize_diec_output(raw: dict[str, Any]) -> dict[str, Any]:
     """
     Normalize diec JSON output to our standard schema.
 
-    diec output format varies, but typically includes:
-    - detects: list of detection objects
-    - Each detect has: type, name, version, info, etc.
+    diec actual output format:
+    {
+        "detects": [
+            {
+                "filetype": "ELF64",
+                "parentfilepart": "Header",
+                "values": [
+                    {"type": "Compiler", "name": "Go", "version": "1.24.0", ...}
+                ]
+            }
+        ]
+    }
     """
     result: dict[str, Any] = {
         "format": "",
@@ -144,98 +123,99 @@ def _normalize_diec_output(raw: dict[str, Any]) -> dict[str, Any]:
 
     detects = raw.get("detects", [])
     if not detects:
-        # Empty result - unknown file type
         return result
 
-    # Process each detection
-    for detect in detects:
-        detect_type = detect.get("type", "").lower()
-        detect_name = detect.get("name", "")
-        detect_version = detect.get("version", "")
-        detect_info = detect.get("info", "")
+    # Process each detection block
+    for detect_block in detects:
+        # Get file type from the block level
+        filetype = detect_block.get("filetype", "")
+        if filetype and not result["format"]:
+            result["format"] = filetype
+            # Infer arch from filetype
+            _infer_arch_from_format(result, filetype)
 
-        # Extract file format info from "filetype" or similar
-        if detect_type in ("filetype", "binary"):
-            # Parse format info
-            result["format"] = detect_name
-            if detect_info:
-                # Info often contains arch/mode details
-                result["type"] = detect_info
+        # Process values array for compilers, packers, etc.
+        values = detect_block.get("values", [])
+        for value in values:
+            value_type = value.get("type", "").lower()
+            value_name = value.get("name", "")
+            value_version = value.get("version", "")
 
-        elif detect_type == "arch":
-            result["arch"] = detect_name
-            if detect_version:
-                result["mode"] = detect_version
-
-        elif detect_type in ("compiler", "linker", "tool"):
-            result["detects"].append(
-                {
-                    "type": "compiler",
-                    "name": detect_name,
-                    "version": detect_version,
-                }
-            )
-
-        elif detect_type in ("packer", "cryptor", "installer"):
-            result["detects"].append(
-                {
-                    "type": "packer",
-                    "name": detect_name,
-                    "version": detect_version,
-                }
-            )
-
-        elif detect_type in ("protector", "dongle"):
-            result["detects"].append(
-                {
-                    "type": "protector",
-                    "name": detect_name,
-                    "version": detect_version,
-                }
-            )
-
-        elif detect_type == "library":
-            # Library detections (like .NET, Qt, etc.)
-            result["detects"].append(
-                {
-                    "type": "library",
-                    "name": detect_name,
-                    "version": detect_version,
-                }
-            )
-
-        elif detect_type == "format":
-            # File format (PE, ELF, etc.)
-            result["format"] = detect_name
-
-        else:
-            # Unknown type - add as generic detection
-            if detect_name:
+            if value_type in ("compiler", "linker", "tool"):
                 result["detects"].append(
                     {
-                        "type": detect_type or "unknown",
-                        "name": detect_name,
-                        "version": detect_version,
+                        "type": "compiler",
+                        "name": value_name,
+                        "version": value_version,
+                    }
+                )
+            elif value_type in ("packer", "cryptor", "installer"):
+                result["detects"].append(
+                    {
+                        "type": "packer",
+                        "name": value_name,
+                        "version": value_version,
+                    }
+                )
+            elif value_type in ("protector", "dongle"):
+                result["detects"].append(
+                    {
+                        "type": "protector",
+                        "name": value_name,
+                        "version": value_version,
+                    }
+                )
+            elif value_type == "library":
+                result["detects"].append(
+                    {
+                        "type": "library",
+                        "name": value_name,
+                        "version": value_version,
+                    }
+                )
+            elif value_name:
+                # Unknown type - add as generic
+                result["detects"].append(
+                    {
+                        "type": value_type or "unknown",
+                        "name": value_name,
+                        "version": value_version,
                     }
                 )
 
-    # Try to infer arch/mode from format if not set
-    if not result["arch"] and result["format"]:
-        fmt = result["format"].upper()
-        if "64" in fmt or "AMD64" in fmt or "X64" in fmt:
-            result["arch"] = "AMD64"
-            result["mode"] = "64"
-        elif "32" in fmt or "I386" in fmt or "X86" in fmt:
-            result["arch"] = "I386"
-            result["mode"] = "32"
-        elif "ARM64" in fmt or "AARCH64" in fmt:
-            result["arch"] = "ARM64"
-            result["mode"] = "64"
-        elif "ARM" in fmt:
-            result["arch"] = "ARM"
-            result["mode"] = "32"
-
     return result
+
+
+def _infer_arch_from_format(result: dict[str, Any], fmt: str) -> None:
+    """Infer architecture from format string."""
+    fmt_upper = fmt.upper()
+
+    if "ELF64" in fmt_upper or "PE64" in fmt_upper or "PE32+" in fmt_upper:
+        result["arch"] = "AMD64"
+        result["mode"] = "64"
+    elif "ELF32" in fmt_upper or "PE32" in fmt_upper:
+        result["arch"] = "I386"
+        result["mode"] = "32"
+    elif "64" in fmt_upper or "AMD64" in fmt_upper or "X64" in fmt_upper:
+        result["arch"] = "AMD64"
+        result["mode"] = "64"
+    elif "32" in fmt_upper or "I386" in fmt_upper or "X86" in fmt_upper:
+        result["arch"] = "I386"
+        result["mode"] = "32"
+    elif "ARM64" in fmt_upper or "AARCH64" in fmt_upper:
+        result["arch"] = "ARM64"
+        result["mode"] = "64"
+    elif "ARM" in fmt_upper:
+        result["arch"] = "ARM"
+        result["mode"] = "32"
+    elif "ELF" in fmt_upper:
+        # Generic ELF without bit info - assume 64-bit
+        result["arch"] = "AMD64"
+        result["mode"] = "64"
+    elif "PE" in fmt_upper:
+        # Generic PE without bit info - assume 32-bit
+        result["arch"] = "I386"
+        result["mode"] = "32"
 
 
 if __name__ == "__main__":
