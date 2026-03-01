@@ -1038,13 +1038,13 @@ class GhidraAgent(BaseAgent):
                 ]
             )
 
-        # Build suspicious functions list from static analysis
+        # Build suspicious functions list from capa capabilities
         suspicious_funcs = []
-        func_categories = static_results.get("function_categories", {})
-        for category in ["Networking", "Cryptography", "Evasion", "Process", "Persistence"]:
-            if category in func_categories:
-                suspicious_funcs.extend(func_categories[category][:5])
-
+        capa_result = static_results.get("capa", {})
+        capabilities = capa_result.get("capabilities", [])
+        for cap in capabilities:
+            if any(kw in cap.get("namespace", "").lower() for kw in ["network", "crypto", "anti", "persistence"]):
+                suspicious_funcs.append(cap.get("name", ""))
         parts.extend(
             [
                 "## Investigation Protocol (MANDATORY)",
@@ -1130,17 +1130,20 @@ class GhidraAgent(BaseAgent):
             if func.get("name") in entry_names:
                 targets.append(func["name"])
 
-        # Priority 2: Functions with suspicious imports
-        suspicious_apis = static_results.get("function_categories", {})
-        for category in ["Networking", "Cryptography", "Evasion", "Process"]:
-            if category in suspicious_apis:
-                for func in functions:
-                    name = func.get("name", "")
-                    if name.startswith("FUN_") and name not in targets:
-                        targets.append(name)
-                        if len(targets) >= 30:
-                            break
-
+        # Priority 2: Functions based on capa capabilities
+        capa_result = static_results.get("capa", {})
+        capabilities = capa_result.get("capabilities", [])
+        has_suspicious_caps = any(
+            any(kw in cap.get("namespace", "").lower() for kw in ["network", "crypto", "anti", "persistence"])
+            for cap in capabilities
+        )
+        if has_suspicious_caps:
+            for func in functions:
+                name = func.get("name", "")
+                if name.startswith("FUN_") and name not in targets:
+                    targets.append(name)
+                    if len(targets) >= 30:
+                        break
         # Priority 3: Auto-named functions
         for func in functions:
             name = func.get("name", "")
