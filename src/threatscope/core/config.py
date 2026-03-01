@@ -112,7 +112,7 @@ class DiecSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="THREATSCOPE_DIEC_")
 
     url: str = Field(default="http://localhost:8082", description="diec HTTP service URL")
-    timeout: int = Field(default=30, ge=5, le=120, description="Request timeout in seconds")
+    timeout: int = Field(default=60, ge=5, le=300, description="Request timeout in seconds")
     enabled: bool = Field(default=True, description="Enable diec service")
 
 
@@ -122,7 +122,7 @@ class CapaSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="THREATSCOPE_CAPA_")
 
     rules_path: str = Field(default="rules/capa", description="Path to capa rules directory")
-    timeout: int = Field(default=60, ge=10, le=300, description="Analysis timeout in seconds")
+    timeout: int = Field(default=180, ge=10, le=600, description="Analysis timeout in seconds")
     enabled: bool = Field(default=True, description="Enable capa analysis")
 
 class TasksSettings(BaseSettings):
