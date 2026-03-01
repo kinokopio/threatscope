@@ -12,6 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import logging
+
+# Suppress verbose Vivisect logs
+logging.getLogger("vivisect").setLevel(logging.WARNING)
+logging.getLogger("vivisect.analysis").setLevel(logging.WARNING)
+logging.getLogger("envi").setLevel(logging.WARNING)
 from src.threatscope.analysis.tools.base import AnalysisTool, ToolResult
 
 # capa imports - optional to allow graceful degradation
