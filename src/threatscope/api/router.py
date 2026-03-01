@@ -395,11 +395,10 @@ def _run_analysis_background(
                 static = result.get("static_analysis", {})
                 for field in [
                     "hashes",
+                    "file_type",
+                    "capa",
                     "strings",
-                    "elf",
                     "yara",
-                    "function_categories",
-                    "mitre_mapping",
                     "threat_intel",
                     "dynamic_analysis",
                 ]:
@@ -442,16 +441,14 @@ def _extract_results(task: dict) -> dict:
     # Each step has its own field now
     if task.get("hashes"):
         results["hashes"] = task["hashes"]
+    if task.get("file_type"):
+        results["file_type"] = task["file_type"]
+    if task.get("capa"):
+        results["capa"] = task["capa"]
     if task.get("strings"):
         results["strings"] = task["strings"]
-    if task.get("elf"):
-        results["elf"] = task["elf"]
     if task.get("yara"):
         results["yara"] = task["yara"]
-    if task.get("function_categories"):
-        results["function_categories"] = task["function_categories"]
-    if task.get("mitre_mapping"):
-        results["mitre_mapping"] = task["mitre_mapping"]
     if task.get("threat_intel"):
         results["threat_intel"] = task["threat_intel"]
     if task.get("dynamic_analysis"):
