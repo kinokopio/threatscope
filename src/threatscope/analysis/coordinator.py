@@ -288,8 +288,8 @@ class AnalysisCoordinator:
         static_results: dict,
     ) -> dict[str, Any]:
         """Run dynamic analysis using Tracee."""
-        elf_info = static_results.get("elf", {})
-        arch = elf_info.get("arch", "").lower()
+        file_type = static_results.get("file_type", {})
+        arch = file_type.get("arch", "").lower()
 
         arch_mapping = {
             "x86_64": "x86_64",
@@ -303,7 +303,6 @@ class AnalysisCoordinator:
             if key in arch:
                 target_arch = value
                 break
-
         if not target_arch:
             logger.warning(f"Unsupported architecture for Tracee: {arch}")
             return {
