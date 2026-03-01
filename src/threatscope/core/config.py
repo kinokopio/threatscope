@@ -122,7 +122,7 @@ class CapaSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="THREATSCOPE_CAPA_")
 
     rules_path: str = Field(default="rules/capa", description="Path to capa rules directory")
-    timeout: int = Field(default=180, ge=10, le=600, description="Analysis timeout in seconds")
+    timeout: int = Field(default=600, ge=10, le=1800, description="Analysis timeout in seconds")
     enabled: bool = Field(default=True, description="Enable capa analysis")
 
 class TasksSettings(BaseSettings):
