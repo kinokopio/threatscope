@@ -106,6 +106,25 @@ class TraceeSettings(BaseSettings):
     enable_file_capture: bool = Field(default=True)
 
 
+class DiecSettings(BaseSettings):
+    """diec file type identification service configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="THREATSCOPE_DIEC_")
+
+    url: str = Field(default="http://localhost:8082", description="diec HTTP service URL")
+    timeout: int = Field(default=30, ge=5, le=120, description="Request timeout in seconds")
+    enabled: bool = Field(default=True, description="Enable diec service")
+
+
+class CapaSettings(BaseSettings):
+    """capa capability detection configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="THREATSCOPE_CAPA_")
+
+    rules_path: str = Field(default="rules/capa", description="Path to capa rules directory")
+    timeout: int = Field(default=60, ge=10, le=300, description="Analysis timeout in seconds")
+    enabled: bool = Field(default=True, description="Enable capa analysis")
+
 class TasksSettings(BaseSettings):
     """Task queue configuration."""
 
@@ -189,6 +208,8 @@ class Settings(BaseSettings):
     # Nested settings (loaded from sub-prefixes)
     workers: WorkersSettings = Field(default_factory=WorkersSettings)
     ghidra: GhidraSettings = Field(default_factory=GhidraSettings)
+    diec: DiecSettings = Field(default_factory=DiecSettings)
+    capa: CapaSettings = Field(default_factory=CapaSettings)
     threat_intel: ThreatIntelSettings = Field(default_factory=ThreatIntelSettings)
     agents: AgentsSettings = Field(default_factory=AgentsSettings)
     analysis: AnalysisSettings = Field(default_factory=AnalysisSettings)

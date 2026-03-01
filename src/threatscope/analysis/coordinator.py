@@ -265,12 +265,21 @@ class AnalysisCoordinator:
         yara_rules_path = self.settings.analysis.yara_rules_path
         if yara_rules_path and not Path(yara_rules_path).is_absolute():
             yara_rules_path = str(self.project_dir / yara_rules_path)
-        
+
+        # Resolve capa rules path
+        capa_rules_path = self.settings.capa.rules_path
+        if capa_rules_path and not Path(capa_rules_path).is_absolute():
+            capa_rules_path = str(self.project_dir / capa_rules_path)
+
         logger.info(f"YARA rules path resolved to: {yara_rules_path}")
-        logger.info(f"Project dir: {self.project_dir}")
+        logger.info(f"capa rules path resolved to: {capa_rules_path}")
+        logger.info(f"diec URL: {self.settings.diec.url}")
 
         service = StaticAnalysisService(
             yara_rules_path=yara_rules_path,
+            diec_url=self.settings.diec.url,
+            capa_rules_path=capa_rules_path,
+            capa_timeout=self.settings.capa.timeout,
         )
 
         # Run static analysis with status updates
