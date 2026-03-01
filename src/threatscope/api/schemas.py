@@ -113,6 +113,51 @@ class StringsResult(BaseModel):
     suspicious: list[str] = Field(default_factory=list)
 
 
+class FileTypeResult(BaseModel):
+    """File type identification results from diec."""
+
+    format: str = Field(default="", description="File format (PE32, ELF64, etc.)")
+    arch: str = Field(default="", description="Architecture (x86, x64, ARM)")
+    category: str = Field(default="unknown", description="Category (pe, elf, script:python, unknown)")
+    platform: str = Field(default="unknown", description="Platform (windows, linux, cross)")
+    packers: list[dict[str, str]] = Field(default_factory=list, description="Detected packers")
+    compilers: list[dict[str, str]] = Field(default_factory=list, description="Detected compilers")
+    protectors: list[dict[str, str]] = Field(default_factory=list, description="Detected protectors")
+    libraries: list[dict[str, str]] = Field(default_factory=list, description="Detected libraries")
+    script_language: str | None = Field(default=None, description="Script language if detected")
+    is_fallback: bool = Field(default=False, description="True if using fallback detection")
+
+
+class AttackMappingResult(BaseModel):
+    """ATT&CK mapping from capa."""
+
+    tactics: list[str] = Field(default_factory=list)
+    techniques: list[dict[str, str]] = Field(default_factory=list)
+
+
+class MbcMappingResult(BaseModel):
+    """MBC mapping from capa."""
+
+    objectives: list[str] = Field(default_factory=list)
+    behaviors: list[dict[str, str]] = Field(default_factory=list)
+
+
+class CapaResult(BaseModel):
+    """Capability detection results from capa."""
+
+    format: str = Field(default="", description="Binary format")
+    arch: str = Field(default="", description="Architecture")
+    os: str = Field(default="", description="Operating system")
+    capabilities: list[dict[str, Any]] = Field(default_factory=list, description="Detected capabilities")
+    attack: AttackMappingResult = Field(default_factory=AttackMappingResult)
+    mbc: MbcMappingResult = Field(default_factory=MbcMappingResult)
+    analysis_time: float = Field(default=0.0, description="Analysis time in seconds")
+    rule_count: int = Field(default=0, description="Number of rules used")
+    skipped: bool = Field(default=False, description="True if analysis was skipped")
+    reason: str | None = Field(default=None, description="Reason if skipped")
+    error: str | None = Field(default=None, description="Error message if failed")
+
+
 class ELFResult(BaseModel):
     """ELF parsing results."""
 
@@ -227,11 +272,10 @@ class AnalysisResult(BaseModel):
     file_name: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
     hashes: HashesResult | None = None
+    file_type: FileTypeResult | None = None
+    capa: CapaResult | None = None
     strings: StringsResult | None = None
-    elf: ELFResult | None = None
     yara: YaraResult | None = None
-    function_categories: dict[str, Any] | None = None
-    mitre_mapping: dict[str, Any] | None = None
     threat_intel: ThreatIntelResult | None = None
     dynamic_analysis: DynamicAnalysisResult | None = None
     ghidra_analysis: GhidraAnalysisResult | None = None

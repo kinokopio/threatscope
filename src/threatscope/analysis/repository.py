@@ -2,6 +2,11 @@
 
 This module provides data access for analysis tasks using the
 Repository pattern, separating data access from business logic.
+
+Updated for static analysis refactor:
+- Added file_type field (diec output)
+- Added capa field (capability detection)
+- Removed elf, function_categories, mitre_mapping (replaced by capa)
 """
 
 import json
@@ -34,6 +39,8 @@ class TaskRepository:
     def _init_schema(self) -> None:
         """Initialize database schema."""
         with self._connection() as conn:
+            # Drop old table and recreate with new schema (breaking change)
+            conn.execute("DROP TABLE IF EXISTS tasks")
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS tasks (
                     id TEXT PRIMARY KEY,
@@ -45,13 +52,12 @@ class TaskRepository:
                     updated_at TEXT NOT NULL,
                     error TEXT,
                     retry_count INTEGER DEFAULT 0,
-                    -- Static analysis results (each step separate)
+                    -- Static analysis results (new structure)
                     hashes TEXT,
+                    file_type TEXT,           -- diec output (format, arch, packers, etc.)
+                    capa TEXT,                -- capa output (capabilities, attack, mbc)
                     strings TEXT,
-                    elf TEXT,
                     yara TEXT,
-                    function_categories TEXT,
-                    mitre_mapping TEXT,
                     -- Threat intelligence
                     threat_intel TEXT,
                     -- Dynamic analysis
@@ -125,7 +131,7 @@ class TaskRepository:
                 ),
             )
             conn.commit()
-        return self.get_task(task_id)
+        return self.get_task(task_id)  # type: ignore[return-value]
 
     def get_task(self, task_id: str) -> dict[str, Any] | None:
         """Get task by ID.
@@ -215,8 +221,8 @@ class TaskRepository:
 
         Args:
             task_id: Task identifier.
-            result_type: Type of result (hashes, strings, elf, yara, function_categories,
-                         mitre_mapping, threat_intel, dynamic_analysis, ghidra_analysis,
+            result_type: Type of result (hashes, file_type, capa, strings, yara,
+                         threat_intel, dynamic_analysis, ghidra_analysis,
                          malware_report).
             result: Result data.
 
@@ -224,9 +230,15 @@ class TaskRepository:
             ValueError: If result_type is invalid.
         """
         valid_types = (
-            "hashes", "strings", "elf", "yara", "function_categories",
-            "mitre_mapping", "threat_intel", "dynamic_analysis",
-            "ghidra_analysis", "malware_report"
+            "hashes",
+            "file_type",
+            "capa",
+            "strings",
+            "yara",
+            "threat_intel",
+            "dynamic_analysis",
+            "ghidra_analysis",
+            "malware_report",
         )
         if result_type not in valid_types:
             raise ValueError(f"Invalid result type: {result_type}. Must be one of {valid_types}")
@@ -318,9 +330,16 @@ class TaskRepository:
 
         # Parse JSON fields
         json_fields = (
-            "hashes", "strings", "elf", "yara", "function_categories",
-            "mitre_mapping", "threat_intel", "dynamic_analysis",
-            "ghidra_analysis", "malware_report", "options"
+            "hashes",
+            "file_type",
+            "capa",
+            "strings",
+            "yara",
+            "threat_intel",
+            "dynamic_analysis",
+            "ghidra_analysis",
+            "malware_report",
+            "options",
         )
         for field in json_fields:
             if data.get(field):
@@ -333,16 +352,14 @@ class TaskRepository:
         result = {}
         if data.get("hashes"):
             result["hashes"] = data["hashes"]
+        if data.get("file_type"):
+            result["file_type"] = data["file_type"]
+        if data.get("capa"):
+            result["capa"] = data["capa"]
         if data.get("strings"):
             result["strings"] = data["strings"]
-        if data.get("elf"):
-            result["elf"] = data["elf"]
         if data.get("yara"):
             result["yara"] = data["yara"]
-        if data.get("function_categories"):
-            result["function_categories"] = data["function_categories"]
-        if data.get("mitre_mapping"):
-            result["mitre_mapping"] = data["mitre_mapping"]
         if data.get("threat_intel"):
             result["threat_intel"] = data["threat_intel"]
         if data.get("dynamic_analysis"):
