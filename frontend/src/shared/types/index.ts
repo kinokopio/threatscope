@@ -40,26 +40,67 @@ export interface AnalysisResult {
     domains?: string[];
     suspicious?: string[];
   };
-  elf?: {
-    format?: string;
-    arch?: string;
-    entry_point?: string;
-    imports?: string[];
-    error?: string;
-  };
+  // New: file_type from diec
+  file_type?: FileTypeResult;
+  // New: capa capabilities
+  capa?: CapaResult;
   yara?: {
-    matches?: string[];
+    matches?: YaraMatch[];
     error?: string;
-  };
-  function_categories?: Record<string, string[]>;
-  mitre_mapping?: {
-    techniques?: MitreMapping[];
   };
   threat_intel?: ThreatIntel;
   dynamic_analysis?: DynamicAnalysis;
   static_analysis?: StaticAnalysis;
   ghidra_analysis?: GhidraAnalysis;
   malware_report?: MalwareReport;
+}
+
+// New: File type identification result from diec
+export interface FileTypeResult {
+  format?: string;
+  arch?: string;
+  category?: string;  // pe, elf, script:python, unknown
+  platform?: string;  // windows, linux, cross
+  packers?: Array<{ name: string; version?: string }>;
+  compilers?: Array<{ name: string; version?: string }>;
+  protectors?: Array<{ name: string; version?: string }>;
+  libraries?: Array<{ name: string; version?: string }>;
+  script_language?: string;
+  is_fallback?: boolean;
+  error?: string;
+}
+
+// New: Capa capability detection result
+export interface CapaResult {
+  format?: string;
+  arch?: string;
+  os?: string;
+  capabilities?: CapaCapability[];
+  attack?: {
+    tactics?: string[];
+    techniques?: Array<{ id: string; name: string }>;
+  };
+  mbc?: {
+    objectives?: string[];
+    behaviors?: Array<{ id: string; name: string }>;
+  };
+  analysis_time?: number;
+  rule_count?: number;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+}
+
+export interface CapaCapability {
+  name: string;
+  namespace?: string;
+  matches?: number;
+}
+
+export interface YaraMatch {
+  rule?: string;
+  tags?: string[];
+  meta?: Record<string, string>;
 }
 
 export interface StaticAnalysis {
@@ -74,19 +115,10 @@ export interface StaticAnalysis {
     domains: string[];
     suspicious: string[];
   };
-  elf?: {
-    format: string;
-    arch: string;
-    entry_point: string;
-  };
+  file_type?: FileTypeResult;
+  capa?: CapaResult;
   yara: {
-    matches: string[];
-  };
-  function_categories: {
-    classifications: Record<string, string[]>;
-  };
-  mitre_mapping: {
-    mappings: MitreMapping[];
+    matches: YaraMatch[];
   };
 }
 
@@ -199,6 +231,7 @@ export interface MalwareReport {
     encryption?: string;
     file_type?: string;
     architecture?: string;
+    platform?: string;
   };
   iocs: {
     domains: string[];

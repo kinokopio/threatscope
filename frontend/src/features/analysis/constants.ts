@@ -2,9 +2,9 @@ import type { TaskStatus } from '../../shared/types';
 import {
   Hash,
   FileText,
-  Code,
+  FileType,
+  Cpu,
   Shield,
-  Target,
   Search,
   Globe,
   Activity,
@@ -21,21 +21,20 @@ export interface AnalysisStep {
   group: 'static' | 'intel' | 'dynamic' | 'ghidra' | 'report';
 }
 
-// Complete analysis steps - hoisted outside component to avoid re-creation
+// Complete analysis steps - updated for new architecture
 export const ANALYSIS_STEPS: AnalysisStep[] = [
   { id: 'hash', name: 'Hash Calculation', description: 'MD5, SHA1, SHA256', icon: Hash, group: 'static' },
+  { id: 'file_type', name: 'File Type Identification', description: 'Format, architecture, packers', icon: FileType, group: 'static' },
+  { id: 'capa', name: 'Capability Analysis', description: 'ATT&CK techniques, behaviors', icon: Cpu, group: 'static' },
   { id: 'strings', name: 'String Extraction', description: 'URLs, IPs, Domains, Suspicious strings', icon: FileText, group: 'static' },
-  { id: 'elf', name: 'ELF Parsing', description: 'Architecture, Entry point, Imports', icon: Code, group: 'static' },
-  { id: 'func_class', name: 'Function Classification', description: '9 categories analysis', icon: Shield, group: 'static' },
-  { id: 'mitre', name: 'MITRE ATT&CK Mapping', description: 'Tactics and techniques', icon: Target, group: 'static' },
   { id: 'yara', name: 'YARA Scanning', description: 'Rule matching', icon: Search, group: 'static' },
   { id: 'threat_intel', name: 'Threat Intelligence', description: 'MalwareBazaar, ThreatFox, URLhaus', icon: Globe, group: 'intel' },
-  { id: 'dynamic', name: 'Dynamic Analysis', description: 'Emulation and syscall tracing', icon: Activity, group: 'dynamic' },
+  { id: 'dynamic', name: 'Dynamic Analysis', description: 'Tracee eBPF sandbox', icon: Activity, group: 'dynamic' },
   { id: 'ghidra', name: 'Ghidra Deep Analysis', description: 'AI-driven reverse engineering', icon: Brain, group: 'ghidra' },
-  { id: 'report', name: 'AI Report Generation', description: 'Final malware analysis report', icon: FileText, group: 'report' },
+  { id: 'report', name: 'AI Report Generation', description: 'Final malware analysis report', icon: Shield, group: 'report' },
 ];
 
-// Status display mapping - hoisted outside component
+// Status display mapping
 export const STATUS_DISPLAY: Record<TaskStatus, { label: string; color: string }> = {
   pending: { label: 'Pending', color: 'text-slate-400' },
   static_analysis: { label: 'Static Analysis', color: 'text-cyan-400' },

@@ -4,11 +4,10 @@ import DynamicAnalysisView from './DynamicAnalysisView';
 import {
   HashView,
   StringsView,
-  ELFView,
+  FileTypeView,
+  CapaView,
   YaraView,
-  MitreView,
   ThreatIntelView,
-  FunctionClassView,
   GhidraView,
   ReportView,
 } from './StepViews';
@@ -18,35 +17,27 @@ interface StepDetailContentProps {
   result: AnalysisResult;
 }
 
-// Helper messages for missing data
 const MISSING_DATA_MESSAGES: Record<string, string> = {
-  func_class: 'No imported functions found (binary may be statically linked)',
-  mitre: 'No imported functions to map (binary may be statically linked)',
+  file_type: 'File type identification was not performed',
+  capa: 'Capability analysis was not performed',
   dynamic: 'Dynamic analysis was not performed',
   ghidra: 'Ghidra analysis was not performed',
 };
 
-/**
- * Renders detailed content for a specific analysis step
- * Uses specialized view components for each step type
- */
 export const StepDetailContent = memo(function StepDetailContent({
   stepId,
   result,
 }: StepDetailContentProps) {
-  // Get data for each step
   const getStepData = (): unknown => {
     switch (stepId) {
       case 'hash':
         return result.hashes;
       case 'strings':
         return result.strings;
-      case 'elf':
-        return result.elf;
-      case 'func_class':
-        return result.function_categories;
-      case 'mitre':
-        return result.mitre_mapping;
+      case 'file_type':
+        return result.file_type;
+      case 'capa':
+        return result.capa;
       case 'yara':
         return result.yara;
       case 'threat_intel':
@@ -64,7 +55,6 @@ export const StepDetailContent = memo(function StepDetailContent({
 
   const data = getStepData();
 
-  // Show helpful message for missing data
   if (!data) {
     const message = MISSING_DATA_MESSAGES[stepId] || 'No data available';
     return (
@@ -74,7 +64,6 @@ export const StepDetailContent = memo(function StepDetailContent({
     );
   }
 
-  // Render specialized view based on step type
   const renderContent = () => {
     switch (stepId) {
       case 'hash':
@@ -83,14 +72,11 @@ export const StepDetailContent = memo(function StepDetailContent({
       case 'strings':
         return <StringsView data={data as Parameters<typeof StringsView>[0]['data']} />;
       
-      case 'elf':
-        return <ELFView data={data as Parameters<typeof ELFView>[0]['data']} />;
+      case 'file_type':
+        return <FileTypeView data={data as Parameters<typeof FileTypeView>[0]['data']} />;
       
-      case 'func_class':
-        return <FunctionClassView data={data as Parameters<typeof FunctionClassView>[0]['data']} />;
-      
-      case 'mitre':
-        return <MitreView data={data as Parameters<typeof MitreView>[0]['data']} />;
+      case 'capa':
+        return <CapaView data={data as Parameters<typeof CapaView>[0]['data']} />;
       
       case 'yara':
         return <YaraView data={data as Parameters<typeof YaraView>[0]['data']} />;
@@ -101,7 +87,6 @@ export const StepDetailContent = memo(function StepDetailContent({
       case 'dynamic': {
         const dynData = data as Record<string, unknown>;
         
-        // Check for error
         if (dynData.error) {
           return (
             <div className="bg-yellow-900/20 rounded-lg p-4 border border-yellow-800/50">
@@ -113,7 +98,6 @@ export const StepDetailContent = memo(function StepDetailContent({
           );
         }
         
-        // Check if skipped
         if (!dynData.success && (!dynData.syscalls || (Array.isArray(dynData.syscalls) && dynData.syscalls.length === 0))) {
           return (
             <div className="bg-slate-900/50 rounded-lg p-4">

@@ -5,10 +5,6 @@ export interface StepState {
   preview?: Record<string, unknown>;
 }
 
-/**
- * Infer step states from analysis result and current step
- * This is extracted from TaskDetail to be reusable and testable
- */
 export function inferStepStates(
   result: AnalysisResult | undefined,
   currentStates: Record<string, StepState>,
@@ -17,16 +13,13 @@ export function inferStepStates(
 ): Record<string, StepState> {
   const newStates = { ...currentStates };
 
-  // Handle Ghidra running state based on current_step
   if (taskStatus === 'ghidra_analysis' && currentStep && !result?.ghidra_analysis) {
-    // Ghidra is in progress - show running state with current step info
     newStates.ghidra = {
       status: 'running',
       preview: { currentStep },
     };
   }
 
-  // Handle Report generation running state
   if (taskStatus === 'report_generation' && currentStep && !result?.malware_report) {
     newStates.report = {
       status: 'running',
@@ -48,6 +41,45 @@ export function inferStepStates(
     };
   }
 
+  // File Type Identification (NEW)
+  if (result.file_type && !newStates.file_type?.status) {
+    const fileType = result.file_type;
+    if (fileType?.error) {
+      newStates.file_type = { status: 'failed', preview: { error: fileType.error } };
+    } else {
+      newStates.file_type = {
+        status: 'completed',
+        preview: {
+          format: fileType?.format || 'Unknown',
+          category: fileType?.category || 'unknown',
+          platform: fileType?.platform || 'unknown',
+          packers: fileType?.packers?.length || 0,
+        },
+      };
+    }
+  }
+
+  // Capability Analysis (NEW - replaces func_class and mitre)
+  if (!newStates.capa?.status) {
+    if (result.capa) {
+      const capa = result.capa;
+      if (capa.error) {
+        newStates.capa = { status: 'failed', preview: { error: capa.error } };
+      } else if (capa.skipped) {
+        newStates.capa = { status: 'skipped', preview: { reason: capa.reason || 'Skipped' } };
+      } else {
+        newStates.capa = {
+          status: 'completed',
+          preview: {
+            capabilities: capa.capabilities?.length || 0,
+            techniques: capa.attack?.techniques?.length || 0,
+            behaviors: capa.mbc?.behaviors?.length || 0,
+          },
+        };
+      }
+    }
+  }
+
   // String Extraction
   if (result.strings && !newStates.strings?.status) {
     const strings = result.strings;
@@ -62,58 +94,6 @@ export function inferStepStates(
     };
   }
 
-  // ELF Parsing
-  if (result.elf && !newStates.elf?.status) {
-    const elf = result.elf;
-    if (elf?.error) {
-      newStates.elf = { status: 'failed', preview: { error: 'Not an ELF file' } };
-    } else {
-      newStates.elf = {
-        status: 'completed',
-        preview: {
-          format: String(elf?.format || 'N/A'),
-          arch: String(elf?.arch || 'N/A'),
-          imports: Array.isArray(elf?.imports) ? elf.imports.length : 0,
-        },
-      };
-    }
-  }
-
-  // Function Classification
-  if (!newStates.func_class?.status) {
-    if (result.function_categories) {
-      const categories = result.function_categories;
-      const categoryCount = Object.values(categories).filter(
-        (v) => Array.isArray(v) && v.length > 0
-      ).length;
-      newStates.func_class = {
-        status: 'completed',
-        preview: { categories: categoryCount },
-      };
-    } else if (result.elf && !result.elf.error) {
-      newStates.func_class = {
-        status: 'skipped',
-        preview: { reason: 'Static binary' },
-      };
-    }
-  }
-
-  // MITRE ATT&CK Mapping
-  if (!newStates.mitre?.status) {
-    if (result.mitre_mapping) {
-      const mitre = result.mitre_mapping;
-      newStates.mitre = {
-        status: 'completed',
-        preview: { techniques: mitre?.techniques?.length || 0 },
-      };
-    } else if (result.elf && !result.elf.error) {
-      newStates.mitre = {
-        status: 'skipped',
-        preview: { reason: 'Static binary' },
-      };
-    }
-  }
-
   // YARA Scanning
   if (result.yara && !newStates.yara?.status) {
     const yara = result.yara;
@@ -125,7 +105,7 @@ export function inferStepStates(
         status: 'completed',
         preview: {
           matches: matches.length,
-          rules: (matches as Array<{ rule?: string }>).slice(0, 3).map((m) => m.rule || 'unknown').join(', ') || 'None',
+          rules: matches.slice(0, 3).map((m) => m.rule || 'unknown').join(', ') || 'None',
         },
       };
     }
@@ -145,11 +125,10 @@ export function inferStepStates(
     };
   }
 
-  // Dynamic Analysis - only set status when we have actual results
+  // Dynamic Analysis
   if (result.dynamic_analysis && !newStates.dynamic?.status) {
     const dynamic = result.dynamic_analysis;
     
-    // Check if it was skipped (has error or skipped flag)
     if (dynamic.skipped || dynamic.error) {
       newStates.dynamic = {
         status: 'completed',
@@ -159,7 +138,6 @@ export function inferStepStates(
         },
       };
     } else if (dynamic.success !== undefined) {
-      // Has actual results
       const syscallCount = dynamic.syscall_summary?.total_count || 
         (Array.isArray(dynamic.syscalls) ? dynamic.syscalls.length : 0);
       const networkCount = dynamic.network_summary?.total_connections || 
@@ -176,13 +154,11 @@ export function inferStepStates(
         },
       };
     }
-    // If dynamic_analysis exists but has no meaningful data, don't set status yet
   }
 
   // Ghidra Analysis
   if (result.ghidra_analysis && !newStates.ghidra?.status) {
     const ghidra = result.ghidra_analysis;
-    // Handle both direct fields and nested ai_analysis structure
     const analyzedFunctions = ghidra?.ai_analysis?.analyzed_functions || ghidra?.analyzed_functions || [];
     const keyFindings = ghidra?.ai_analysis?.key_findings || ghidra?.key_findings || [];
     
@@ -205,7 +181,6 @@ export function inferStepStates(
   // AI Report
   if (result.malware_report && !newStates.report?.status) {
     const report = result.malware_report;
-    // Handle confidence as decimal (0.3) or percentage (30)
     const confidence = report?.confidence || 0;
     const confidencePercent = confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence);
     newStates.report = {
@@ -221,9 +196,6 @@ export function inferStepStates(
   return newStates;
 }
 
-/**
- * Get effective step status based on current task status and step states
- */
 export function getEffectiveStepStatus(
   stepId: string,
   stepGroup: string,
@@ -242,7 +214,6 @@ export function getEffectiveStepStatus(
   ];
   const currentStageIndex = STAGE_ORDER.indexOf(currentStatus);
 
-  // If task is completed, all steps are completed
   if (currentStatus === 'completed') return 'completed';
   if (currentStatus === 'failed') return 'pending';
 
@@ -250,18 +221,14 @@ export function getEffectiveStepStatus(
 
   // Static analysis steps (static, intel)
   if (stepGroup === 'static' || stepGroup === 'intel') {
-    // If we're past static_analysis stage, these are completed
     if (currentStageIndex > STAGE_ORDER.indexOf('static_analysis')) {
-      // Use backend status if available, otherwise completed
       return wsStatus || 'completed';
     }
     if (currentStatus === 'static_analysis') {
-      // If this step has a status from backend, use it
       if (wsStatus && wsStatus !== 'pending') {
         return wsStatus;
       }
       
-      // Find if this is the first pending step (should be running)
       if (allSteps) {
         const staticSteps = allSteps.filter(s => 
           s.group === 'static' || s.group === 'intel'
@@ -269,7 +236,6 @@ export function getEffectiveStepStatus(
         for (const step of staticSteps) {
           const state = stepStates[step.id];
           if (!state || state.status === 'pending') {
-            // This is the first pending step
             if (step.id === stepId) {
               return 'running';
             }
@@ -284,15 +250,12 @@ export function getEffectiveStepStatus(
 
   // Dynamic analysis step
   if (stepGroup === 'dynamic') {
-    // If we're past dynamic_analysis stage, it's completed
     if (currentStageIndex > STAGE_ORDER.indexOf('dynamic_analysis')) {
       return wsStatus || 'completed';
     }
-    // If we're at dynamic_analysis stage, it's running
     if (currentStatus === 'dynamic_analysis') {
       return wsStatus || 'running';
     }
-    // If we're at static_analysis and have result, it's completed
     if (currentStatus === 'static_analysis' && wsStatus) {
       return wsStatus;
     }

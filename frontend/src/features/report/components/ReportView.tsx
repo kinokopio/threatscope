@@ -18,7 +18,6 @@ interface ReportViewProps {
   fileName?: string;
 }
 
-// Helper functions
 const normalizeList = <T,>(items: T[] | undefined | null): T[] => 
   Array.isArray(items) ? items.filter(Boolean) : [];
 
@@ -41,7 +40,7 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
   const [stringsOpen, setStringsOpen] = useState(false);
   const [functionsOpen, setFunctionsOpen] = useState(false);
 
-  const { metadata, static_analysis, malware_report, ghidra_analysis, hashes, elf } = result;
+  const { metadata, static_analysis, malware_report, ghidra_analysis, hashes, file_type } = result;
 
   const renderChevronButton = (
     open: boolean, 
@@ -101,19 +100,31 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
             </span>
           </div>
           
-          {(elf || static_analysis?.elf) && (
+          {(file_type || static_analysis?.file_type) && (
             <>
               <div className="bg-slate-700 p-3 rounded">
                 <span className="block text-slate-400 text-xs">Format</span>
-                <span className="font-mono text-cyan-300">{elf?.format || static_analysis?.elf?.format || 'N/A'}</span>
+                <span className="font-mono text-cyan-300">
+                  {file_type?.format || static_analysis?.file_type?.format || 'N/A'}
+                </span>
               </div>
               <div className="bg-slate-700 p-3 rounded">
                 <span className="block text-slate-400 text-xs">Architecture</span>
-                <span className="font-mono text-purple-300">{elf?.arch || static_analysis?.elf?.arch || 'N/A'}</span>
+                <span className="font-mono text-purple-300">
+                  {file_type?.arch || static_analysis?.file_type?.arch || 'N/A'}
+                </span>
               </div>
               <div className="bg-slate-700 p-3 rounded">
-                <span className="block text-slate-400 text-xs">Entry Point</span>
-                <span className="font-mono text-yellow-300">{elf?.entry_point || static_analysis?.elf?.entry_point || 'N/A'}</span>
+                <span className="block text-slate-400 text-xs">Platform</span>
+                <span className="font-mono text-yellow-300">
+                  {file_type?.platform || static_analysis?.file_type?.platform || 'N/A'}
+                </span>
+              </div>
+              <div className="bg-slate-700 p-3 rounded">
+                <span className="block text-slate-400 text-xs">Category</span>
+                <span className="font-mono text-orange-300">
+                  {file_type?.category || static_analysis?.file_type?.category || 'N/A'}
+                </span>
               </div>
             </>
           )}
@@ -317,7 +328,6 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
 
       {/* 6. Ghidra Analysis */}
       {ghidra_analysis?.ai_analysis && (() => {
-        // Parse ai_analysis - handle case where $defs contains JSON string
         type AiAnalysisType = typeof ghidra_analysis.ai_analysis;
         let aiAnalysis: AiAnalysisType | null = ghidra_analysis.ai_analysis;
         if (aiAnalysis && '$defs' in aiAnalysis) {
@@ -427,7 +437,7 @@ export default function ReportView({ result, fileName }: ReportViewProps) {
                 key={idx} 
                 className="px-3 py-1 rounded text-sm bg-red-900/50 text-red-200 border border-red-700"
               >
-                {match}
+                {typeof match === 'string' ? match : match.rule || 'Unknown'}
               </span>
             ))}
           </div>
