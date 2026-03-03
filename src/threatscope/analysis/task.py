@@ -45,10 +45,9 @@ class AnalysisTask:
     retry_count: int = 0
 
     # Results from each analysis phase
-    static_results: dict[str, Any] | None = None
+    pre_ghidra_results: dict[str, Any] | None = None
     ghidra_results: dict[str, Any] | None = None
     report: dict[str, Any] | None = None
-
     def update_status(self, status: AnalysisStatus) -> None:
         self.status = status
         self.updated_at = datetime.now()
@@ -67,7 +66,7 @@ class AnalysisTask:
             "updated_at": self.updated_at.isoformat(),
             "error": self.error,
             "retry_count": self.retry_count,
-            "static_results": self.static_results,
+            "pre_ghidra_results": self.pre_ghidra_results,
             "ghidra_results": self.ghidra_results,
             "report": self.report,
         }

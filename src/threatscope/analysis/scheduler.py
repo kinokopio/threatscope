@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class SchedulerConfig:
     """Configuration for TaskScheduler."""
 
-    stage_1_4_workers: int = 4
-    stage_6_workers: int = 4
+    pre_ghidra_workers: int = 4
+    report_workers: int = 4
     ghidra_pool_size: int = 1
     max_queue_size: int = 100
     retry_count: int = 3
@@ -40,12 +40,12 @@ class TaskScheduler:
     """Hybrid parallel task scheduler.
 
     Architecture:
-    - Stage 1-4: Fully parallel (controlled by semaphore)
-    - Stage 5 (Ghidra): Limited by instance pool
-    - Stage 6: Fully parallel (controlled by semaphore)
+    - Pre-Ghidra: Static + Dynamic + Threat Intel (fully parallel)
+    - Ghidra: Deep analysis (limited by instance pool)
+    - Report: AI report generation (fully parallel)
 
     Task flow:
-    pending_queue → Stage 1-4 → ghidra_queue → Stage 5 → report_queue → Stage 6 → completed
+    pending_queue → Pre-Ghidra → ghidra_queue → Ghidra → report_queue → Report → completed
     """
 
     def __init__(
@@ -71,8 +71,8 @@ class TaskScheduler:
         self._report_queue: asyncio.Queue[str] = asyncio.Queue()
 
         # Semaphores for parallel control
-        self._stage_1_4_semaphore = asyncio.Semaphore(self.config.stage_1_4_workers)
-        self._stage_6_semaphore = asyncio.Semaphore(self.config.stage_6_workers)
+        self._pre_ghidra_semaphore = asyncio.Semaphore(self.config.pre_ghidra_workers)
+        self._report_semaphore = asyncio.Semaphore(self.config.report_workers)
         self._ghidra_semaphore = asyncio.Semaphore(self.config.ghidra_pool_size)
 
         # Control flags
@@ -80,26 +80,26 @@ class TaskScheduler:
         self._processor_tasks: list[asyncio.Task] = []
 
         # Callbacks for actual analysis (set by coordinator)
-        self._run_stage_1_4: Callable | None = None
-        self._run_stage_5: Callable | None = None
-        self._run_stage_6: Callable | None = None
+        self._run_pre_ghidra: Callable | None = None
+        self._run_ghidra: Callable | None = None
+        self._run_report: Callable | None = None
 
     def set_stage_handlers(
         self,
-        stage_1_4: Callable[[AnalysisTask], Any],
-        stage_5: Callable[[AnalysisTask], Any],
-        stage_6: Callable[[AnalysisTask], Any],
+        pre_ghidra: Callable[[AnalysisTask], Any],
+        ghidra: Callable[[AnalysisTask], Any],
+        report: Callable[[AnalysisTask], Any],
     ) -> None:
         """Set handlers for each stage.
 
         Args:
-            stage_1_4: Handler for Stage 1-4 (static + threat intel + dynamic).
-            stage_5: Handler for Stage 5 (Ghidra analysis).
-            stage_6: Handler for Stage 6 (report generation).
+            pre_ghidra: Handler for pre-Ghidra analysis (static + dynamic + threat intel).
+            ghidra: Handler for Ghidra deep analysis.
+            report: Handler for report generation.
         """
-        self._run_stage_1_4 = stage_1_4
-        self._run_stage_5 = stage_5
-        self._run_stage_6 = stage_6
+        self._run_pre_ghidra = pre_ghidra
+        self._run_ghidra = ghidra
+        self._run_report = report
 
     async def start(self) -> None:
         """Start the scheduler processors."""
@@ -110,9 +110,9 @@ class TaskScheduler:
 
         # Start processor tasks
         self._processor_tasks = [
-            asyncio.create_task(self._stage_1_4_processor()),
+            asyncio.create_task(self._pre_ghidra_processor()),
             asyncio.create_task(self._ghidra_processor()),
-            asyncio.create_task(self._stage_6_processor()),
+            asyncio.create_task(self._report_processor()),
         ]
 
         logger.info("TaskScheduler started")
@@ -192,8 +192,8 @@ class TaskScheduler:
 
     # --- Processors ---
 
-    async def _stage_1_4_processor(self) -> None:
-        """Process Stage 1-4 tasks (parallel)."""
+    async def _pre_ghidra_processor(self) -> None:
+        """Process pre-Ghidra tasks (parallel)."""
         while self._running:
             try:
                 task_id = await asyncio.wait_for(self._pending_queue.get(), timeout=1.0)
@@ -201,30 +201,41 @@ class TaskScheduler:
                 continue
 
             # Acquire semaphore and process
-            asyncio.create_task(self._run_stage_1_4_task(task_id))
+            asyncio.create_task(self._run_pre_ghidra_task(task_id))
 
-    async def _run_stage_1_4_task(self, task_id: str) -> None:
-        """Run Stage 1-4 for a task."""
-        async with self._stage_1_4_semaphore:
+    async def _run_pre_ghidra_task(self, task_id: str) -> None:
+        """Run pre-Ghidra analysis for a task."""
+        async with self._pre_ghidra_semaphore:
             task = self._tasks.get(task_id)
             if not task:
                 return
 
             try:
-                task.update_status(TaskStatus.STAGE_1_4)
-                self._notify_progress(task, "stage_1_4", 10, "Running static analysis")
+                task.update_status(TaskStatus.STATIC_ANALYSIS)
+                self._notify_progress(task, "pre_ghidra", 10, "Running static analysis")
 
-                if self._run_stage_1_4:
-                    task.stage_1_4_results = await self._run_stage_1_4(task)
+                if self._run_pre_ghidra:
+                    result = await self._run_pre_ghidra(task)
+                    task.pre_ghidra_results = result
 
-                self._notify_progress(task, "stage_1_4", 40, "Stage 1-4 complete")
+                    # Check if file type is unsupported
+                    if result.get("status") == "unsupported":
+                        logger.info(f"Task {task_id} has unsupported file type, completing early")
+                        task.update_status(TaskStatus.COMPLETED)
+                        self._notify_progress(
+                            task, "completed", 100,
+                            f"Unsupported file type: {result.get('reason', 'unknown')}"
+                        )
+                        return
+
+                self._notify_progress(task, "pre_ghidra", 40, "Pre-Ghidra analysis complete")
 
                 # Move to Ghidra queue
                 task.update_status(TaskStatus.QUEUED)
                 await self._ghidra_queue.put(task_id)
 
             except Exception as e:
-                logger.exception(f"Stage 1-4 failed for task {task_id}")
+                logger.exception(f"Pre-Ghidra analysis failed for task {task_id}")
                 self._handle_task_failure(task, str(e))
 
     async def _ghidra_processor(self) -> None:
@@ -236,33 +247,33 @@ class TaskScheduler:
                 continue
 
             # Acquire Ghidra semaphore and process
-            asyncio.create_task(self._run_stage_5_task(task_id))
+            asyncio.create_task(self._run_ghidra_task(task_id))
 
-    async def _run_stage_5_task(self, task_id: str) -> None:
-        """Run Stage 5 (Ghidra) for a task."""
+    async def _run_ghidra_task(self, task_id: str) -> None:
+        """Run Ghidra analysis for a task."""
         async with self._ghidra_semaphore:
             task = self._tasks.get(task_id)
             if not task:
                 return
 
             try:
-                task.update_status(TaskStatus.STAGE_5)
-                self._notify_progress(task, "stage_5", 50, "Running Ghidra analysis")
+                task.update_status(TaskStatus.GHIDRA_ANALYSIS)
+                self._notify_progress(task, "ghidra", 50, "Running Ghidra analysis")
 
-                if self._run_stage_5:
-                    task.ghidra_results = await self._run_stage_5(task)
+                if self._run_ghidra:
+                    task.ghidra_results = await self._run_ghidra(task)
 
-                self._notify_progress(task, "stage_5", 70, "Ghidra analysis complete")
+                self._notify_progress(task, "ghidra", 70, "Ghidra analysis complete")
 
                 # Move to report queue
                 await self._report_queue.put(task_id)
 
             except Exception as e:
-                logger.exception(f"Stage 5 failed for task {task_id}")
+                logger.exception(f"Ghidra analysis failed for task {task_id}")
                 self._handle_task_failure(task, str(e))
 
-    async def _stage_6_processor(self) -> None:
-        """Process Stage 6 tasks (parallel)."""
+    async def _report_processor(self) -> None:
+        """Process report generation tasks (parallel)."""
         while self._running:
             try:
                 task_id = await asyncio.wait_for(self._report_queue.get(), timeout=1.0)
@@ -270,21 +281,21 @@ class TaskScheduler:
                 continue
 
             # Acquire semaphore and process
-            asyncio.create_task(self._run_stage_6_task(task_id))
+            asyncio.create_task(self._run_report_task(task_id))
 
-    async def _run_stage_6_task(self, task_id: str) -> None:
-        """Run Stage 6 (report) for a task."""
-        async with self._stage_6_semaphore:
+    async def _run_report_task(self, task_id: str) -> None:
+        """Run report generation for a task."""
+        async with self._report_semaphore:
             task = self._tasks.get(task_id)
             if not task:
                 return
 
             try:
-                task.update_status(TaskStatus.STAGE_6)
-                self._notify_progress(task, "stage_6", 80, "Generating report")
+                task.update_status(TaskStatus.REPORT_GENERATION)
+                self._notify_progress(task, "report", 80, "Generating report")
 
-                if self._run_stage_6:
-                    task.report = await self._run_stage_6(task)
+                if self._run_report:
+                    task.report = await self._run_report(task)
 
                 task.update_status(TaskStatus.COMPLETED)
                 self._notify_progress(task, "completed", 100, "Analysis complete")
@@ -292,7 +303,7 @@ class TaskScheduler:
                 logger.info(f"Task {task_id} completed")
 
             except Exception as e:
-                logger.exception(f"Stage 6 failed for task {task_id}")
+                logger.exception(f"Report generation failed for task {task_id}")
                 self._handle_task_failure(task, str(e))
 
     # --- Helpers ---
@@ -353,9 +364,9 @@ class ScheduledCoordinator:
 
         # Set up stage handlers
         self.scheduler.set_stage_handlers(
-            stage_1_4=self._handle_stage_1_4,
-            stage_5=self._handle_stage_5,
-            stage_6=self._handle_stage_6,
+            pre_ghidra=self._handle_pre_ghidra,
+            ghidra=self._handle_ghidra,
+            report=self._handle_report,
         )
 
     async def start(self) -> None:
@@ -382,28 +393,28 @@ class ScheduledCoordinator:
         """Get queue statistics."""
         return self.scheduler.get_queue_stats()
 
-    async def _handle_stage_1_4(self, task: AnalysisTask) -> dict[str, Any]:
-        """Handle Stage 1-4."""
+    async def _handle_pre_ghidra(self, task: AnalysisTask) -> dict[str, Any]:
+        """Handle pre-Ghidra analysis."""
         from pathlib import Path
 
-        return await self.coordinator._run_stage_1_4(
+        return await self.coordinator._run_pre_ghidra(
             Path(task.file_path),
             enable_dynamic=True,
             enable_threat_intel=True,
         )
 
-    async def _handle_stage_5(self, task: AnalysisTask) -> dict[str, Any]:
-        """Handle Stage 5."""
+    async def _handle_ghidra(self, task: AnalysisTask) -> dict[str, Any]:
+        """Handle Ghidra analysis."""
         from pathlib import Path
 
-        return await self.coordinator._run_stage_5(
-            task.stage_1_4_results or {},
+        return await self.coordinator._run_ghidra(
+            task.pre_ghidra_results or {},
             Path(task.file_path),
         )
 
-    async def _handle_stage_6(self, task: AnalysisTask) -> dict[str, Any]:
-        """Handle Stage 6."""
-        return await self.coordinator._run_stage_6(
-            task.stage_1_4_results or {},
+    async def _handle_report(self, task: AnalysisTask) -> dict[str, Any]:
+        """Handle report generation."""
+        return await self.coordinator._run_report(
+            task.pre_ghidra_results or {},
             task.ghidra_results or {},
         )

@@ -58,20 +58,24 @@ interface SyscallSummary {
 
 interface DynamicAnalysisData {
   success: boolean;
+  skipped?: boolean;
   method: string;
-  duration_seconds: number;
-  process_tree: ProcessNode[];
-  network_summary: NetworkSummary;
-  security_events: SecurityEvent[];
-  syscall_summary: SyscallSummary;
-  file_activity: {
+  reason?: string;
+  planned_method?: string;
+  file_type?: string;
+  duration_seconds?: number;
+  process_tree?: ProcessNode[];
+  network_summary?: NetworkSummary;
+  security_events?: SecurityEvent[];
+  syscall_summary?: SyscallSummary;
+  file_activity?: {
     created: string[];
     modified: string[];
     deleted: string[];
     executed: string[];
   };
-  raw_events_count: number;
-  event_types: string[];
+  raw_events_count?: number;
+  event_types?: string[];
   error?: string;
 }
 
@@ -123,6 +127,72 @@ function SeverityBadge({ severity }: { severity: string }) {
 export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) {
   if (!data) return null;
 
+  // Handle skipped state
+  if (data.skipped) {
+    const isPE = data.file_type === 'pe';
+    const isArchUnsupported = data.method === 'tracee' && data.file_type === 'elf';
+
+    return (
+      <div className="bg-slate-800/50 rounded-lg border border-slate-700/50 p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-yellow-500/20 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5 text-yellow-400" />
+          </div>
+          <div>
+            <h3 className="text-white font-medium">动态分析已跳过</h3>
+            <p className="text-slate-400 text-sm">{data.reason}</p>
+          </div>
+        </div>
+
+        {isPE && (
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mt-4">
+            <div className="flex items-center gap-2 text-blue-400 text-sm">
+              <Shield className="w-4 h-4" />
+              <span className="font-medium">即将支持</span>
+            </div>
+            <p className="text-slate-400 text-sm mt-2">
+              Windows PE 文件的动态分析需要 CAPE 沙箱环境。此功能正在开发中，敬请期待。
+            </p>
+          </div>
+        )}
+
+        {isArchUnsupported && (
+          <div className="bg-slate-700/30 rounded-lg p-4 mt-4">
+            <p className="text-slate-400 text-sm">
+              Tracee 动态分析仅支持 x86_64 和 i386 架构的 ELF 文件。
+            </p>
+          </div>
+        )}
+
+        <div className="mt-4 pt-4 border-t border-slate-700/50">
+          <div className="text-xs text-slate-500">
+            <span className="text-slate-400">分析方法:</span> {data.method || 'none'}
+            {data.planned_method && (
+              <span className="ml-2">
+                <span className="text-slate-400">计划方法:</span> {data.planned_method}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle error state
+  if (data.error && !data.success) {
+    return (
+      <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-6">
+        <div className="flex items-center gap-3">
+          <AlertTriangle className="w-5 h-5 text-red-400" />
+          <div>
+            <h3 className="text-red-400 font-medium">动态分析失败</h3>
+            <p className="text-slate-400 text-sm mt-1">{data.error}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const hasSecurityEvents = data.security_events && data.security_events.length > 0;
   const hasNetwork = data.network_summary && (
     data.network_summary.dns_queries?.length > 0 ||
@@ -167,10 +237,10 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
           <div className="px-4 py-3 border-b border-slate-700/50 flex items-center gap-2">
             <Shield className="w-4 h-4 text-orange-400" />
             <span className="font-medium text-white">Security Events</span>
-            <span className="text-xs text-slate-400">({data.security_events.length})</span>
+            <span className="text-xs text-slate-400">({data.security_events!.length})</span>
           </div>
           <div className="p-4 space-y-3">
-            {data.security_events.map((event, idx) => (
+            {data.security_events!.map((event, idx) => (
               <div key={idx} className="bg-slate-900/50 rounded-lg p-3">
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
@@ -202,7 +272,7 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
             <span className="font-medium text-white">Process Tree</span>
           </div>
           <div className="p-4">
-            <ProcessTree nodes={data.process_tree} />
+            <ProcessTree nodes={data.process_tree!} />
           </div>
         </div>
       )}
@@ -216,14 +286,14 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
           </div>
           <div className="p-4 space-y-4">
             {/* DNS Queries */}
-            {data.network_summary.dns_queries?.length > 0 && (
+            {data.network_summary!.dns_queries?.length > 0 && (
               <div>
                 <div className="text-xs text-slate-400 mb-2 flex items-center gap-1">
                   <Globe className="w-3 h-3" />
-                  DNS Queries ({data.network_summary.total_dns_queries} total)
+                  DNS Queries ({data.network_summary!.total_dns_queries} total)
                 </div>
                 <div className="space-y-1">
-                  {data.network_summary.dns_queries.map((query, idx) => (
+                  {data.network_summary!.dns_queries.map((query, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-slate-900/50 rounded px-3 py-2">
                       <span className="text-cyan-400 font-mono text-sm">{query.domain}</span>
                       <div className="flex items-center gap-2">
@@ -241,11 +311,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
             )}
 
             {/* Connections */}
-            {data.network_summary.connections?.length > 0 && (
+            {data.network_summary!.connections?.length > 0 && (
               <div>
                 <div className="text-xs text-slate-400 mb-2">TCP Connections</div>
                 <div className="space-y-1">
-                  {data.network_summary.connections.map((conn, idx) => (
+                  {data.network_summary!.connections.map((conn, idx) => (
                     <div key={idx} className="flex items-center justify-between bg-slate-900/50 rounded px-3 py-2">
                       <span className="text-purple-400 font-mono text-sm">
                         {conn.remote_ip}:{conn.remote_port}
@@ -258,11 +328,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
             )}
 
             {/* HTTP Requests */}
-            {data.network_summary.http_requests?.length > 0 && (
+            {data.network_summary!.http_requests?.length > 0 && (
               <div>
                 <div className="text-xs text-slate-400 mb-2">HTTP Requests</div>
                 <div className="space-y-1">
-                  {data.network_summary.http_requests.map((req, idx) => (
+                  {data.network_summary!.http_requests.map((req, idx) => (
                     <div key={idx} className="bg-slate-900/50 rounded px-3 py-2">
                       <span className="text-yellow-400 font-mono text-xs">{req.method}</span>
                       <span className="text-slate-300 font-mono text-sm ml-2">{req.host}{req.uri}</span>
@@ -281,11 +351,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
           <div className="px-4 py-3 border-b border-slate-700/50 flex items-center gap-2">
             <Terminal className="w-4 h-4 text-emerald-400" />
             <span className="font-medium text-white">System Calls</span>
-            <span className="text-xs text-slate-400">({data.syscall_summary.total_count} total)</span>
+            <span className="text-xs text-slate-400">({data.syscall_summary!.total_count} total)</span>
           </div>
           <div className="p-4">
             <div className="flex flex-wrap gap-2">
-              {Object.entries(data.syscall_summary.by_type).map(([name, count]) => (
+              {Object.entries(data.syscall_summary!.by_type).map(([name, count]) => (
                 <div 
                   key={name}
                   className="bg-slate-900/50 rounded px-2 py-1 text-xs flex items-center gap-1"
@@ -307,11 +377,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
             <span className="font-medium text-white">File Activity</span>
           </div>
           <div className="p-4 space-y-3">
-            {data.file_activity.created?.length > 0 && (
+            {data.file_activity!.created?.length > 0 && (
               <div>
                 <div className="text-xs text-emerald-400 mb-1">Created</div>
                 <div className="space-y-1">
-                  {data.file_activity.created.map((path, idx) => (
+                  {data.file_activity!.created.map((path, idx) => (
                     <div key={idx} className="text-xs text-slate-300 font-mono bg-slate-900/50 rounded px-2 py-1">
                       {path}
                     </div>
@@ -319,11 +389,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
                 </div>
               </div>
             )}
-            {data.file_activity.modified?.length > 0 && (
+            {data.file_activity!.modified?.length > 0 && (
               <div>
                 <div className="text-xs text-yellow-400 mb-1">Modified</div>
                 <div className="space-y-1">
-                  {data.file_activity.modified.map((path, idx) => (
+                  {data.file_activity!.modified.map((path, idx) => (
                     <div key={idx} className="text-xs text-slate-300 font-mono bg-slate-900/50 rounded px-2 py-1">
                       {path}
                     </div>
@@ -331,11 +401,11 @@ export default function DynamicAnalysisView({ data }: DynamicAnalysisViewProps) 
                 </div>
               </div>
             )}
-            {data.file_activity.deleted?.length > 0 && (
+            {data.file_activity!.deleted?.length > 0 && (
               <div>
                 <div className="text-xs text-red-400 mb-1">Deleted</div>
                 <div className="space-y-1">
-                  {data.file_activity.deleted.map((path, idx) => (
+                  {data.file_activity!.deleted.map((path, idx) => (
                     <div key={idx} className="text-xs text-slate-300 font-mono bg-slate-900/50 rounded px-2 py-1">
                       {path}
                     </div>
