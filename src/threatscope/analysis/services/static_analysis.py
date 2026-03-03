@@ -5,9 +5,9 @@ Refactored to support intelligent routing based on file type:
 - Scripts → (placeholder for future)
 - All files → hash, strings, YARA
 
-Two-phase parallel execution:
-- Phase 1: Hash + diec (parallel)
-- Phase 2: capa + strings + yara (parallel, after phase 1)
+Two-phase parallel execution (coordinated by AnalysisCoordinator):
+- Phase 1: Hash + diec (parallel) - determines file type
+- Phase 2: capa + strings + yara + threat_intel + dynamic (all parallel)
 """
 
 import asyncio
@@ -29,23 +29,16 @@ ProgressCallback = Callable[
     [str, str, str, dict[str, Any] | None, dict[str, Any] | None], Awaitable[None]
 ]
 
-# Analysis steps for progress tracking
-ANALYSIS_STEPS = [
-    ("hashing", "Hash Calculation"),
-    ("file_identification", "File Type Identification"),
-    ("capability_analysis", "Capability Analysis"),  # Only for PE/ELF
-    ("string_extraction", "String Extraction"),
-    ("yara_scanning", "YARA Scanning"),
-]
-
 
 class StaticAnalysisService:
     """
     Static analysis service with intelligent file type routing.
 
-    Two-phase parallel execution:
-    - Phase 1: Hash + diec (parallel) - determines file type
-    - Phase 2: capa + strings + yara (parallel) - capa depends on category
+    Provides methods for:
+    - File identification (hash + diec)
+    - Individual analysis tools (capa, strings, yara)
+
+    The AnalysisCoordinator orchestrates the parallel execution.
     """
 
     def __init__(
@@ -70,20 +63,22 @@ class StaticAnalysisService:
         self.diec_analyzer = DiecAnalyzer(diec_url=diec_url)
         self.capa_analyzer = CapaAnalyzer(rules_path=capa_rules_path, timeout=capa_timeout)
 
-    async def analyze(
+    async def identify_file(
         self,
         file_path: str | Path,
         progress_callback: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         """
-        Analyze a file using all available static analysis tools.
+        Identify file type and calculate hashes (Phase 1).
+
+        Runs hash calculation and diec analysis in parallel.
 
         Args:
             file_path: Path to file to analyze
             progress_callback: Optional callback for progress updates
 
         Returns:
-            Dictionary with analysis results
+            Dictionary with hashes and file_type
         """
         file_path = Path(file_path)
 
@@ -97,14 +92,12 @@ class StaticAnalysisService:
             if progress_callback:
                 await progress_callback(step_id, step_name, status, preview, output)
 
-        # ========================================
-        # Phase 1: Hash + diec (parallel)
-        # ========================================
+        # Run hash + diec in parallel
         await notify("hashing", "Hash Calculation", "running")
         await notify("file_identification", "File Type Identification", "running")
 
-        hash_task = self._run_hash(file_path)
-        diec_task = self._run_diec(file_path)
+        hash_task = self._calculate_hashes(file_path)
+        diec_task = self._identify_file_type(file_path)
 
         hash_result, diec_result = await asyncio.gather(hash_task, diec_task)
 
@@ -143,113 +136,28 @@ class StaticAnalysisService:
             )
         else:
             output["file_type"] = {"error": diec_result["error"]}
-            category = "unknown"
             await notify("file_identification", "File Type Identification", "failed")
             logger.warning(f"File type identification failed: {diec_result['error']}")
 
-        # ========================================
-        # Phase 2: capa + strings + yara (parallel)
-        # ========================================
-        await notify("capability_analysis", "Capability Analysis", "running")
-        await notify("string_extraction", "String Extraction", "running")
-        await notify("yara_scanning", "YARA Scanning", "running")
-
-        capa_task = self._run_capa(file_path, category)
-        strings_task = self._run_strings(file_path)
-        yara_task = self._run_yara(file_path)
-
-        capa_result, strings_result, yara_result = await asyncio.gather(
-            capa_task, strings_task, yara_task
-        )
-
-        # Process capa result
-        if capa_result["skipped"]:
-            output["capa"] = {"skipped": True, "reason": capa_result["reason"]}
-            await notify("capability_analysis", "Capability Analysis", "skipped")
-            logger.info(f"Skipping capability analysis: {capa_result['reason']}")
-        elif capa_result["success"]:
-            output["capa"] = capa_result["data"]
-            capabilities = capa_result["data"].get("capabilities", [])
-            attack = capa_result["data"].get("attack", {})
-            await notify(
-                "capability_analysis",
-                "Capability Analysis",
-                "completed",
-                {
-                    "capabilities": len(capabilities),
-                    "attack_techniques": len(attack.get("techniques", [])),
-                    "analysis_time": capa_result["data"].get("analysis_time", 0),
-                },
-            )
-        else:
-            output["capa"] = {"error": capa_result["error"]}
-            await notify("capability_analysis", "Capability Analysis", "failed")
-            logger.warning(f"capa analysis failed: {capa_result['error']}")
-
-        # Process strings result
-        if strings_result["success"]:
-            output["strings"] = strings_result["data"]
-            await notify(
-                "string_extraction",
-                "String Extraction",
-                "completed",
-                {
-                    "urls": len(strings_result["data"].get("urls", [])),
-                    "ips": len(strings_result["data"].get("ips", [])),
-                    "domains": len(strings_result["data"].get("domains", [])),
-                },
-            )
-        else:
-            output["strings"] = {"error": strings_result["error"]}
-            await notify("string_extraction", "String Extraction", "failed")
-            logger.warning(f"String extraction failed: {strings_result['error']}")
-
-        # Process yara result
-        if yara_result["success"]:
-            output["yara"] = yara_result["data"]
-            matches = yara_result["data"].get("matches", [])
-            await notify(
-                "yara_scanning",
-                "YARA Scanning",
-                "completed",
-                {
-                    "matches": len(matches),
-                    "rules": [m.get("rule") for m in matches[:3]] if matches else [],
-                },
-            )
-        else:
-            output["yara"] = {"error": yara_result["error"]}
-            await notify("yara_scanning", "YARA Scanning", "failed")
-            logger.warning(f"YARA scanning failed: {yara_result['error']}")
-
         return output
 
-    async def _run_hash(self, file_path: Path) -> dict[str, Any]:
-        """Run hash calculation."""
-        result = await self.hash_calculator.analyze(file_path)
-        return {
-            "success": result.success,
-            "data": result.data if result.success else None,
-            "error": result.error,
-        }
+    async def analyze_capabilities(
+        self,
+        file_path: str | Path,
+        category: str,
+    ) -> dict[str, Any]:
+        """
+        Run capa capability analysis.
 
-    async def _run_diec(self, file_path: Path) -> dict[str, Any]:
-        """Run diec file type identification."""
-        logger.info(
-            f"Starting diec analysis for {file_path}, diec_url={self.diec_analyzer.diec_url}"
-        )
-        result = await self.diec_analyzer.analyze(file_path)
-        logger.info(
-            f"diec result: success={result.success}, error={result.error}, data={result.data}"
-        )
-        return {
-            "success": result.success,
-            "data": result.data if result.success else None,
-            "error": result.error,
-        }
+        Args:
+            file_path: Path to file to analyze
+            category: File category from diec (pe, elf, etc.)
 
-    async def _run_capa(self, file_path: Path, category: str) -> dict[str, Any]:
-        """Run capa analysis based on file category."""
+        Returns:
+            Dictionary with capa results or skip info
+        """
+        file_path = Path(file_path)
+
         if category in ("pe", "elf"):
             result = await self.capa_analyzer.analyze(file_path)
             return {
@@ -276,8 +184,17 @@ class StaticAnalysisService:
                 "reason": f"Unsupported file type: {category}",
             }
 
-    async def _run_strings(self, file_path: Path) -> dict[str, Any]:
-        """Run string extraction."""
+    async def extract_strings(self, file_path: str | Path) -> dict[str, Any]:
+        """
+        Extract strings from file.
+
+        Args:
+            file_path: Path to file to analyze
+
+        Returns:
+            Dictionary with extracted strings
+        """
+        file_path = Path(file_path)
         result = await self.string_extractor.analyze(file_path)
         return {
             "success": result.success,
@@ -285,9 +202,42 @@ class StaticAnalysisService:
             "error": result.error,
         }
 
-    async def _run_yara(self, file_path: Path) -> dict[str, Any]:
-        """Run YARA scanning."""
+    async def scan_yara(self, file_path: str | Path) -> dict[str, Any]:
+        """
+        Scan file with YARA rules.
+
+        Args:
+            file_path: Path to file to analyze
+
+        Returns:
+            Dictionary with YARA matches
+        """
+        file_path = Path(file_path)
         result = await self.yara_scanner.analyze(file_path)
+        return {
+            "success": result.success,
+            "data": result.data if result.success else None,
+            "error": result.error,
+        }
+
+    async def _calculate_hashes(self, file_path: Path) -> dict[str, Any]:
+        """Run hash calculation."""
+        result = await self.hash_calculator.analyze(file_path)
+        return {
+            "success": result.success,
+            "data": result.data if result.success else None,
+            "error": result.error,
+        }
+
+    async def _identify_file_type(self, file_path: Path) -> dict[str, Any]:
+        """Run diec file type identification."""
+        logger.info(
+            f"Starting diec analysis for {file_path}, diec_url={self.diec_analyzer.diec_url}"
+        )
+        result = await self.diec_analyzer.analyze(file_path)
+        logger.info(
+            f"diec result: success={result.success}, error={result.error}, data={result.data}"
+        )
         return {
             "success": result.success,
             "data": result.data if result.success else None,

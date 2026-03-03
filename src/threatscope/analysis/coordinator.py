@@ -5,7 +5,7 @@ functional status names instead of generic "Stage X" naming.
 
 Pipeline phases:
 - Phase 1: Hash + diec (parallel) - determines file type
-- Phase 2: capa + strings + yara + threat_intel + dynamic (parallel)
+- Phase 2: capa + strings + yara + threat_intel + dynamic (ALL parallel)
 - Phase 3: Ghidra deep analysis
 - Phase 4: Report generation
 
@@ -41,8 +41,8 @@ class AnalysisCoordinator:
     """Orchestrates the complete malware analysis pipeline.
 
     Pipeline phases:
-    - Phase 1: Static analysis (hash + diec + capa + strings + yara)
-    - Phase 2: Threat intel + Dynamic analysis (parallel)
+    - Phase 1: File identification (hash + diec parallel)
+    - Phase 2: Deep analysis (capa + strings + yara + threat_intel + dynamic ALL parallel)
     - Phase 3: Ghidra deep analysis
     - Phase 4: Report generation
 
@@ -77,6 +77,34 @@ class AnalysisCoordinator:
         # Initialize agents (lazy - created when needed)
         self._ghidra_agent: GhidraAgent | None = None
         self._malware_agent: MalwareAnalysisAgent | None = None
+
+        # Static analysis service (lazy)
+        self._static_service = None
+
+    @property
+    def static_service(self):
+        """Lazy-initialize static analysis service."""
+        if self._static_service is None:
+            from src.threatscope.analysis.services.static_analysis import (
+                StaticAnalysisService,
+            )
+
+            # Resolve paths
+            yara_rules_path = self.settings.analysis.yara_rules_path
+            if yara_rules_path and not Path(yara_rules_path).is_absolute():
+                yara_rules_path = str(self.project_dir / yara_rules_path)
+
+            capa_rules_path = self.settings.capa.rules_path
+            if capa_rules_path and not Path(capa_rules_path).is_absolute():
+                capa_rules_path = str(self.project_dir / capa_rules_path)
+
+            self._static_service = StaticAnalysisService(
+                yara_rules_path=yara_rules_path,
+                diec_url=self.settings.diec.url,
+                capa_rules_path=capa_rules_path,
+                capa_timeout=self.settings.capa.timeout,
+            )
+        return self._static_service
 
     @property
     def ghidra_agent(self) -> GhidraAgent:
@@ -138,12 +166,13 @@ class AnalysisCoordinator:
 
         try:
             # ========================================
-            # Phase 1: Static Analysis
+            # Phase 1: File Identification (hash + diec parallel)
             # ========================================
-            static_results = await self._run_static_analysis(file_path, task, progress_callback)
+            task.update_status(AnalysisStatus.HASHING)
+            results = await self.static_service.identify_file(file_path, progress_callback)
 
             # Check file type - only PE/ELF continue full analysis
-            file_type = static_results.get("file_type", {})
+            file_type = results.get("file_type", {})
             category = file_type.get("category", "unknown")
 
             if category not in ("pe", "elf"):
@@ -160,74 +189,65 @@ class AnalysisCoordinator:
                         "file_size": file_path.stat().st_size,
                     },
                     "file_type": file_type,
-                    "hashes": static_results.get("hashes", {}),
+                    "hashes": results.get("hashes", {}),
                 }
 
             # ========================================
-            # Phase 2: Threat Intel + Dynamic Analysis (parallel)
+            # Phase 2: Deep Analysis (ALL parallel)
+            # capa + strings + yara + threat_intel + dynamic
             # ========================================
-            threat_intel_results = {}
-            dynamic_results = {}
+            task.update_status(AnalysisStatus.CAPABILITY_ANALYSIS)
 
-            phase2_tasks = []
+            # Notify all tasks starting
+            if progress_callback:
+                await progress_callback(
+                    "capability_analysis", "Capability Analysis", "running", None, results
+                )
+                await progress_callback(
+                    "string_extraction", "String Extraction", "running", None, results
+                )
+                await progress_callback("yara_scanning", "YARA Scanning", "running", None, results)
+                if enable_threat_intel:
+                    await progress_callback(
+                        "threat_intel", "Threat Intelligence Query", "running", None, results
+                    )
+                if enable_dynamic:
+                    await progress_callback(
+                        "dynamic_analysis", "Dynamic Analysis", "running", None, results
+                    )
+
+            # Build parallel task list
+            parallel_tasks = [
+                ("capa", self.static_service.analyze_capabilities(file_path, category)),
+                ("strings", self.static_service.extract_strings(file_path)),
+                ("yara", self.static_service.scan_yara(file_path)),
+            ]
 
             if enable_threat_intel:
-                task.update_status(AnalysisStatus.THREAT_INTEL)
-                if progress_callback:
-                    await progress_callback(
-                        "threat_intel", "Threat Intelligence Query", "running", None, static_results
-                    )
-                phase2_tasks.append(("threat_intel", self._query_threat_intel(static_results)))
+                parallel_tasks.append(("threat_intel", self._query_threat_intel(results)))
 
             if enable_dynamic:
-                task.update_status(AnalysisStatus.DYNAMIC_ANALYSIS)
-                if progress_callback:
-                    await progress_callback(
-                        "dynamic_analysis", "Dynamic Analysis", "running", None, static_results
-                    )
-                phase2_tasks.append(("dynamic", self._run_dynamic_analysis(file_path, file_type)))
+                parallel_tasks.append(("dynamic", self._run_dynamic_analysis(file_path, file_type)))
 
-            # Execute phase 2 tasks in parallel
-            if phase2_tasks:
-                results = await asyncio.gather(*[t[1] for t in phase2_tasks])
-                for i, (task_name, _) in enumerate(phase2_tasks):
-                    if task_name == "threat_intel":
-                        threat_intel_results = results[i]
-                        static_results["threat_intel"] = threat_intel_results
-                        if progress_callback:
-                            found_count = sum(
-                                1
-                                for source in threat_intel_results.get("hash_lookup", {}).values()
-                                if isinstance(source, dict) and source.get("found")
-                            )
-                            await progress_callback(
-                                "threat_intel",
-                                "Threat Intelligence Query",
-                                "completed",
-                                {"sources_found": found_count},
-                                static_results,
-                            )
-                    elif task_name == "dynamic":
-                        dynamic_results = results[i]
-                        static_results["dynamic_analysis"] = dynamic_results
-                        if progress_callback:
-                            status = (
-                                "completed" if not dynamic_results.get("skipped") else "skipped"
-                            )
-                            await progress_callback(
-                                "dynamic_analysis",
-                                "Dynamic Analysis",
-                                status,
-                                {
-                                    "success": dynamic_results.get("success", False),
-                                    "skipped": dynamic_results.get("skipped", False),
-                                    "method": dynamic_results.get("method", "none"),
-                                    "events_count": dynamic_results.get("raw_events_count", 0),
-                                },
-                                static_results,
-                            )
+            # Execute ALL in parallel
+            task_results = await asyncio.gather(*[t[1] for t in parallel_tasks])
 
-            task.static_results = static_results
+            # Process results
+            for i, (task_name, _) in enumerate(parallel_tasks):
+                result = task_results[i]
+
+                if task_name == "capa":
+                    await self._process_capa_result(result, results, progress_callback)
+                elif task_name == "strings":
+                    await self._process_strings_result(result, results, progress_callback)
+                elif task_name == "yara":
+                    await self._process_yara_result(result, results, progress_callback)
+                elif task_name == "threat_intel":
+                    await self._process_threat_intel_result(result, results, progress_callback)
+                elif task_name == "dynamic":
+                    await self._process_dynamic_result(result, results, progress_callback)
+
+            task.static_results = results
 
             # ========================================
             # Phase 3: Ghidra Deep Analysis
@@ -237,10 +257,10 @@ class AnalysisCoordinator:
                 task.update_status(AnalysisStatus.GHIDRA_ANALYSIS)
                 if progress_callback:
                     await progress_callback(
-                        "ghidra_analysis", "Ghidra Deep Analysis", "running", None, static_results
+                        "ghidra_analysis", "Ghidra Deep Analysis", "running", None, results
                     )
                 ghidra_results = await self._run_ghidra_analysis(
-                    static_results, file_path, progress_callback
+                    results, file_path, progress_callback
                 )
                 task.ghidra_results = ghidra_results
                 if progress_callback:
@@ -249,7 +269,7 @@ class AnalysisCoordinator:
                         "Ghidra Deep Analysis",
                         "completed",
                         {"status": ghidra_results.get("status", "unknown")},
-                        static_results,
+                        results,
                     )
 
             # ========================================
@@ -258,11 +278,9 @@ class AnalysisCoordinator:
             task.update_status(AnalysisStatus.REPORT_GENERATION)
             if progress_callback:
                 await progress_callback(
-                    "report_generation", "Report Generation", "running", None, static_results
+                    "report_generation", "Report Generation", "running", None, results
                 )
-            report = await self._run_report_generation(
-                static_results, ghidra_results, progress_callback
-            )
+            report = await self._run_report_generation(results, ghidra_results, progress_callback)
             task.report = report
             if progress_callback:
                 await progress_callback(
@@ -270,7 +288,7 @@ class AnalysisCoordinator:
                     "Report Generation",
                     "completed",
                     {"verdict": report.get("report", {}).get("verdict", "unknown")},
-                    static_results,
+                    results,
                 )
 
             task.update_status(AnalysisStatus.COMPLETED)
@@ -284,8 +302,8 @@ class AnalysisCoordinator:
                     "file_name": file_path.name,
                     "file_size": file_path.stat().st_size,
                 },
-                "static_analysis": static_results,
-                "dynamic_analysis": dynamic_results if enable_dynamic else None,
+                "static_analysis": results,
+                "dynamic_analysis": results.get("dynamic_analysis") if enable_dynamic else None,
                 "ghidra_analysis": ghidra_results if enable_ghidra else None,
                 "report": report.get("report", {}),
             }
@@ -299,50 +317,144 @@ class AnalysisCoordinator:
                 "error": str(e),
             }
 
-    async def _run_static_analysis(
+    async def _process_capa_result(
         self,
-        file_path: Path,
-        task: AnalysisTask,
+        result: dict[str, Any],
+        output: dict[str, Any],
         progress_callback: ProgressCallback,
-    ) -> dict[str, Any]:
-        """Run static analysis phases.
+    ) -> None:
+        """Process capa analysis result."""
+        if result.get("skipped"):
+            output["capa"] = {"skipped": True, "reason": result["reason"]}
+            if progress_callback:
+                await progress_callback(
+                    "capability_analysis", "Capability Analysis", "skipped", None, output
+                )
+            logger.info(f"Skipping capability analysis: {result['reason']}")
+        elif result["success"]:
+            output["capa"] = result["data"]
+            capabilities = result["data"].get("capabilities", [])
+            attack = result["data"].get("attack", {})
+            if progress_callback:
+                await progress_callback(
+                    "capability_analysis",
+                    "Capability Analysis",
+                    "completed",
+                    {
+                        "capabilities": len(capabilities),
+                        "attack_techniques": len(attack.get("techniques", [])),
+                        "analysis_time": result["data"].get("analysis_time", 0),
+                    },
+                    output,
+                )
+        else:
+            output["capa"] = {"error": result["error"]}
+            if progress_callback:
+                await progress_callback(
+                    "capability_analysis", "Capability Analysis", "failed", None, output
+                )
+            logger.warning(f"capa analysis failed: {result['error']}")
 
-        Phases: hashing, file_identification, capability_analysis, string_extraction, yara_scanning
-        """
-        # Import static analysis service
-        from src.threatscope.analysis.services.static_analysis import (
-            StaticAnalysisService,
-        )
+    async def _process_strings_result(
+        self,
+        result: dict[str, Any],
+        output: dict[str, Any],
+        progress_callback: ProgressCallback,
+    ) -> None:
+        """Process string extraction result."""
+        if result["success"]:
+            output["strings"] = result["data"]
+            if progress_callback:
+                await progress_callback(
+                    "string_extraction",
+                    "String Extraction",
+                    "completed",
+                    {
+                        "urls": len(result["data"].get("urls", [])),
+                        "ips": len(result["data"].get("ips", [])),
+                        "domains": len(result["data"].get("domains", [])),
+                    },
+                    output,
+                )
+        else:
+            output["strings"] = {"error": result["error"]}
+            if progress_callback:
+                await progress_callback(
+                    "string_extraction", "String Extraction", "failed", None, output
+                )
+            logger.warning(f"String extraction failed: {result['error']}")
 
-        # Resolve YARA rules path relative to project directory
-        yara_rules_path = self.settings.analysis.yara_rules_path
-        if yara_rules_path and not Path(yara_rules_path).is_absolute():
-            yara_rules_path = str(self.project_dir / yara_rules_path)
+    async def _process_yara_result(
+        self,
+        result: dict[str, Any],
+        output: dict[str, Any],
+        progress_callback: ProgressCallback,
+    ) -> None:
+        """Process YARA scanning result."""
+        if result["success"]:
+            output["yara"] = result["data"]
+            matches = result["data"].get("matches", [])
+            if progress_callback:
+                await progress_callback(
+                    "yara_scanning",
+                    "YARA Scanning",
+                    "completed",
+                    {
+                        "matches": len(matches),
+                        "rules": [m.get("rule") for m in matches[:3]] if matches else [],
+                    },
+                    output,
+                )
+        else:
+            output["yara"] = {"error": result["error"]}
+            if progress_callback:
+                await progress_callback("yara_scanning", "YARA Scanning", "failed", None, output)
+            logger.warning(f"YARA scanning failed: {result['error']}")
 
-        # Resolve capa rules path
-        capa_rules_path = self.settings.capa.rules_path
-        if capa_rules_path and not Path(capa_rules_path).is_absolute():
-            capa_rules_path = str(self.project_dir / capa_rules_path)
-
-        logger.info(f"YARA rules path resolved to: {yara_rules_path}")
-        logger.info(f"capa rules path resolved to: {capa_rules_path}")
-        logger.info(f"diec URL: {self.settings.diec.url}")
-
-        service = StaticAnalysisService(
-            yara_rules_path=yara_rules_path,
-            diec_url=self.settings.diec.url,
-            capa_rules_path=capa_rules_path,
-            capa_timeout=self.settings.capa.timeout,
-        )
-
-        # Run static analysis with status updates
-        task.update_status(AnalysisStatus.HASHING)
+    async def _process_threat_intel_result(
+        self,
+        result: dict[str, Any],
+        output: dict[str, Any],
+        progress_callback: ProgressCallback,
+    ) -> None:
+        """Process threat intelligence result."""
+        output["threat_intel"] = result
         if progress_callback:
-            await progress_callback("hashing", "Hash Calculation", "running", None, {})
+            found_count = sum(
+                1
+                for source in result.get("hash_lookup", {}).values()
+                if isinstance(source, dict) and source.get("found")
+            )
+            await progress_callback(
+                "threat_intel",
+                "Threat Intelligence Query",
+                "completed",
+                {"sources_found": found_count},
+                output,
+            )
 
-        results = await service.analyze(file_path, progress_callback)
-
-        return results
+    async def _process_dynamic_result(
+        self,
+        result: dict[str, Any],
+        output: dict[str, Any],
+        progress_callback: ProgressCallback,
+    ) -> None:
+        """Process dynamic analysis result."""
+        output["dynamic_analysis"] = result
+        if progress_callback:
+            status = "completed" if not result.get("skipped") else "skipped"
+            await progress_callback(
+                "dynamic_analysis",
+                "Dynamic Analysis",
+                status,
+                {
+                    "success": result.get("success", False),
+                    "skipped": result.get("skipped", False),
+                    "method": result.get("method", "none"),
+                    "events_count": result.get("raw_events_count", 0),
+                },
+                output,
+            )
 
     async def _run_dynamic_analysis(
         self,
