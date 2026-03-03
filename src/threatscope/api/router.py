@@ -344,13 +344,13 @@ def _run_analysis_background(
                 db.update_current_step(task_id, step_name)
 
                 # Update task status based on step_id for major phases
+                # Only update for Ghidra and Report phases (Phase 3 and 4)
+                # Phase 2 steps (capa, strings, yara, threat_intel, dynamic) all run during static_analysis
                 step_to_status = {
-                    "dynamic": TaskStatus.DYNAMIC_ANALYSIS.value,
-                    "dynamic_analysis": TaskStatus.DYNAMIC_ANALYSIS.value,  # legacy
                     "ghidra": TaskStatus.GHIDRA_ANALYSIS.value,
-                    "ghidra_analysis": TaskStatus.GHIDRA_ANALYSIS.value,  # legacy
+                    "ghidra_analysis": TaskStatus.GHIDRA_ANALYSIS.value,
                     "report": TaskStatus.REPORT_GENERATION.value,
-                    "report_generation": TaskStatus.REPORT_GENERATION.value,  # legacy
+                    "report_generation": TaskStatus.REPORT_GENERATION.value,
                 }
                 new_status = step_to_status.get(step_id)
                 if new_status:
