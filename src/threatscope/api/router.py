@@ -345,9 +345,12 @@ def _run_analysis_background(
 
                 # Update task status based on step_id for major phases
                 step_to_status = {
-                    "dynamic_analysis": TaskStatus.DYNAMIC_ANALYSIS.value,
-                    "ghidra_analysis": TaskStatus.GHIDRA_ANALYSIS.value,
-                    "report_generation": TaskStatus.REPORT_GENERATION.value,
+                    "dynamic": TaskStatus.DYNAMIC_ANALYSIS.value,
+                    "dynamic_analysis": TaskStatus.DYNAMIC_ANALYSIS.value,  # legacy
+                    "ghidra": TaskStatus.GHIDRA_ANALYSIS.value,
+                    "ghidra_analysis": TaskStatus.GHIDRA_ANALYSIS.value,  # legacy
+                    "report": TaskStatus.REPORT_GENERATION.value,
+                    "report_generation": TaskStatus.REPORT_GENERATION.value,  # legacy
                 }
                 new_status = step_to_status.get(step_id)
                 if new_status:
@@ -357,15 +360,23 @@ def _run_analysis_background(
             if status in ("completed", "failed", "skipped") and current_results:
                 # Map step_id to database field and save
                 step_to_field = {
-                    "hashing": "hashes",
-                    "file_identification": "file_type",
-                    "capability_analysis": "capa",
-                    "string_extraction": "strings",
-                    "yara_scanning": "yara",
+                    "hash": "hashes",
+                    "hashing": "hashes",  # legacy
+                    "file_type": "file_type",
+                    "file_identification": "file_type",  # legacy
+                    "capa": "capa",
+                    "capability_analysis": "capa",  # legacy
+                    "strings": "strings",
+                    "string_extraction": "strings",  # legacy
+                    "yara": "yara",
+                    "yara_scanning": "yara",  # legacy
                     "threat_intel": "threat_intel",
-                    "dynamic_analysis": "dynamic_analysis",
-                    "ghidra_analysis": "ghidra_analysis",
-                    "report_generation": "malware_report",
+                    "dynamic": "dynamic_analysis",
+                    "dynamic_analysis": "dynamic_analysis",  # legacy
+                    "ghidra": "ghidra_analysis",
+                    "ghidra_analysis": "ghidra_analysis",  # legacy
+                    "report": "malware_report",
+                    "report_generation": "malware_report",  # legacy
                 }
 
                 field = step_to_field.get(step_id)
