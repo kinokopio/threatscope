@@ -13,6 +13,7 @@ export function inferStepStates(
 ): Record<string, StepState> {
   const newStates = { ...currentStates };
 
+  // Set running state for ghidra/report based on task status
   if (taskStatus === 'ghidra_analysis' && currentStep && !result?.ghidra_analysis) {
     newStates.ghidra = {
       status: 'running',
@@ -29,8 +30,8 @@ export function inferStepStates(
 
   if (!result) return newStates;
 
-  // Hash Calculation
-  if (result.hashes && !newStates.hash?.status) {
+  // Hash Calculation - always update if data exists
+  if (result.hashes) {
     const hashes = result.hashes;
     newStates.hash = {
       status: 'completed',
@@ -41,8 +42,8 @@ export function inferStepStates(
     };
   }
 
-  // File Type Identification (NEW)
-  if (result.file_type && !newStates.file_type?.status) {
+  // File Type Identification
+  if (result.file_type) {
     const fileType = result.file_type;
     if (fileType?.error) {
       newStates.file_type = { status: 'failed', preview: { error: fileType.error } };
@@ -59,29 +60,27 @@ export function inferStepStates(
     }
   }
 
-  // Capability Analysis (NEW - replaces func_class and mitre)
-  if (!newStates.capa?.status) {
-    if (result.capa) {
-      const capa = result.capa;
-      if (capa.error) {
-        newStates.capa = { status: 'failed', preview: { error: capa.error } };
-      } else if (capa.skipped) {
-        newStates.capa = { status: 'skipped', preview: { reason: capa.reason || 'Skipped' } };
-      } else {
-        newStates.capa = {
-          status: 'completed',
-          preview: {
-            capabilities: capa.capabilities?.length || 0,
-            techniques: capa.attack?.techniques?.length || 0,
-            behaviors: capa.mbc?.behaviors?.length || 0,
-          },
-        };
-      }
+  // Capability Analysis (capa)
+  if (result.capa) {
+    const capa = result.capa;
+    if (capa.error) {
+      newStates.capa = { status: 'failed', preview: { error: capa.error } };
+    } else if (capa.skipped) {
+      newStates.capa = { status: 'skipped', preview: { reason: capa.reason || 'Skipped' } };
+    } else {
+      newStates.capa = {
+        status: 'completed',
+        preview: {
+          capabilities: capa.capabilities?.length || 0,
+          techniques: capa.attack?.techniques?.length || 0,
+          behaviors: capa.mbc?.behaviors?.length || 0,
+        },
+      };
     }
   }
 
   // String Extraction
-  if (result.strings && !newStates.strings?.status) {
+  if (result.strings) {
     const strings = result.strings;
     newStates.strings = {
       status: 'completed',
@@ -95,7 +94,7 @@ export function inferStepStates(
   }
 
   // YARA Scanning
-  if (result.yara && !newStates.yara?.status) {
+  if (result.yara) {
     const yara = result.yara;
     if (yara?.error) {
       newStates.yara = { status: 'failed', preview: { error: 'No rules loaded' } };
@@ -112,7 +111,7 @@ export function inferStepStates(
   }
 
   // Threat Intelligence
-  if (result.threat_intel && !newStates.threat_intel?.status) {
+  if (result.threat_intel) {
     const intel = result.threat_intel;
     const hashLookup = intel?.hash_lookup || {};
     const foundCount = Object.values(hashLookup).filter((v) => v?.found).length;
@@ -126,12 +125,12 @@ export function inferStepStates(
   }
 
   // Dynamic Analysis
-  if (result.dynamic_analysis && !newStates.dynamic?.status) {
+  if (result.dynamic_analysis) {
     const dynamic = result.dynamic_analysis;
     
     if (dynamic.skipped || dynamic.error) {
       newStates.dynamic = {
-        status: 'completed',
+        status: dynamic.skipped ? 'skipped' : 'completed',
         preview: {
           status: 'Skipped',
           reason: dynamic.error || 'Not available',
@@ -157,7 +156,7 @@ export function inferStepStates(
   }
 
   // Ghidra Analysis
-  if (result.ghidra_analysis && !newStates.ghidra?.status) {
+  if (result.ghidra_analysis) {
     const ghidra = result.ghidra_analysis;
     const analyzedFunctions = ghidra?.ai_analysis?.analyzed_functions || ghidra?.analyzed_functions || [];
     const keyFindings = ghidra?.ai_analysis?.key_findings || ghidra?.key_findings || [];
@@ -179,7 +178,7 @@ export function inferStepStates(
   }
 
   // AI Report
-  if (result.malware_report && !newStates.report?.status) {
+  if (result.malware_report) {
     const report = result.malware_report;
     const confidence = report?.confidence || 0;
     const confidencePercent = confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence);
@@ -214,18 +213,23 @@ export function getEffectiveStepStatus(
   ];
   const currentStageIndex = STAGE_ORDER.indexOf(currentStatus);
 
-  if (currentStatus === 'completed') return 'completed';
-  if (currentStatus === 'failed') return 'pending';
+  // Terminal states
+  if (currentStatus === 'completed') return stepStates[stepId]?.status || 'completed';
+  if (currentStatus === 'failed') return stepStates[stepId]?.status || 'pending';
 
   const wsStatus = stepStates[stepId]?.status;
 
   // Phase 1: hashing step (hash + file_type)
   if (stepId === 'hash' || stepId === 'file_type') {
+    // If we have a status from result, use it
+    if (wsStatus && wsStatus !== 'pending') {
+      return wsStatus;
+    }
     if (currentStatus === 'hashing') {
-      return wsStatus || 'running';
+      return 'running';
     }
     if (currentStageIndex > STAGE_ORDER.indexOf('hashing')) {
-      return wsStatus || 'completed';
+      return 'completed';
     }
     return 'pending';
   }
@@ -233,15 +237,14 @@ export function getEffectiveStepStatus(
   // Phase 2: All parallel steps (static, intel, dynamic groups)
   // capa, strings, yara, threat_intel, dynamic all run in parallel during static_analysis
   if (stepGroup === 'static' || stepGroup === 'intel' || stepGroup === 'dynamic') {
+    // If we have a status from result, use it (completed/skipped/failed)
+    if (wsStatus && wsStatus !== 'pending') {
+      return wsStatus;
+    }
     if (currentStageIndex > STAGE_ORDER.indexOf('static_analysis')) {
-      return wsStatus || 'completed';
+      return 'completed';
     }
     if (currentStatus === 'static_analysis') {
-      // During static_analysis, all these steps run in parallel
-      // Return websocket status if available, otherwise 'running'
-      if (wsStatus && wsStatus !== 'pending') {
-        return wsStatus;
-      }
       return 'running';
     }
     return 'pending';
@@ -249,22 +252,28 @@ export function getEffectiveStepStatus(
 
   // Ghidra step
   if (stepGroup === 'ghidra') {
+    if (wsStatus && wsStatus !== 'pending') {
+      return wsStatus;
+    }
     if (currentStageIndex > STAGE_ORDER.indexOf('ghidra_analysis')) {
-      return wsStatus || 'completed';
+      return 'completed';
     }
     if (currentStatus === 'ghidra_analysis') {
-      return wsStatus || 'running';
+      return 'running';
     }
     return 'pending';
   }
 
   // Report step
   if (stepGroup === 'report') {
+    if (wsStatus && wsStatus !== 'pending') {
+      return wsStatus;
+    }
     if (currentStageIndex > STAGE_ORDER.indexOf('report_generation')) {
-      return wsStatus || 'completed';
+      return 'completed';
     }
     if (currentStatus === 'report_generation') {
-      return wsStatus || 'running';
+      return 'running';
     }
     return 'pending';
   }
