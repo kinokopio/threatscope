@@ -201,19 +201,19 @@ class AnalysisCoordinator:
             # Notify all tasks starting
             if progress_callback:
                 await progress_callback(
-                    "capability_analysis", "Capability Analysis", "running", None, results
+                    "capa", "Capability Analysis", "running", None, results
                 )
                 await progress_callback(
-                    "string_extraction", "String Extraction", "running", None, results
+                    "strings", "String Extraction", "running", None, results
                 )
-                await progress_callback("yara_scanning", "YARA Scanning", "running", None, results)
+                await progress_callback("yara", "YARA Scanning", "running", None, results)
                 if enable_threat_intel:
                     await progress_callback(
                         "threat_intel", "Threat Intelligence Query", "running", None, results
                     )
                 if enable_dynamic:
                     await progress_callback(
-                        "dynamic_analysis", "Dynamic Analysis", "running", None, results
+                        "dynamic", "Dynamic Analysis", "running", None, results
                     )
 
             # Build parallel task list
@@ -257,7 +257,7 @@ class AnalysisCoordinator:
                 task.update_status(AnalysisStatus.GHIDRA_ANALYSIS)
                 if progress_callback:
                     await progress_callback(
-                        "ghidra_analysis", "Ghidra Deep Analysis", "running", None, results
+                        "ghidra", "Ghidra Deep Analysis", "running", None, results
                     )
                 ghidra_results = await self._run_ghidra_analysis(
                     results, file_path, progress_callback
@@ -265,7 +265,7 @@ class AnalysisCoordinator:
                 task.ghidra_results = ghidra_results
                 if progress_callback:
                     await progress_callback(
-                        "ghidra_analysis",
+                        "ghidra",
                         "Ghidra Deep Analysis",
                         "completed",
                         {"status": ghidra_results.get("status", "unknown")},
@@ -278,13 +278,13 @@ class AnalysisCoordinator:
             task.update_status(AnalysisStatus.REPORT_GENERATION)
             if progress_callback:
                 await progress_callback(
-                    "report_generation", "Report Generation", "running", None, results
+                    "report", "Report Generation", "running", None, results
                 )
             report = await self._run_report_generation(results, ghidra_results, progress_callback)
             task.report = report
             if progress_callback:
                 await progress_callback(
-                    "report_generation",
+                    "report",
                     "Report Generation",
                     "completed",
                     {"verdict": report.get("report", {}).get("verdict", "unknown")},
@@ -328,7 +328,7 @@ class AnalysisCoordinator:
             output["capa"] = {"skipped": True, "reason": result["reason"]}
             if progress_callback:
                 await progress_callback(
-                    "capability_analysis", "Capability Analysis", "skipped", None, output
+                    "capa", "Capability Analysis", "skipped", None, output
                 )
             logger.info(f"Skipping capability analysis: {result['reason']}")
         elif result["success"]:
@@ -337,7 +337,7 @@ class AnalysisCoordinator:
             attack = result["data"].get("attack", {})
             if progress_callback:
                 await progress_callback(
-                    "capability_analysis",
+                    "capa",
                     "Capability Analysis",
                     "completed",
                     {
@@ -351,7 +351,7 @@ class AnalysisCoordinator:
             output["capa"] = {"error": result["error"]}
             if progress_callback:
                 await progress_callback(
-                    "capability_analysis", "Capability Analysis", "failed", None, output
+                    "capa", "Capability Analysis", "failed", None, output
                 )
             logger.warning(f"capa analysis failed: {result['error']}")
 
@@ -366,7 +366,7 @@ class AnalysisCoordinator:
             output["strings"] = result["data"]
             if progress_callback:
                 await progress_callback(
-                    "string_extraction",
+                    "strings",
                     "String Extraction",
                     "completed",
                     {
@@ -380,7 +380,7 @@ class AnalysisCoordinator:
             output["strings"] = {"error": result["error"]}
             if progress_callback:
                 await progress_callback(
-                    "string_extraction", "String Extraction", "failed", None, output
+                    "strings", "String Extraction", "failed", None, output
                 )
             logger.warning(f"String extraction failed: {result['error']}")
 
@@ -396,7 +396,7 @@ class AnalysisCoordinator:
             matches = result["data"].get("matches", [])
             if progress_callback:
                 await progress_callback(
-                    "yara_scanning",
+                    "yara",
                     "YARA Scanning",
                     "completed",
                     {
@@ -408,7 +408,7 @@ class AnalysisCoordinator:
         else:
             output["yara"] = {"error": result["error"]}
             if progress_callback:
-                await progress_callback("yara_scanning", "YARA Scanning", "failed", None, output)
+                await progress_callback("yara", "YARA Scanning", "failed", None, output)
             logger.warning(f"YARA scanning failed: {result['error']}")
 
     async def _process_threat_intel_result(
@@ -444,7 +444,7 @@ class AnalysisCoordinator:
         if progress_callback:
             status = "completed" if not result.get("skipped") else "skipped"
             await progress_callback(
-                "dynamic_analysis",
+                "dynamic",
                 "Dynamic Analysis",
                 status,
                 {

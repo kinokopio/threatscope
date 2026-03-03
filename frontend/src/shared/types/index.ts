@@ -14,7 +14,10 @@ export interface AnalysisTask {
 export type TaskStatus =
   | 'pending'
   | 'queued'
+  | 'hashing'
+  | 'file_identification'
   | 'static_analysis'
+  | 'threat_intel'
   | 'dynamic_analysis'
   | 'ghidra_analysis'
   | 'report_generation'

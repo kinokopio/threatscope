@@ -201,13 +201,13 @@ export function getEffectiveStepStatus(
   stepGroup: string,
   currentStatus: TaskStatus,
   stepStates: Record<string, StepState>,
-  allSteps?: { id: string; group: string }[]
+  _allSteps?: { id: string; group: string }[]
 ): StepStatus {
   const STAGE_ORDER = [
     'pending',
-    'static_analysis',
     'queued',
-    'dynamic_analysis',
+    'hashing',
+    'static_analysis',  // Phase 2: all parallel (capa, strings, yara, threat_intel, dynamic)
     'ghidra_analysis',
     'report_generation',
     'completed',
@@ -219,45 +219,30 @@ export function getEffectiveStepStatus(
 
   const wsStatus = stepStates[stepId]?.status;
 
-  // Static analysis steps (static, intel)
-  if (stepGroup === 'static' || stepGroup === 'intel') {
-    if (currentStageIndex > STAGE_ORDER.indexOf('static_analysis')) {
-      return wsStatus || 'completed';
+  // Phase 1: hashing step (hash + file_type)
+  if (stepId === 'hash' || stepId === 'file_type') {
+    if (currentStatus === 'hashing') {
+      return wsStatus || 'running';
     }
-    if (currentStatus === 'static_analysis') {
-      if (wsStatus && wsStatus !== 'pending') {
-        return wsStatus;
-      }
-      
-      if (allSteps) {
-        const staticSteps = allSteps.filter(s => 
-          s.group === 'static' || s.group === 'intel'
-        );
-        for (const step of staticSteps) {
-          const state = stepStates[step.id];
-          if (!state || state.status === 'pending') {
-            if (step.id === stepId) {
-              return 'running';
-            }
-            break;
-          }
-        }
-      }
-      return 'pending';
+    if (currentStageIndex > STAGE_ORDER.indexOf('hashing')) {
+      return wsStatus || 'completed';
     }
     return 'pending';
   }
 
-  // Dynamic analysis step
-  if (stepGroup === 'dynamic') {
-    if (currentStageIndex > STAGE_ORDER.indexOf('dynamic_analysis')) {
+  // Phase 2: All parallel steps (static, intel, dynamic groups)
+  // capa, strings, yara, threat_intel, dynamic all run in parallel during static_analysis
+  if (stepGroup === 'static' || stepGroup === 'intel' || stepGroup === 'dynamic') {
+    if (currentStageIndex > STAGE_ORDER.indexOf('static_analysis')) {
       return wsStatus || 'completed';
     }
-    if (currentStatus === 'dynamic_analysis') {
-      return wsStatus || 'running';
-    }
-    if (currentStatus === 'static_analysis' && wsStatus) {
-      return wsStatus;
+    if (currentStatus === 'static_analysis') {
+      // During static_analysis, all these steps run in parallel
+      // Return websocket status if available, otherwise 'running'
+      if (wsStatus && wsStatus !== 'pending') {
+        return wsStatus;
+      }
+      return 'running';
     }
     return 'pending';
   }
@@ -265,7 +250,7 @@ export function getEffectiveStepStatus(
   // Ghidra step
   if (stepGroup === 'ghidra') {
     if (currentStageIndex > STAGE_ORDER.indexOf('ghidra_analysis')) {
-      return 'completed';
+      return wsStatus || 'completed';
     }
     if (currentStatus === 'ghidra_analysis') {
       return wsStatus || 'running';
@@ -275,6 +260,9 @@ export function getEffectiveStepStatus(
 
   // Report step
   if (stepGroup === 'report') {
+    if (currentStageIndex > STAGE_ORDER.indexOf('report_generation')) {
+      return wsStatus || 'completed';
+    }
     if (currentStatus === 'report_generation') {
       return wsStatus || 'running';
     }
