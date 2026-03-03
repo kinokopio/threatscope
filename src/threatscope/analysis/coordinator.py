@@ -196,7 +196,7 @@ class AnalysisCoordinator:
             # Phase 2: Deep Analysis (ALL parallel)
             # capa + strings + yara + threat_intel + dynamic
             # ========================================
-            task.update_status(AnalysisStatus.CAPABILITY_ANALYSIS)
+            task.update_status(AnalysisStatus.STATIC_ANALYSIS)
 
             # Notify all tasks starting
             if progress_callback:

@@ -15,9 +15,8 @@ class AnalysisStatus(str, Enum):
 
     # Static Analysis Pipeline
     HASHING = "hashing"
-    STRING_EXTRACTION = "string_extraction"
-    BINARY_PARSING = "binary_parsing"
-    YARA_SCANNING = "yara_scanning"
+    FILE_IDENTIFICATION = "file_identification"
+    STATIC_ANALYSIS = "static_analysis"  # capa + strings + yara + threat_intel + dynamic
     THREAT_INTEL = "threat_intel"
     DYNAMIC_ANALYSIS = "dynamic_analysis"
 
