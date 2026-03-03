@@ -216,37 +216,45 @@ class AnalysisCoordinator:
                         "dynamic", "Dynamic Analysis", "running", None, results
                     )
 
-            # Build parallel task list
+            # Build parallel tasks with immediate result processing
+            async def run_and_process_capa():
+                result = await self.static_service.analyze_capabilities(file_path, category)
+                await self._process_capa_result(result, results, progress_callback)
+                return result
+
+            async def run_and_process_strings():
+                result = await self.static_service.extract_strings(file_path)
+                await self._process_strings_result(result, results, progress_callback)
+                return result
+
+            async def run_and_process_yara():
+                result = await self.static_service.scan_yara(file_path)
+                await self._process_yara_result(result, results, progress_callback)
+                return result
+
+            async def run_and_process_threat_intel():
+                result = await self._query_threat_intel(results)
+                await self._process_threat_intel_result(result, results, progress_callback)
+                return result
+
+            async def run_and_process_dynamic():
+                result = await self._run_dynamic_analysis(file_path, file_type)
+                await self._process_dynamic_result(result, results, progress_callback)
+                return result
+
             parallel_tasks = [
-                ("capa", self.static_service.analyze_capabilities(file_path, category)),
-                ("strings", self.static_service.extract_strings(file_path)),
-                ("yara", self.static_service.scan_yara(file_path)),
+                run_and_process_capa(),
+                run_and_process_strings(),
+                run_and_process_yara(),
             ]
 
             if enable_threat_intel:
-                parallel_tasks.append(("threat_intel", self._query_threat_intel(results)))
+                parallel_tasks.append(run_and_process_threat_intel())
 
             if enable_dynamic:
-                parallel_tasks.append(("dynamic", self._run_dynamic_analysis(file_path, file_type)))
+                parallel_tasks.append(run_and_process_dynamic())
 
-            # Execute ALL in parallel
-            task_results = await asyncio.gather(*[t[1] for t in parallel_tasks])
-
-            # Process results
-            for i, (task_name, _) in enumerate(parallel_tasks):
-                result = task_results[i]
-
-                if task_name == "capa":
-                    await self._process_capa_result(result, results, progress_callback)
-                elif task_name == "strings":
-                    await self._process_strings_result(result, results, progress_callback)
-                elif task_name == "yara":
-                    await self._process_yara_result(result, results, progress_callback)
-                elif task_name == "threat_intel":
-                    await self._process_threat_intel_result(result, results, progress_callback)
-                elif task_name == "dynamic":
-                    await self._process_dynamic_result(result, results, progress_callback)
-
+            await asyncio.gather(*parallel_tasks)
             task.static_results = results
 
             # ========================================
