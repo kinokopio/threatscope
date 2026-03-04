@@ -226,6 +226,5 @@ def create_utils_mcp_server():
             decompress_zlib,
             strings_search,
             grep_binary,
-            hexdump,
         ],
     )
