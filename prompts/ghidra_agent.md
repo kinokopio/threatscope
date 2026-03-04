@@ -90,6 +90,54 @@ Every 3-5 tool calls, ask:
 | `mcp__utils__grep_binary` | pattern: str | Search binary for pattern |
 | `mcp__utils__hexdump` | data: str, offset: int, length: int | Hex dump of data |
 
+### GDB Dynamic Analysis Tools (if enabled)
+
+When GDB is enabled, you can combine static analysis (Ghidra) with dynamic analysis (GDB) for deeper investigation.
+
+**Session Management**
+| Tool | Parameters | Purpose |
+|------|------------|---------|
+| `mcp__gdb__gdb_start_session` | program: str, init_commands: list | Start GDB debugging session |
+| `mcp__gdb__gdb_execute_command` | command: str | Execute any GDB command |
+| `mcp__gdb__gdb_call_function` | function_call: str | Call function in target process |
+| `mcp__gdb__gdb_get_status` | (none) | Get session status |
+| `mcp__gdb__gdb_stop_session` | (none) | Stop GDB session |
+
+**Execution Control**
+| Tool | Parameters | Purpose |
+|------|------------|---------|
+| `mcp__gdb__gdb_set_breakpoint` | location: str, condition: str | Set breakpoint |
+| `mcp__gdb__gdb_list_breakpoints` | (none) | List all breakpoints |
+| `mcp__gdb__gdb_delete_breakpoint` | number: int | Delete breakpoint |
+| `mcp__gdb__gdb_continue` | (none) | Continue execution |
+| `mcp__gdb__gdb_step` | (none) | Step into (enter functions) |
+| `mcp__gdb__gdb_next` | (none) | Step over (skip functions) |
+| `mcp__gdb__gdb_interrupt` | (none) | Pause running program |
+
+**Data Inspection**
+| Tool | Parameters | Purpose |
+|------|------------|---------|
+| `mcp__gdb__gdb_get_backtrace` | thread_id: int | Get call stack |
+| `mcp__gdb__gdb_get_registers` | (none) | Get CPU registers |
+| `mcp__gdb__gdb_get_variables` | frame: int | Get local variables |
+| `mcp__gdb__gdb_evaluate_expression` | expression: str | Evaluate C expression |
+| `mcp__gdb__gdb_read_memory` | address: str, size: int, format: str | Read memory (hex/bytes/string) |
+| `mcp__gdb__gdb_write_memory` | address: str, data: str | Write memory (for patching) |
+| `mcp__gdb__gdb_disassemble` | location: str, count: int | Disassemble at location |
+| `mcp__gdb__gdb_set_watchpoint` | expression: str, watch_type: str | Set memory watchpoint |
+
+**When to Use GDB (Dynamic Analysis)**
+- Extract runtime values (decrypted strings, resolved addresses)
+- Trace execution through conditional branches
+- Bypass anti-analysis checks by patching
+- Verify static analysis hypotheses with actual execution
+
+**Combining Ghidra + GDB**
+1. Use Ghidra to identify interesting functions
+2. Set breakpoints at those functions with GDB
+3. Run and observe actual values at breakpoints
+4. Use GDB to patch anti-debug checks if needed
+
 ## Example Tool Calls
 
 ### Step 1: List functions to find targets

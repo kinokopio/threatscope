@@ -44,6 +44,7 @@ class GhidraSettings(BaseSettings):
         """Get the Ghidra service base URL."""
         return f"http://{self.service_host}:{self.base_http_port}"
 
+
 class ThreatIntelSourceSettings(BaseSettings):
     """Individual threat intel source configuration."""
 
@@ -124,6 +125,25 @@ class CapaSettings(BaseSettings):
     rules_path: str = Field(default="rules/capa", description="Path to capa rules directory")
     timeout: int = Field(default=600, ge=10, le=1800, description="Analysis timeout in seconds")
     enabled: bool = Field(default=True, description="Enable capa analysis")
+
+
+class GDBSettings(BaseSettings):
+    """GDB dynamic analysis configuration."""
+
+    model_config = SettingsConfigDict(env_prefix="THREATSCOPE_GDB_")
+
+    enabled: bool = Field(default=False, description="Enable GDB dynamic analysis")
+    mcp_command: list[str] = Field(
+        default=["gdb-mcp-server"],
+        description="Command to start GDB MCP server (stdio mode)",
+    )
+    gdb_path: str = Field(default="gdb", description="Path to GDB executable")
+    timeout: int = Field(default=300, ge=30, le=1800, description="Analysis timeout in seconds")
+    gdbserver_host: str = Field(
+        default="localhost", description="GDBServer host for remote debugging"
+    )
+    gdbserver_port: int = Field(default=1234, ge=1024, le=65535, description="GDBServer port")
+
 
 class TasksSettings(BaseSettings):
     """Task queue configuration."""
@@ -208,6 +228,7 @@ class Settings(BaseSettings):
     # Nested settings (loaded from sub-prefixes)
     workers: WorkersSettings = Field(default_factory=WorkersSettings)
     ghidra: GhidraSettings = Field(default_factory=GhidraSettings)
+    gdb: GDBSettings = Field(default_factory=GDBSettings)
     diec: DiecSettings = Field(default_factory=DiecSettings)
     capa: CapaSettings = Field(default_factory=CapaSettings)
     threat_intel: ThreatIntelSettings = Field(default_factory=ThreatIntelSettings)

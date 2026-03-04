@@ -31,16 +31,20 @@ from src.threatscope.ghidra.client import GhidraClient
 # Try to import Langfuse observe decorator
 try:
     from langfuse import observe as langfuse_observe
+
     LANGFUSE_AVAILABLE = True
 except ImportError:
     LANGFUSE_AVAILABLE = False
+
     # Create a no-op decorator if langfuse not available
     def langfuse_observe(*args, **kwargs):
         def decorator(func):
             return func
+
         if args and callable(args[0]):
             return args[0]
         return decorator
+
 
 logger = logging.getLogger(__name__)
 
@@ -310,19 +314,13 @@ class GhidraAgent(BaseAgent):
         project_dir: str | Path = ".",
         ghidra_url: str = "http://localhost:8000",
         ai_timeout: int = DEFAULT_AI_TIMEOUT,
+        enable_gdb: bool = False,
     ):
-        """Initialize GhidraAgent.
-
-        Args:
-            config: Agent configuration.
-            project_dir: Project directory for memory storage.
-            ghidra_url: URL of Ghidra HTTP service.
-            ai_timeout: Timeout in seconds for AI analysis (default: 300s).
-        """
         super().__init__(config)
         self.project_dir = Path(project_dir)
         self.ghidra_url = ghidra_url
         self.ai_timeout = ai_timeout
+        self.enable_gdb = enable_gdb
         self.memory_store: MemoryStore | None = None
         self.ghidra_client: GhidraClient | None = None
         self._progress_callback: Callable | None = None
@@ -622,57 +620,107 @@ class GhidraAgent(BaseAgent):
         utils_server = create_utils_mcp_server()
         memory_server = create_memory_tools_server(self.memory_store)
 
+        # Build MCP servers configuration
+        mcp_servers: dict[str, Any] = {
+            "ghidra": {
+                "type": "http",
+                "url": f"{self.ghidra_url}/mcp",
+            },
+            "utils": utils_server,
+            "memory": memory_server,
+        }
+
+        # Build allowed tools list
+        allowed_tools = [
+            # Ghidra tools (static analysis)
+            "mcp__ghidra__list_functions",
+            "mcp__ghidra__decompile_function",
+            "mcp__ghidra__disassemble_function",
+            "mcp__ghidra__get_function_details",
+            "mcp__ghidra__list_strings",
+            "mcp__ghidra__search_strings",
+            "mcp__ghidra__function_xrefs",
+            "mcp__ghidra__get_callgraph",
+            "mcp__ghidra__read_memory",
+            "mcp__ghidra__get_imports",
+            "mcp__ghidra__get_exports",
+            "mcp__ghidra__get_sections",
+            "mcp__ghidra__run_script",
+            "mcp__ghidra__clear_flow_overrides",
+            "mcp__ghidra__find_orphan_code",
+            # Utility tools
+            "mcp__utils__decode_base64",
+            "mcp__utils__encode_base64",
+            "mcp__utils__decode_hex",
+            "mcp__utils__encode_hex",
+            "mcp__utils__xor_decrypt",
+            "mcp__utils__calculate_hash",
+            "mcp__utils__strings_search",
+            "mcp__utils__grep_binary",
+            "mcp__utils__hexdump",
+            # Memory tools
+            "mcp__memory__memory_save_finding",
+            "mcp__memory__memory_get_findings",
+            "mcp__memory__memory_cache_function",
+            "mcp__memory__memory_get_function",
+            "mcp__memory__memory_list_cached_functions",
+            "mcp__memory__memory_save_checkpoint",
+            "mcp__memory__memory_restore_checkpoint",
+        ]
+
+        # Add GDB MCP server if enabled
+        if self.enable_gdb:
+            gdb_settings = settings.gdb
+            mcp_servers["gdb"] = {
+                "type": "stdio",
+                "command": gdb_settings.mcp_command,
+                "env": {"GDB_PATH": gdb_settings.gdb_path},
+            }
+            allowed_tools.extend(
+                [
+                    # GDB tools (dynamic analysis) - Session management
+                    "mcp__gdb__gdb_start_session",
+                    "mcp__gdb__gdb_execute_command",
+                    "mcp__gdb__gdb_call_function",
+                    "mcp__gdb__gdb_get_status",
+                    "mcp__gdb__gdb_stop_session",
+                    # GDB tools - Thread/Frame navigation
+                    "mcp__gdb__gdb_get_threads",
+                    "mcp__gdb__gdb_select_thread",
+                    "mcp__gdb__gdb_get_backtrace",
+                    "mcp__gdb__gdb_select_frame",
+                    "mcp__gdb__gdb_get_frame_info",
+                    # GDB tools - Breakpoint management
+                    "mcp__gdb__gdb_set_breakpoint",
+                    "mcp__gdb__gdb_list_breakpoints",
+                    "mcp__gdb__gdb_delete_breakpoint",
+                    "mcp__gdb__gdb_enable_breakpoint",
+                    "mcp__gdb__gdb_disable_breakpoint",
+                    # GDB tools - Execution control
+                    "mcp__gdb__gdb_continue",
+                    "mcp__gdb__gdb_step",
+                    "mcp__gdb__gdb_next",
+                    "mcp__gdb__gdb_interrupt",
+                    # GDB tools - Data inspection
+                    "mcp__gdb__gdb_evaluate_expression",
+                    "mcp__gdb__gdb_get_variables",
+                    "mcp__gdb__gdb_get_registers",
+                    # GDB tools - Memory operations (custom extensions)
+                    "mcp__gdb__gdb_read_memory",
+                    "mcp__gdb__gdb_write_memory",
+                    "mcp__gdb__gdb_disassemble",
+                    "mcp__gdb__gdb_set_watchpoint",
+                ]
+            )
+            logger.info("GDB dynamic analysis enabled")
+
         # Configure agent options with structured output
-        # tools=[] disables all built-in tools (Bash, Read, Write, etc.)
-        # We only want AI to use our MCP tools for controlled analysis
         options = ClaudeAgentOptions(
-            tools=[],  # Disable built-in tools - only use MCP tools
+            tools=[],
             system_prompt=system_prompt,
             model="claude-sonnet-4-20250514",
-            mcp_servers={
-                "ghidra": {
-                    "type": "http",
-                    "url": f"{self.ghidra_url}/mcp",
-                },
-                "utils": utils_server,
-                "memory": memory_server,
-            },
-            allowed_tools=[
-                # Ghidra tools
-                "mcp__ghidra__list_functions",
-                "mcp__ghidra__decompile_function",
-                "mcp__ghidra__disassemble_function",
-                "mcp__ghidra__get_function_details",
-                "mcp__ghidra__list_strings",
-                "mcp__ghidra__search_strings",
-                "mcp__ghidra__function_xrefs",
-                "mcp__ghidra__get_callgraph",
-                "mcp__ghidra__read_memory",
-                "mcp__ghidra__get_imports",
-                "mcp__ghidra__get_exports",
-                "mcp__ghidra__get_sections",
-                "mcp__ghidra__run_script",
-                "mcp__ghidra__clear_flow_overrides",
-                "mcp__ghidra__find_orphan_code",
-                # Utility tools
-                "mcp__utils__decode_base64",
-                "mcp__utils__encode_base64",
-                "mcp__utils__decode_hex",
-                "mcp__utils__encode_hex",
-                "mcp__utils__xor_decrypt",
-                "mcp__utils__calculate_hash",
-                "mcp__utils__strings_search",
-                "mcp__utils__grep_binary",
-                "mcp__utils__hexdump",
-                # Memory tools
-                "mcp__memory__memory_save_finding",
-                "mcp__memory__memory_get_findings",
-                "mcp__memory__memory_cache_function",
-                "mcp__memory__memory_get_function",
-                "mcp__memory__memory_list_cached_functions",
-                "mcp__memory__memory_save_checkpoint",
-                "mcp__memory__memory_restore_checkpoint",
-            ],
+            mcp_servers=mcp_servers,
+            allowed_tools=allowed_tools,
             max_turns=self.config.max_iterations,
             output_format={
                 "type": "json_schema",
@@ -687,6 +735,7 @@ class GhidraAgent(BaseAgent):
 
         # Tool name to human-readable description mapping
         tool_descriptions = {
+            # Ghidra tools (static analysis)
             "mcp__ghidra__list_functions": "Listing functions",
             "mcp__ghidra__decompile_function": "Decompiling function",
             "mcp__ghidra__disassemble_function": "Disassembling function",
@@ -695,12 +744,29 @@ class GhidraAgent(BaseAgent):
             "mcp__ghidra__search_strings": "Searching strings",
             "mcp__ghidra__function_xrefs": "Getting cross-references",
             "mcp__ghidra__get_callgraph": "Building call graph",
-            "mcp__ghidra__read_memory": "Reading memory",
+            "mcp__ghidra__read_memory": "Reading memory (static)",
             "mcp__ghidra__get_imports": "Getting imports",
             "mcp__ghidra__get_exports": "Getting exports",
             "mcp__ghidra__get_sections": "Getting sections",
+            # Memory tools
             "mcp__memory__memory_save_finding": "Saving finding",
             "mcp__memory__memory_cache_function": "Caching function analysis",
+            # GDB tools (dynamic analysis)
+            "mcp__gdb__gdb_start_session": "Starting GDB session",
+            "mcp__gdb__gdb_stop_session": "Stopping GDB session",
+            "mcp__gdb__gdb_set_breakpoint": "Setting breakpoint",
+            "mcp__gdb__gdb_continue": "Continuing execution",
+            "mcp__gdb__gdb_step": "Stepping into",
+            "mcp__gdb__gdb_next": "Stepping over",
+            "mcp__gdb__gdb_interrupt": "Interrupting execution",
+            "mcp__gdb__gdb_get_backtrace": "Getting backtrace",
+            "mcp__gdb__gdb_get_registers": "Reading registers",
+            "mcp__gdb__gdb_get_variables": "Getting variables",
+            "mcp__gdb__gdb_evaluate_expression": "Evaluating expression",
+            "mcp__gdb__gdb_read_memory": "Reading memory (dynamic)",
+            "mcp__gdb__gdb_write_memory": "Writing memory",
+            "mcp__gdb__gdb_disassemble": "Disassembling (dynamic)",
+            "mcp__gdb__gdb_set_watchpoint": "Setting watchpoint",
         }
 
         async def _call_ai() -> dict[str, Any]:
@@ -793,7 +859,9 @@ class GhidraAgent(BaseAgent):
                                     if isinstance(defs_value, str):
                                         try:
                                             structured_result = json.loads(defs_value)
-                                            logger.info("Parsed structured output from $defs string")
+                                            logger.info(
+                                                "Parsed structured output from $defs string"
+                                            )
                                         except json.JSONDecodeError:
                                             logger.warning("Failed to parse $defs as JSON")
                                             structured_result = None
@@ -802,7 +870,10 @@ class GhidraAgent(BaseAgent):
 
                             # Validate we have the expected structure
                             if structured_result and isinstance(structured_result, dict):
-                                if "analyzed_functions" in structured_result or "key_findings" in structured_result:
+                                if (
+                                    "analyzed_functions" in structured_result
+                                    or "key_findings" in structured_result
+                                ):
                                     # Send completion notification
                                     if self._progress_callback:
                                         try:
@@ -813,7 +884,9 @@ class GhidraAgent(BaseAgent):
                                                 {
                                                     "tool_call_count": tool_call_count,
                                                     "functions_analyzed": len(
-                                                        structured_result.get("analyzed_functions", [])
+                                                        structured_result.get(
+                                                            "analyzed_functions", []
+                                                        )
                                                     ),
                                                     "findings_saved": len(
                                                         structured_result.get("key_findings", [])
@@ -827,7 +900,9 @@ class GhidraAgent(BaseAgent):
 
                                     return structured_result
                                 else:
-                                    logger.warning(f"Structured output missing expected keys: {list(structured_result.keys())}")
+                                    logger.warning(
+                                        f"Structured output missing expected keys: {list(structured_result.keys())}"
+                                    )
 
                         # Send completion notification for non-structured
                         if self._progress_callback:
@@ -994,7 +1069,7 @@ class GhidraAgent(BaseAgent):
             "## ⚠️ CRITICAL: 所有输出必须使用中文 (Chinese Output Required)",
             "- purpose, analysis, description, evidence, attack_chain 等所有文本字段必须使用中文",
             "- 技术术语可以保留英文（如函数名、地址、API名称）",
-            "- 示例: purpose: \"建立与C2服务器的网络连接\" (正确) vs \"Establish network connection\" (错误)",
+            '- 示例: purpose: "建立与C2服务器的网络连接" (正确) vs "Establish network connection" (错误)',
             "",
             "## ⚠️ MANDATORY: You MUST use mcp__ghidra__decompile_function tool",
             "- analyzed_functions MUST contain functions you actually decompiled",
@@ -1043,7 +1118,10 @@ class GhidraAgent(BaseAgent):
         capa_result = static_results.get("capa", {})
         capabilities = capa_result.get("capabilities", [])
         for cap in capabilities:
-            if any(kw in cap.get("namespace", "").lower() for kw in ["network", "crypto", "anti", "persistence"]):
+            if any(
+                kw in cap.get("namespace", "").lower()
+                for kw in ["network", "crypto", "anti", "persistence"]
+            ):
                 suspicious_funcs.append(cap.get("name", ""))
         parts.extend(
             [
@@ -1088,7 +1166,7 @@ class GhidraAgent(BaseAgent):
                 "- Call mcp__ghidra__decompile_function for entry points",
                 "- Call mcp__ghidra__decompile_function for suspicious functions",
                 "- You MUST decompile at least 3-5 functions",
-                "- Example: mcp__ghidra__decompile_function(target=\"main\")",
+                '- Example: mcp__ghidra__decompile_function(target="main")',
                 "",
                 "### Step 3: Trace call chains",
                 "- Call mcp__ghidra__function_xrefs to understand relationships",
@@ -1134,7 +1212,10 @@ class GhidraAgent(BaseAgent):
         capa_result = static_results.get("capa", {})
         capabilities = capa_result.get("capabilities", [])
         has_suspicious_caps = any(
-            any(kw in cap.get("namespace", "").lower() for kw in ["network", "crypto", "anti", "persistence"])
+            any(
+                kw in cap.get("namespace", "").lower()
+                for kw in ["network", "crypto", "anti", "persistence"]
+            )
             for cap in capabilities
         )
         if has_suspicious_caps:
@@ -1254,7 +1335,7 @@ class GhidraAgent(BaseAgent):
         for canonical_type, group in grouped.items():
             # Prefer Chinese content (contains CJK characters)
             def has_chinese(text: str) -> bool:
-                return any('\u4e00' <= c <= '\u9fff' for c in str(text))
+                return any("\u4e00" <= c <= "\u9fff" for c in str(text))
 
             # Sort: Chinese content first, then by severity
             severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -1294,7 +1375,9 @@ class GhidraAgent(BaseAgent):
             # Build normalized finding
             normalized = {
                 "id": f"finding_{finding_id:03d}",
-                "title": best.get("title") or best.get("type") or best.get("summary", "Finding")[:50],
+                "title": best.get("title")
+                or best.get("type")
+                or best.get("summary", "Finding")[:50],
                 "category": best.get("category") or best.get("type", "Unknown"),
                 "description": best.get("description") or best.get("summary", ""),
                 "severity": best.get("severity", "MEDIUM").upper(),
