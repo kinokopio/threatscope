@@ -19,6 +19,7 @@ from claude_agent_sdk import (
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     create_sdk_mcp_server,
     tool,
 )
@@ -911,6 +912,40 @@ class GhidraAgent(BaseAgent):
                                     )
                                 else:
                                     logger.info(f"[Tool Result] {result_preview}")
+
+                    # Handle user messages (contains tool results)
+                    elif isinstance(msg, UserMessage):
+                        # Check for tool_use_result
+                        if hasattr(msg, "tool_use_result") and msg.tool_use_result:
+                            result_str = json.dumps(msg.tool_use_result, ensure_ascii=False)
+                            result_preview = (
+                                result_str[:800] + "..." if len(result_str) > 800 else result_str
+                            )
+                            is_error = msg.tool_use_result.get("is_error", False)
+                            if is_error:
+                                logger.warning(f"[Tool Result ERROR] {result_preview}")
+                            else:
+                                logger.info(f"[Tool Result] {result_preview}")
+
+                        # Also check content for ToolResultBlock
+                        if hasattr(msg, "content") and msg.content:
+                            for block in msg.content if isinstance(msg.content, list) else []:
+                                if isinstance(block, ToolResultBlock):
+                                    result_content = (
+                                        str(block.content)
+                                        if hasattr(block, "content")
+                                        else str(block)
+                                    )
+                                    result_preview = (
+                                        result_content[:800] + "..."
+                                        if len(result_content) > 800
+                                        else result_content
+                                    )
+                                    is_error = getattr(block, "is_error", False)
+                                    if is_error:
+                                        logger.warning(f"[Tool Result ERROR] {result_preview}")
+                                    else:
+                                        logger.info(f"[Tool Result] {result_preview}")
 
                     # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
