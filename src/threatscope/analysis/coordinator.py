@@ -578,11 +578,19 @@ class AnalysisCoordinator:
                 system_prompt_path=str(self.project_dir / "prompts" / "ghidra_agent.md"),
                 max_iterations=20,
             )
+
+            file_format = static_results.get("file_type", {}).get("format", "")
+            is_linux_binary = file_format.upper().startswith("ELF")
+            enable_gdb = self.settings.gdb.enabled and is_linux_binary
+
+            if self.settings.gdb.enabled and not is_linux_binary:
+                logger.info(f"GDB disabled for non-Linux binary (format: {file_format})")
+
             agent = GhidraAgent(
                 config,
                 self.project_dir,
                 ghidra_url=ghidra_url,
-                enable_gdb=self.settings.gdb.enabled,
+                enable_gdb=enable_gdb,
             )
 
             result = await agent.analyze(

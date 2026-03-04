@@ -724,7 +724,7 @@ class GhidraAgent(BaseAgent):
         options = ClaudeAgentOptions(
             tools=[],
             system_prompt=system_prompt,
-            model="claude-sonnet-4-20250514",
+            model=settings.llm.model,
             mcp_servers=mcp_servers,
             allowed_tools=allowed_tools,
             max_turns=self.config.max_iterations,
