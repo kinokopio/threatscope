@@ -52,7 +52,7 @@ app = FastAPI(
     lifespan=mcp_app.lifespan,
 )
 
-app.mount("/mcp", mcp_app)
+app.mount("/mcp/", mcp_app)
 
 # Global analyzer state (single instance per service)
 analyzer: GhidraAnalyzer | None = None

@@ -628,7 +628,7 @@ class GhidraAgent(BaseAgent):
         mcp_servers: dict[str, Any] = {
             "ghidra": {
                 "type": "http",
-                "url": f"{self.ghidra_url}/mcp",
+                "url": f"{self.ghidra_url}/mcp/",
             },
             "utils": utils_server,
             "memory": memory_server,
