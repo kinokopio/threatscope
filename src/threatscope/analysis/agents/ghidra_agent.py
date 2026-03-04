@@ -776,11 +776,21 @@ class GhidraAgent(BaseAgent):
         }
 
         async def _call_ai() -> dict[str, Any]:
-            """Inner function for AI call."""
+            """Inner function for AI call with detailed logging."""
             result_text = ""
             tool_call_count = 0
             functions_analyzed = 0
             findings_saved = 0
+
+            logger.info("=" * 60)
+            logger.info("Starting AI Analysis Session")
+            logger.info("=" * 60)
+            logger.info(f"Model: {options.model}")
+            logger.info(f"Max turns: {options.max_turns}")
+            logger.info(f"MCP servers: {list(mcp_servers.keys())}")
+            logger.info(f"Allowed tools: {len(allowed_tools)} tools")
+            if self.enable_gdb:
+                logger.info("GDB dynamic analysis: ENABLED")
 
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt)
@@ -812,8 +822,10 @@ class GhidraAgent(BaseAgent):
 
                                 # Add context based on tool type
                                 if "function" in tool_name.lower():
-                                    func_name = tool_input.get("name") or tool_input.get(
-                                        "function_name", ""
+                                    func_name = (
+                                        tool_input.get("name")
+                                        or tool_input.get("function_name", "")
+                                        or tool_input.get("target", "")
                                     )
                                     if func_name:
                                         description = f"{description}: {func_name}"
@@ -826,6 +838,24 @@ class GhidraAgent(BaseAgent):
                                         preview_data["pattern"] = pattern
                                 elif "save" in tool_name.lower() or "finding" in tool_name.lower():
                                     findings_saved += 1
+                                elif "breakpoint" in tool_name.lower():
+                                    location = tool_input.get("location", "")
+                                    if location:
+                                        description = f"{description}: {location}"
+                                        preview_data["location"] = location
+                                elif "memory" in tool_name.lower():
+                                    address = tool_input.get("address", "")
+                                    if address:
+                                        description = f"{description}: {address}"
+                                        preview_data["address"] = address
+
+                                # Detailed logging
+                                logger.info("-" * 50)
+                                logger.info(f"[Tool #{tool_call_count}] {tool_name}")
+                                logger.info(f"  Description: {description}")
+                                logger.info(
+                                    f"  Input: {json.dumps(tool_input, ensure_ascii=False)[:500]}"
+                                )
 
                                 # Send progress notification
                                 if self._progress_callback:
@@ -839,17 +869,27 @@ class GhidraAgent(BaseAgent):
                                     except Exception as e:
                                         logger.debug(f"Progress callback failed: {e}")
 
-                                logger.info(f"AI tool call #{tool_call_count}: {description}")
-
                             elif isinstance(block, TextBlock):
                                 result_text = block.text
+                                if block.text and len(block.text) > 0:
+                                    # Log AI's thinking/response (truncated)
+                                    text_preview = (
+                                        block.text[:300] + "..."
+                                        if len(block.text) > 300
+                                        else block.text
+                                    )
+                                    logger.debug(f"[AI Response] {text_preview}")
 
                     # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
-                        logger.info(
-                            f"AI analysis result: turns={getattr(msg, 'num_turns', 'N/A')}, "
-                            f"cost=${getattr(msg, 'total_cost_usd', 0):.4f}"
-                        )
+                        logger.info("=" * 60)
+                        logger.info("AI Analysis Complete")
+                        logger.info("=" * 60)
+                        logger.info(f"  Total tool calls: {tool_call_count}")
+                        logger.info(f"  Turns used: {getattr(msg, 'num_turns', 'N/A')}")
+                        logger.info(f"  Cost: ${getattr(msg, 'total_cost_usd', 0):.4f}")
+                        logger.info(f"  Input tokens: {getattr(msg, 'input_tokens', 'N/A')}")
+                        logger.info(f"  Output tokens: {getattr(msg, 'output_tokens', 'N/A')}")
 
                         # Try structured output first (preferred)
                         if hasattr(msg, "structured_output") and msg.structured_output:
