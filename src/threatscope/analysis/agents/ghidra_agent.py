@@ -791,6 +791,17 @@ class GhidraAgent(BaseAgent):
             if self.enable_gdb:
                 logger.info("GDB dynamic analysis: ENABLED")
 
+            # Log system prompt (first 500 chars)
+            logger.info("-" * 60)
+            logger.info("[System Prompt Preview]")
+            logger.info(system_prompt[:500] + "..." if len(system_prompt) > 500 else system_prompt)
+
+            # Log user prompt (first 1000 chars)
+            logger.info("-" * 60)
+            logger.info("[User Prompt Preview]")
+            logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+            logger.info("-" * 60)
+
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt)
                 async for msg in client.receive_response():
@@ -871,13 +882,13 @@ class GhidraAgent(BaseAgent):
                             elif isinstance(block, TextBlock):
                                 result_text = block.text
                                 if block.text and len(block.text) > 0:
-                                    # Log AI's thinking/response (truncated)
+                                    # Log AI's thinking/response
                                     text_preview = (
-                                        block.text[:300] + "..."
-                                        if len(block.text) > 300
+                                        block.text[:1000] + "..."
+                                        if len(block.text) > 1000
                                         else block.text
                                     )
-                                    logger.debug(f"[AI Response] {text_preview}")
+                                    logger.info(f"[AI Thinking] {text_preview}")
 
                     # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
