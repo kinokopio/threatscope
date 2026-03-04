@@ -193,15 +193,14 @@ class TraceeAnalyzer:
                     error="Failed to start Tracee monitor",
                 )
 
-            # Give Tracee time to initialize
-            time.sleep(2)
+            logger.info("Waiting for Tracee to initialize eBPF probes...")
+            time.sleep(5)
 
-            # Step 3: Execute sample in sandbox
             logger.info("Executing sample in sandbox...")
             exec_success = self._execute_sample(sandbox_name, self.config.timeout)
 
-            # Step 4: Wait a bit for events to be collected
-            time.sleep(2)
+            logger.info("Waiting for events to be collected...")
+            time.sleep(3)
 
             logger.info("Stopping Tracee and collecting events...")
             self._stop_tracee()
@@ -342,7 +341,7 @@ class TraceeAnalyzer:
                 "/var/run:/var/run:ro",
                 self.config.tracee_image,
                 "--scope",
-                f"container={sandbox_container_id}",  # Only monitor sandbox container by ID
+                f"container.id={sandbox_container_id}",
                 "--events",
                 ",".join(
                     [
@@ -367,8 +366,18 @@ class TraceeAnalyzer:
                         "security_socket_create",
                         "security_file_open",
                         "vfs_write",
+                        "vfs_read",
                         "setuid",
                         "setgid",
+                        "execve",
+                        "openat",
+                        "close",
+                        "read",
+                        "write",
+                        "mmap",
+                        "mprotect",
+                        "clone",
+                        "fork",
                     ]
                 ),
                 "--output",
@@ -551,12 +560,16 @@ class TraceeAnalyzer:
 
         for event in events:
             event_name = event.get("eventName", "")
+            process_name = event.get("processName", "")
             event_types_seen.add(event_name)
+            logger.debug(
+                f"Event: {event_name} from process: {process_name} (pid={event.get('processId')})"
+            )
+
         for event in events:
             event_name = event.get("eventName", "")
             process_name = event.get("processName", "")
 
-            # Skip QEMU emulator events (not from the actual malware)
             if process_name in ("qemu-x86_64-sta", "qemu-aarch64-sta", "qemu-arm-sta"):
                 continue
 
