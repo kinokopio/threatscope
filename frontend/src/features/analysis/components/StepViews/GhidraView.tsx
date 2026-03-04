@@ -80,7 +80,30 @@ export function GhidraView({ data }: GhidraViewProps) {
 
   // Prefer ai_analysis data if available, fallback to top-level
   const functions = (aiAnalysis?.analyzed_functions?.length ? aiAnalysis.analyzed_functions : data.analyzed_functions) || [];
-  const findings = (aiAnalysis?.key_findings?.length ? aiAnalysis.key_findings : data.key_findings) || [];
+  
+  // Handle key_findings - can be array of strings or array of objects
+  const rawFindings = (aiAnalysis?.key_findings?.length ? aiAnalysis.key_findings : data.key_findings) || [];
+  const findings: KeyFinding[] = rawFindings.map((finding, index) => {
+    // If it's already an object with description, use it
+    if (typeof finding === 'object' && finding !== null && 'description' in finding) {
+      return finding as KeyFinding;
+    }
+    // If it's a string, convert to KeyFinding object
+    if (typeof finding === 'string') {
+      // Parse severity from string prefix (e.g., "CRITICAL: ...", "HIGH: ...")
+      const severityMatch = finding.match(/^(CRITICAL|HIGH|MEDIUM|LOW):\s*/i);
+      const severity = severityMatch ? severityMatch[1].toLowerCase() : undefined;
+      const description = severityMatch ? finding.slice(severityMatch[0].length) : finding;
+      return {
+        id: `finding-${index}`,
+        description,
+        severity,
+      };
+    }
+    // Fallback
+    return { description: String(finding) };
+  });
+  
   if (functions.length === 0 && findings.length === 0) {
     return (
       <div className="bg-emerald-900/20 rounded-lg p-4 border border-emerald-800/50">
