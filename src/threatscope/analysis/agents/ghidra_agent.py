@@ -657,7 +657,6 @@ class GhidraAgent(BaseAgent):
             "mcp__utils__calculate_hash",
             "mcp__utils__strings_search",
             "mcp__utils__grep_binary",
-            "mcp__utils__hexdump",
             # Memory tools
             "mcp__memory__memory_save_finding",
             "mcp__memory__memory_get_findings",
