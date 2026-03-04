@@ -166,15 +166,14 @@ class TraceeAnalyzer:
         start_time = time.time()
         sandbox_name = f"tracee-sandbox-{uuid.uuid4().hex[:8]}"
         tracee_name = f"tracee-monitor-{uuid.uuid4().hex[:8]}"
+        network_name = f"tracee-net-{uuid.uuid4().hex[:8]}"
         output_file = None
 
         try:
-            # Create output directory
             output_dir = Path(self.config.output_dir) / sandbox_name
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / "events.json"
 
-            network_name = f"tracee-net-{uuid.uuid4().hex[:8]}"
             self._create_isolated_network(network_name)
 
             logger.info(f"Creating sandbox container: {sandbox_name}")
@@ -233,9 +232,12 @@ class TraceeAnalyzer:
         try:
             subprocess.run(
                 [
-                    "docker", "network", "create",
+                    "docker",
+                    "network",
+                    "create",
                     "--internal",  # No external access
-                    "--driver", "bridge",
+                    "--driver",
+                    "bridge",
                     network_name,
                 ],
                 capture_output=True,
@@ -342,36 +344,39 @@ class TraceeAnalyzer:
                 "--scope",
                 f"container={sandbox_container_id}",  # Only monitor sandbox container by ID
                 "--events",
-                ",".join([
-                    "sched_process_exec",
-                    "sched_process_fork",
-                    "sched_process_exit",
-                    "dynamic_code_loading",
-                    "fileless_execution",
-                    "dropped_executable",
-                    "hidden_file_created",
-                    "ld_preload",
-                    "stdio_over_socket",
-                    "anti_debugging",
-                    "net_packet_dns",
-                    "net_packet_dns_request",
-                    "net_packet_dns_response",
-                    "net_packet_http",
-                    "net_packet_http_request",
-                    "net_tcp_connect",
-                    "security_socket_bind",
-                    "security_socket_connect",
-                    "security_socket_create",
-                    "security_file_open",
-                    "vfs_write",
-                    "setuid",
-                    "setgid",
-                ]),
+                ",".join(
+                    [
+                        "sched_process_exec",
+                        "sched_process_fork",
+                        "sched_process_exit",
+                        "dynamic_code_loading",
+                        "fileless_execution",
+                        "dropped_executable",
+                        "hidden_file_created",
+                        "ld_preload",
+                        "stdio_over_socket",
+                        "anti_debugging",
+                        "net_packet_dns",
+                        "net_packet_dns_request",
+                        "net_packet_dns_response",
+                        "net_packet_http",
+                        "net_packet_http_request",
+                        "net_tcp_connect",
+                        "security_socket_bind",
+                        "security_socket_connect",
+                        "security_socket_create",
+                        "security_file_open",
+                        "vfs_write",
+                        "setuid",
+                        "setgid",
+                    ]
+                ),
                 "--output",
                 "json",
             ]
 
             logger.info(f"Starting Tracee: {' '.join(cmd)}")
+            logger.info(f"Monitoring container ID: {sandbox_container_id}")
 
             with open(output_path, "w") as outfile:
                 self._tracee_process = subprocess.Popen(
@@ -383,10 +388,23 @@ class TraceeAnalyzer:
             time.sleep(3)
 
             if self._tracee_process.poll() is not None:
-                stderr = self._tracee_process.stderr.read().decode() if self._tracee_process.stderr else ""
+                stderr = (
+                    self._tracee_process.stderr.read().decode()
+                    if self._tracee_process.stderr
+                    else ""
+                )
                 logger.error(f"Tracee exited early: {stderr}")
                 return False
 
+            if self._tracee_process.stderr:
+                import select
+
+                if select.select([self._tracee_process.stderr], [], [], 0)[0]:
+                    stderr_preview = self._tracee_process.stderr.read(1024).decode()
+                    if stderr_preview:
+                        logger.warning(f"Tracee stderr: {stderr_preview}")
+
+            logger.info("Tracee started successfully, waiting for events...")
             return True
 
         except Exception as e:
@@ -446,7 +464,7 @@ class TraceeAnalyzer:
             return False
 
     def _stop_tracee(self) -> None:
-        if hasattr(self, '_tracee_process') and self._tracee_process:
+        if hasattr(self, "_tracee_process") and self._tracee_process:
             try:
                 self._tracee_process.terminate()
                 self._tracee_process.wait(timeout=10)
@@ -581,9 +599,20 @@ class TraceeAnalyzer:
 
             # Collect interesting events as syscalls
             if event_name in (
-                "setuid", "setgid", "setpgid", "setsid",
-                "execve", "open", "connect", "socket", "bind",
-                "fork", "clone", "ptrace", "mmap", "mprotect",
+                "setuid",
+                "setgid",
+                "setpgid",
+                "setsid",
+                "execve",
+                "open",
+                "connect",
+                "socket",
+                "bind",
+                "fork",
+                "clone",
+                "ptrace",
+                "mmap",
+                "mprotect",
             ) or event_name.startswith("sys_"):
                 if len(syscalls) < 1000:
                     syscalls.append(
@@ -676,15 +705,19 @@ class TraceeAnalyzer:
                         query_data = resp.get("query_data", {})
                         query = query_data.get("query", "") if isinstance(query_data, dict) else ""
                         answers = resp.get("dns_answer", [])
-                        answer_str = ", ".join(
-                            a.get("answer", "") for a in answers if isinstance(a, dict)
-                        ) if isinstance(answers, list) else ""
+                        answer_str = (
+                            ", ".join(a.get("answer", "") for a in answers if isinstance(a, dict))
+                            if isinstance(answers, list)
+                            else ""
+                        )
                         if query:
-                            network_info["dns_queries"].append({
-                                "domain": query,
-                                "response": answer_str,
-                                "timestamp": event.get("timestamp"),
-                            })
+                            network_info["dns_queries"].append(
+                                {
+                                    "domain": query,
+                                    "response": answer_str,
+                                    "timestamp": event.get("timestamp"),
+                                }
+                            )
 
         elif event_name in ("net_tcp_connect", "net_flow_tcp_begin"):
             network_info["connections"].append(
@@ -747,7 +780,7 @@ class TraceeAnalyzer:
         # Filter out noise processes (container init, our ls command)
         noise_names = {"runc:[2:INIT]", "runc:[1:CHILD]", "ls", "sleep"}
         noise_cmdlines = {"ls /sandbox", "sleep infinity"}
-        
+
         filtered = []
         for proc in processes:
             name = proc.get("name", "")
@@ -767,7 +800,7 @@ class TraceeAnalyzer:
         for proc in filtered:
             pid = proc["pid"]
             ppid = proc.get("ppid", 0)
-            
+
             node = {
                 "pid": pid,
                 "name": proc.get("name", ""),
