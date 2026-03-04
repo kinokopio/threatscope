@@ -198,9 +198,12 @@ class AnalysisCoordinator:
             # ========================================
             task.update_status(AnalysisStatus.STATIC_ANALYSIS)
 
+            enable_capa = self.settings.capa.enabled
+
             # Notify all tasks starting
             if progress_callback:
-                await progress_callback("capa", "Capability Analysis", "running", None, results)
+                if enable_capa:
+                    await progress_callback("capa", "Capability Analysis", "running", None, results)
                 await progress_callback("strings", "String Extraction", "running", None, results)
                 await progress_callback("yara", "YARA Scanning", "running", None, results)
                 if enable_threat_intel:
@@ -237,10 +240,15 @@ class AnalysisCoordinator:
                 return result
 
             parallel_tasks = [
-                run_and_process_capa(),
                 run_and_process_strings(),
                 run_and_process_yara(),
             ]
+
+            if enable_capa:
+                parallel_tasks.append(run_and_process_capa())
+            else:
+                logger.info("Skipping capa analysis (disabled in config)")
+                results["capa"] = {"skipped": True, "reason": "Disabled in configuration"}
 
             if enable_threat_intel:
                 parallel_tasks.append(run_and_process_threat_intel())
