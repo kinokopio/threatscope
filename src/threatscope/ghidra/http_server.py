@@ -15,6 +15,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from src.threatscope.ghidra.analyzer import GhidraAnalyzer
+from src.threatscope.ghidra.mcp_server import _build_http_app as build_mcp_app
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,6 +25,10 @@ app = FastAPI(
     version="1.0.0",
     description="Binary analysis service using Ghidra/pyghidra",
 )
+
+# Mount MCP server at /mcp
+mcp_app = build_mcp_app()
+app.mount("/mcp", mcp_app)
 
 # Global analyzer state (single instance per service)
 analyzer: GhidraAnalyzer | None = None
