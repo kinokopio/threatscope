@@ -17,6 +17,7 @@ from claude_agent_sdk import (
     ProcessError,
     ResultMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
     create_sdk_mcp_server,
     tool,
@@ -356,8 +357,10 @@ class GhidraAgent(BaseAgent):
         if not sample_hash:
             sample_hash = static_results.get("hashes", {}).get("sha256", "unknown")
 
-        # Initialize memory store
+        # Initialize memory store and clear previous analysis
         self.memory_store = MemoryStore(self.project_dir, sample_hash)
+        self.memory_store.clear()
+        logger.info(f"Cleared previous analysis cache for sample {sample_hash[:16]}...")
 
         # Initialize Ghidra client
         self.ghidra_client = GhidraClient(self.ghidra_url)
@@ -890,6 +893,25 @@ class GhidraAgent(BaseAgent):
                                     )
                                     logger.info(f"[AI Thinking] {text_preview}")
 
+                            elif isinstance(block, ToolResultBlock):
+                                # Log tool result
+                                result_content = (
+                                    str(block.content) if hasattr(block, "content") else str(block)
+                                )
+                                result_preview = (
+                                    result_content[:500] + "..."
+                                    if len(result_content) > 500
+                                    else result_content
+                                )
+                                tool_id = getattr(block, "tool_use_id", "unknown")
+                                is_error = getattr(block, "is_error", False)
+                                if is_error:
+                                    logger.warning(
+                                        f"[Tool Result ERROR] {tool_id}: {result_preview}"
+                                    )
+                                else:
+                                    logger.info(f"[Tool Result] {result_preview}")
+
                     # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
                         logger.info("=" * 60)
@@ -1132,6 +1154,13 @@ class GhidraAgent(BaseAgent):
             "- Do NOT just read function names from symbols - you MUST see the actual code",
             "- If you don't call mcp__ghidra__decompile_function, analyzed_functions will be EMPTY = FAILURE",
             "- Call mcp__ghidra__decompile_function for at least 3-5 key functions",
+            "",
+            "## ⚠️ IMPORTANT: How to handle decompile_function errors",
+            "- If decompile_function('main') fails, the binary may be stripped",
+            "- Use list_functions to get actual function names (e.g., FUN_00401000)",
+            "- Try decompile_function with ADDRESS: decompile_function('0x401000')",
+            "- Try other entry points: '_start', 'entry', or addresses from list_functions",
+            "- DO NOT give up and switch to strings_search - keep trying with different targets",
             "",
             "## Binary Information",
             f"```json\n{json.dumps(ghidra_info, indent=2)}\n```",
