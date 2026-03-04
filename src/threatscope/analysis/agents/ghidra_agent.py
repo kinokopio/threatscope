@@ -16,6 +16,7 @@ from claude_agent_sdk import (
     HookMatcher,
     ProcessError,
     ResultMessage,
+    SystemMessage,
     TextBlock,
     ToolResultBlock,
     ToolUseBlock,
@@ -634,41 +635,11 @@ class GhidraAgent(BaseAgent):
             "memory": memory_server,
         }
 
-        # Build allowed tools list
+        # Build allowed tools list - use wildcards for MCP servers
         allowed_tools = [
-            # Ghidra tools (static analysis)
-            "mcp__ghidra__list_functions",
-            "mcp__ghidra__decompile_function",
-            "mcp__ghidra__disassemble_function",
-            "mcp__ghidra__get_function_details",
-            "mcp__ghidra__list_strings",
-            "mcp__ghidra__search_strings",
-            "mcp__ghidra__function_xrefs",
-            "mcp__ghidra__get_callgraph",
-            "mcp__ghidra__read_memory",
-            "mcp__ghidra__get_imports",
-            "mcp__ghidra__get_exports",
-            "mcp__ghidra__get_sections",
-            "mcp__ghidra__run_script",
-            "mcp__ghidra__clear_flow_overrides",
-            "mcp__ghidra__find_orphan_code",
-            # Utility tools
-            "mcp__utils__decode_base64",
-            "mcp__utils__encode_base64",
-            "mcp__utils__decode_hex",
-            "mcp__utils__encode_hex",
-            "mcp__utils__xor_decrypt",
-            "mcp__utils__calculate_hash",
-            "mcp__utils__strings_search",
-            "mcp__utils__grep_binary",
-            # Memory tools
-            "mcp__memory__memory_save_finding",
-            "mcp__memory__memory_get_findings",
-            "mcp__memory__memory_cache_function",
-            "mcp__memory__memory_get_function",
-            "mcp__memory__memory_list_cached_functions",
-            "mcp__memory__memory_save_checkpoint",
-            "mcp__memory__memory_restore_checkpoint",
+            "mcp__ghidra__*",
+            "mcp__utils__*",
+            "mcp__memory__*",
         ]
 
         # Add GDB MCP server if enabled
@@ -685,42 +656,7 @@ class GhidraAgent(BaseAgent):
                     "command": gdb_settings.mcp_command,
                     "env": {"GDB_PATH": gdb_settings.gdb_path},
                 }
-            allowed_tools.extend(
-                [
-                    # GDB tools (dynamic analysis) - Session management
-                    "mcp__gdb__gdb_start_session",
-                    "mcp__gdb__gdb_execute_command",
-                    "mcp__gdb__gdb_call_function",
-                    "mcp__gdb__gdb_get_status",
-                    "mcp__gdb__gdb_stop_session",
-                    # GDB tools - Thread/Frame navigation
-                    "mcp__gdb__gdb_get_threads",
-                    "mcp__gdb__gdb_select_thread",
-                    "mcp__gdb__gdb_get_backtrace",
-                    "mcp__gdb__gdb_select_frame",
-                    "mcp__gdb__gdb_get_frame_info",
-                    # GDB tools - Breakpoint management
-                    "mcp__gdb__gdb_set_breakpoint",
-                    "mcp__gdb__gdb_list_breakpoints",
-                    "mcp__gdb__gdb_delete_breakpoint",
-                    "mcp__gdb__gdb_enable_breakpoint",
-                    "mcp__gdb__gdb_disable_breakpoint",
-                    # GDB tools - Execution control
-                    "mcp__gdb__gdb_continue",
-                    "mcp__gdb__gdb_step",
-                    "mcp__gdb__gdb_next",
-                    "mcp__gdb__gdb_interrupt",
-                    # GDB tools - Data inspection
-                    "mcp__gdb__gdb_evaluate_expression",
-                    "mcp__gdb__gdb_get_variables",
-                    "mcp__gdb__gdb_get_registers",
-                    # GDB tools - Memory operations (custom extensions)
-                    "mcp__gdb__gdb_read_memory",
-                    "mcp__gdb__gdb_write_memory",
-                    "mcp__gdb__gdb_disassemble",
-                    "mcp__gdb__gdb_set_watchpoint",
-                ]
-            )
+            allowed_tools.append("mcp__gdb__*")
             logger.info("GDB dynamic analysis enabled")
 
         # Configure agent options with structured output
@@ -791,6 +727,7 @@ class GhidraAgent(BaseAgent):
             logger.info(f"Model: {options.model}")
             logger.info(f"Max turns: {options.max_turns}")
             logger.info(f"MCP servers: {list(mcp_servers.keys())}")
+            logger.info(f"Ghidra MCP URL: {mcp_servers['ghidra']['url']}")
             logger.info(f"Allowed tools: {len(allowed_tools)} tools")
             if self.enable_gdb:
                 logger.info("GDB dynamic analysis: ENABLED")
@@ -809,6 +746,18 @@ class GhidraAgent(BaseAgent):
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt)
                 async for msg in client.receive_response():
+                    # Handle system messages (MCP connection status)
+                    if isinstance(msg, SystemMessage):
+                        if msg.subtype == "init":
+                            mcp_status = msg.data.get("mcp_servers", [])
+                            logger.info(f"[MCP Connection Status] {mcp_status}")
+                            for server in mcp_status:
+                                if server.get("status") != "connected":
+                                    logger.warning(
+                                        f"MCP server '{server.get('name')}' status: {server.get('status')}"
+                                    )
+                        continue
+
                     # Handle assistant messages (AI responses with potential tool use)
                     if isinstance(msg, AssistantMessage):
                         if not hasattr(msg, "content") or not msg.content:
