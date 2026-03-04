@@ -341,7 +341,7 @@ class TraceeAnalyzer:
                 "/var/run:/var/run:ro",
                 self.config.tracee_image,
                 "--scope",
-                f"container.id={sandbox_container_id}",
+                f"container={sandbox_container_id}",
                 "--events",
                 ",".join(
                     [

@@ -200,21 +200,15 @@ class AnalysisCoordinator:
 
             # Notify all tasks starting
             if progress_callback:
-                await progress_callback(
-                    "capa", "Capability Analysis", "running", None, results
-                )
-                await progress_callback(
-                    "strings", "String Extraction", "running", None, results
-                )
+                await progress_callback("capa", "Capability Analysis", "running", None, results)
+                await progress_callback("strings", "String Extraction", "running", None, results)
                 await progress_callback("yara", "YARA Scanning", "running", None, results)
                 if enable_threat_intel:
                     await progress_callback(
                         "threat_intel", "Threat Intelligence Query", "running", None, results
                     )
                 if enable_dynamic:
-                    await progress_callback(
-                        "dynamic", "Dynamic Analysis", "running", None, results
-                    )
+                    await progress_callback("dynamic", "Dynamic Analysis", "running", None, results)
 
             # Build parallel tasks with immediate result processing
             async def run_and_process_capa():
@@ -272,12 +266,14 @@ class AnalysisCoordinator:
                 )
                 task.ghidra_results = ghidra_results
                 if progress_callback:
+                    # Include ghidra_analysis in current_results for save_progress
+                    results_with_ghidra = {**results, "ghidra_analysis": ghidra_results}
                     await progress_callback(
                         "ghidra",
                         "Ghidra Deep Analysis",
                         "completed",
                         {"status": ghidra_results.get("status", "unknown")},
-                        results,
+                        results_with_ghidra,
                     )
 
             # ========================================
@@ -285,9 +281,7 @@ class AnalysisCoordinator:
             # ========================================
             task.update_status(AnalysisStatus.REPORT_GENERATION)
             if progress_callback:
-                await progress_callback(
-                    "report", "Report Generation", "running", None, results
-                )
+                await progress_callback("report", "Report Generation", "running", None, results)
             report = await self._run_report_generation(results, ghidra_results, progress_callback)
             task.report = report
             if progress_callback:
@@ -335,9 +329,7 @@ class AnalysisCoordinator:
         if result.get("skipped"):
             output["capa"] = {"skipped": True, "reason": result["reason"]}
             if progress_callback:
-                await progress_callback(
-                    "capa", "Capability Analysis", "skipped", None, output
-                )
+                await progress_callback("capa", "Capability Analysis", "skipped", None, output)
             logger.info(f"Skipping capability analysis: {result['reason']}")
         elif result["success"]:
             output["capa"] = result["data"]
@@ -358,9 +350,7 @@ class AnalysisCoordinator:
         else:
             output["capa"] = {"error": result["error"]}
             if progress_callback:
-                await progress_callback(
-                    "capa", "Capability Analysis", "failed", None, output
-                )
+                await progress_callback("capa", "Capability Analysis", "failed", None, output)
             logger.warning(f"capa analysis failed: {result['error']}")
 
     async def _process_strings_result(
@@ -387,9 +377,7 @@ class AnalysisCoordinator:
         else:
             output["strings"] = {"error": result["error"]}
             if progress_callback:
-                await progress_callback(
-                    "strings", "String Extraction", "failed", None, output
-                )
+                await progress_callback("strings", "String Extraction", "failed", None, output)
             logger.warning(f"String extraction failed: {result['error']}")
 
     async def _process_yara_result(
@@ -586,7 +574,6 @@ class AnalysisCoordinator:
                     pass
 
         try:
-            # Create agent with the appropriate URL
             config = AgentConfig(
                 system_prompt_path=str(self.project_dir / "prompts" / "ghidra_agent.md"),
                 max_iterations=20,
@@ -595,6 +582,7 @@ class AnalysisCoordinator:
                 config,
                 self.project_dir,
                 ghidra_url=ghidra_url,
+                enable_gdb=self.settings.gdb.enabled,
             )
 
             result = await agent.analyze(
