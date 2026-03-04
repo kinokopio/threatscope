@@ -166,14 +166,15 @@ class TraceeAnalyzer:
         start_time = time.time()
         sandbox_name = f"tracee-sandbox-{uuid.uuid4().hex[:8]}"
         tracee_name = f"tracee-monitor-{uuid.uuid4().hex[:8]}"
-        network_name = f"tracee-net-{uuid.uuid4().hex[:8]}"
         output_file = None
 
         try:
+            # Create output directory
             output_dir = Path(self.config.output_dir) / sandbox_name
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / "events.json"
 
+            network_name = f"tracee-net-{uuid.uuid4().hex[:8]}"
             self._create_isolated_network(network_name)
 
             logger.info(f"Creating sandbox container: {sandbox_name}")
@@ -193,14 +194,15 @@ class TraceeAnalyzer:
                     error="Failed to start Tracee monitor",
                 )
 
-            logger.info("Waiting for Tracee to initialize eBPF probes...")
-            time.sleep(5)
+            # Give Tracee time to initialize
+            time.sleep(2)
 
+            # Step 3: Execute sample in sandbox
             logger.info("Executing sample in sandbox...")
             exec_success = self._execute_sample(sandbox_name, self.config.timeout)
 
-            logger.info("Waiting for events to be collected...")
-            time.sleep(3)
+            # Step 4: Wait a bit for events to be collected
+            time.sleep(2)
 
             logger.info("Stopping Tracee and collecting events...")
             self._stop_tracee()
@@ -341,7 +343,7 @@ class TraceeAnalyzer:
                 "/var/run:/var/run:ro",
                 self.config.tracee_image,
                 "--scope",
-                f"container={sandbox_container_id}",
+                f"container={sandbox_container_id}",  # Only monitor sandbox container by ID
                 "--events",
                 ",".join(
                     [
@@ -366,14 +368,10 @@ class TraceeAnalyzer:
                         "security_socket_create",
                         "security_file_open",
                         "vfs_write",
-                        "vfs_read",
                         "setuid",
                         "setgid",
+                        # High-value syscalls for malware detection
                         "execve",
-                        "openat",
-                        "close",
-                        "read",
-                        "write",
                         "mmap",
                         "mprotect",
                         "clone",
@@ -385,7 +383,6 @@ class TraceeAnalyzer:
             ]
 
             logger.info(f"Starting Tracee: {' '.join(cmd)}")
-            logger.info(f"Monitoring container ID: {sandbox_container_id}")
 
             with open(output_path, "w") as outfile:
                 self._tracee_process = subprocess.Popen(
@@ -405,15 +402,6 @@ class TraceeAnalyzer:
                 logger.error(f"Tracee exited early: {stderr}")
                 return False
 
-            if self._tracee_process.stderr:
-                import select
-
-                if select.select([self._tracee_process.stderr], [], [], 0)[0]:
-                    stderr_preview = self._tracee_process.stderr.read(1024).decode()
-                    if stderr_preview:
-                        logger.warning(f"Tracee stderr: {stderr_preview}")
-
-            logger.info("Tracee started successfully, waiting for events...")
             return True
 
         except Exception as e:
@@ -560,16 +548,12 @@ class TraceeAnalyzer:
 
         for event in events:
             event_name = event.get("eventName", "")
-            process_name = event.get("processName", "")
             event_types_seen.add(event_name)
-            logger.debug(
-                f"Event: {event_name} from process: {process_name} (pid={event.get('processId')})"
-            )
-
         for event in events:
             event_name = event.get("eventName", "")
             process_name = event.get("processName", "")
 
+            # Skip QEMU emulator events (not from the actual malware)
             if process_name in ("qemu-x86_64-sta", "qemu-aarch64-sta", "qemu-arm-sta"):
                 continue
 
