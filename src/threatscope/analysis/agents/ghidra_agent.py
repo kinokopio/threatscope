@@ -917,11 +917,16 @@ class GhidraAgent(BaseAgent):
                     elif isinstance(msg, UserMessage):
                         # Check for tool_use_result
                         if hasattr(msg, "tool_use_result") and msg.tool_use_result:
-                            result_str = json.dumps(msg.tool_use_result, ensure_ascii=False)
+                            tool_result = msg.tool_use_result
+                            if isinstance(tool_result, dict):
+                                result_str = json.dumps(tool_result, ensure_ascii=False)
+                                is_error = tool_result.get("is_error", False)
+                            else:
+                                result_str = str(tool_result)
+                                is_error = False
                             result_preview = (
                                 result_str[:800] + "..." if len(result_str) > 800 else result_str
                             )
-                            is_error = msg.tool_use_result.get("is_error", False)
                             if is_error:
                                 logger.warning(f"[Tool Result ERROR] {result_preview}")
                             else:

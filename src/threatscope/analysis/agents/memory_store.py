@@ -158,3 +158,5 @@ class MemoryStore:
 
         if self.base_path.exists():
             shutil.rmtree(self.base_path)
+        # Recreate base directory
+        self.base_path.mkdir(parents=True, exist_ok=True)
