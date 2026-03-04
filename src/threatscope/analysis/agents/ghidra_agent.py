@@ -671,11 +671,17 @@ class GhidraAgent(BaseAgent):
         # Add GDB MCP server if enabled
         if self.enable_gdb:
             gdb_settings = settings.gdb
-            mcp_servers["gdb"] = {
-                "type": "stdio",
-                "command": gdb_settings.mcp_command,
-                "env": {"GDB_PATH": gdb_settings.gdb_path},
-            }
+            if gdb_settings.service_mode == "http":
+                mcp_servers["gdb"] = {
+                    "type": "http",
+                    "url": gdb_settings.mcp_url,
+                }
+            else:
+                mcp_servers["gdb"] = {
+                    "type": "stdio",
+                    "command": gdb_settings.mcp_command,
+                    "env": {"GDB_PATH": gdb_settings.gdb_path},
+                }
             allowed_tools.extend(
                 [
                     # GDB tools (dynamic analysis) - Session management
