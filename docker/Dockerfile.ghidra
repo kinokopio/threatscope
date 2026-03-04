@@ -49,7 +49,7 @@ ENV GHIDRA_MCP_PORT=9000
 ENV GHIDRA_HTTP_URL=http://localhost:8000
 
 # Expose ports
-EXPOSE 8000 9000
+EXPOSE 8000
 
-# Run both HTTP and MCP servers
-CMD ["bash", "-lc", "uvicorn src.threatscope.ghidra.http_server:app --host 0.0.0.0 --port 8000 & sleep 2 && python -m src.threatscope.ghidra.mcp_server"]
+# Run HTTP server (MCP is mounted at /mcp)
+CMD ["uvicorn", "src.threatscope.ghidra.http_server:app", "--host", "0.0.0.0", "--port", "8000"]

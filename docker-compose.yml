@@ -8,15 +8,13 @@ services:
       dockerfile: docker/Dockerfile.ghidra
     container_name: threatscope_ghidra
     ports:
-      - "127.0.0.1:8080:8000"  # HTTP API (internal 8000 -> host 8080)
-      - "127.0.0.1:9000:9000"  # MCP Server
+      - "127.0.0.1:8080:8000"  # HTTP API + MCP (internal 8000 -> host 8080)
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/projects:/app/data/projects
     environment:
       - GHIDRA_INSTALL_DIR=/ghidra
       - GHIDRA_HTTP_PORT=8000
-      - GHIDRA_MCP_PORT=9000
       - GHIDRA_HTTP_URL=http://localhost:8000
       - GHIDRA_MCP_ALLOW_ORIGINS=*
     mem_limit: 4g
@@ -49,7 +47,6 @@ services:
       - ./config.yaml:/app/config.yaml:ro
     environment:
       - THREATSCOPE_GHIDRA_URL=http://ghidra:8000
-      - THREATSCOPE_MCP_URL=http://ghidra:9000/mcp
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
     depends_on:
       - ghidra
