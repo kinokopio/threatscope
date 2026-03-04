@@ -27,7 +27,7 @@ app = FastAPI(
 )
 
 # Mount MCP server at /mcp
-mcp_app = build_mcp_app()
+mcp_app = build_mcp_app(path="/")
 app.mount("/mcp", mcp_app)
 
 # Global analyzer state (single instance per service)

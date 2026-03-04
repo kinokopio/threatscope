@@ -27,8 +27,9 @@ dependencies = [
     "lief>=0.14.0",
     "yara-python>=4.3.0",
     "puremagic>=1.15",
-    "flare-capa>=9.0.0",  # Capability detection
-    "python-magic>=0.4.27",  # Fallback file type detection
+    "flare-capa>=9.0.0", # Capability detection
+    "python-magic>=0.4.27", # Fallback file type detection
+    "fastmcp>=3.1.0",
 ]
 
 [project.optional-dependencies]

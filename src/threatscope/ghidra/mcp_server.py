@@ -48,7 +48,7 @@ def _request(method: str, path: str, params: dict | None = None, json: Any = Non
 # --- Function Tools ---
 
 
-@mcp.tool
+@mcp.tool()
 def list_functions(offset: int = 0, limit: int = 50) -> list[dict[str, Any]]:
     """Get list of functions in the binary.
 
@@ -62,7 +62,7 @@ def list_functions(offset: int = 0, limit: int = 50) -> list[dict[str, Any]]:
     return _request("GET", "/functions", params={"offset": offset, "limit": limit})
 
 
-@mcp.tool
+@mcp.tool()
 def get_function_details(target: str) -> dict[str, Any]:
     """Get detailed information about a function.
 
@@ -75,7 +75,7 @@ def get_function_details(target: str) -> dict[str, Any]:
     return _request("GET", f"/functions/{target}")
 
 
-@mcp.tool
+@mcp.tool()
 def decompile_function(target: str) -> dict[str, Any]:
     """Decompile a function to C code.
 
@@ -88,7 +88,7 @@ def decompile_function(target: str) -> dict[str, Any]:
     return _request("GET", f"/functions/{target}/decompile")
 
 
-@mcp.tool
+@mcp.tool()
 def disassemble_function(target: str, max_instructions: int = 100) -> dict[str, Any]:
     """Get assembly instructions for a function.
 
@@ -106,7 +106,7 @@ def disassemble_function(target: str, max_instructions: int = 100) -> dict[str, 
     )
 
 
-@mcp.tool
+@mcp.tool()
 def function_xrefs(target: str) -> dict[str, Any]:
     """Get cross-references for a function (callers and callees).
 
@@ -119,7 +119,7 @@ def function_xrefs(target: str) -> dict[str, Any]:
     return _request("GET", f"/functions/{target}/xrefs")
 
 
-@mcp.tool
+@mcp.tool()
 def get_callgraph(target: str, max_depth: int = 3) -> dict[str, Any]:
     """Get call graph starting from a function.
 
@@ -136,7 +136,7 @@ def get_callgraph(target: str, max_depth: int = 3) -> dict[str, Any]:
 # --- String Tools ---
 
 
-@mcp.tool
+@mcp.tool()
 def list_strings(min_length: int = 4) -> list[dict[str, Any]]:
     """Get strings from the binary.
 
@@ -149,7 +149,7 @@ def list_strings(min_length: int = 4) -> list[dict[str, Any]]:
     return _request("GET", "/strings", params={"min_length": min_length})
 
 
-@mcp.tool
+@mcp.tool()
 def search_strings(pattern: str, max_results: int = 100) -> list[dict[str, Any]]:
     """Search strings by regex pattern.
 
@@ -168,7 +168,7 @@ def search_strings(pattern: str, max_results: int = 100) -> list[dict[str, Any]]
 # --- Memory & Structure Tools ---
 
 
-@mcp.tool
+@mcp.tool()
 def read_memory(address: str, length: int = 256) -> dict[str, Any]:
     """Read memory at specified address.
 
@@ -182,7 +182,7 @@ def read_memory(address: str, length: int = 256) -> dict[str, Any]:
     return _request("GET", f"/memory/{address}", params={"length": length})
 
 
-@mcp.tool
+@mcp.tool()
 def get_imports() -> list[dict[str, Any]]:
     """Get imported functions.
 
@@ -192,7 +192,7 @@ def get_imports() -> list[dict[str, Any]]:
     return _request("GET", "/imports")
 
 
-@mcp.tool
+@mcp.tool()
 def get_exports() -> list[dict[str, Any]]:
     """Get exported symbols.
 
@@ -202,7 +202,7 @@ def get_exports() -> list[dict[str, Any]]:
     return _request("GET", "/exports")
 
 
-@mcp.tool
+@mcp.tool()
 def get_sections() -> list[dict[str, Any]]:
     """Get program sections/segments.
 
@@ -212,7 +212,7 @@ def get_sections() -> list[dict[str, Any]]:
     return _request("GET", "/sections")
 
 
-@mcp.tool
+@mcp.tool()
 def get_binary_info() -> dict[str, Any]:
     """Get binary metadata.
 
@@ -222,7 +222,7 @@ def get_binary_info() -> dict[str, Any]:
     return _request("GET", "/info")
 
 
-@mcp.tool
+@mcp.tool()
 def get_global_callgraph() -> dict[str, Any]:
     """Get global call graph with all functions.
 
@@ -232,7 +232,7 @@ def get_global_callgraph() -> dict[str, Any]:
     return _request("GET", "/callgraph")
 
 
-@mcp.tool
+@mcp.tool()
 def run_script(code: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
     """Execute a Python script in the Ghidra context.
 
@@ -257,7 +257,7 @@ def run_script(code: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
     return _request("POST", "/script/run", json={"code": code, "args": args})
 
 
-@mcp.tool
+@mcp.tool()
 def clear_flow_overrides(target: str | None = None) -> dict[str, Any]:
     """Clear incorrect flow overrides that prevent proper control flow analysis.
 
@@ -271,7 +271,7 @@ def clear_flow_overrides(target: str | None = None) -> dict[str, Any]:
     return _request("POST", "/utils/clear_flow_overrides", params=params)
 
 
-@mcp.tool
+@mcp.tool()
 def find_orphan_code(min_size: int = 10) -> list[dict[str, Any]]:
     """Find potential orphan code regions not in any function.
 
@@ -284,7 +284,7 @@ def find_orphan_code(min_size: int = 10) -> list[dict[str, Any]]:
     return _request("GET", "/utils/orphan_code", params={"min_size": min_size})
 
 
-def _build_http_app():
+def _build_http_app(path: str = "/mcp"):
     """Build HTTP app with CORS middleware."""
     if ALLOW_ORIGINS.strip() == "*":
         allow_origins = ["*"]
@@ -306,7 +306,7 @@ def _build_http_app():
         )
     ]
 
-    return mcp.http_app(path="/mcp", middleware=middleware, stateless_http=True)
+    return mcp.http_app(path=path, middleware=middleware, stateless_http=True)
 
 
 if __name__ == "__main__":
