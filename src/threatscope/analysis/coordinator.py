@@ -22,9 +22,9 @@ from typing import Any, Callable
 from src.threatscope.analysis.agents import (
     AgentConfig,
     GhidraAgent,
-    MalwareAnalysisAgent,
 )
 from src.threatscope.analysis.services.dynamic_analysis import DynamicAnalysisService
+from src.threatscope.analysis.services.report_builder import ReportBuilder
 from src.threatscope.analysis.services.threat_intel import ThreatIntelService
 from src.threatscope.analysis.task import AnalysisStatus, AnalysisTask
 from src.threatscope.core.config import Settings, get_settings
@@ -76,7 +76,9 @@ class AnalysisCoordinator:
 
         # Initialize agents (lazy - created when needed)
         self._ghidra_agent: GhidraAgent | None = None
-        self._malware_agent: MalwareAnalysisAgent | None = None
+
+        # Report builder (replaces MalwareAnalysisAgent)
+        self._report_builder: ReportBuilder | None = None
 
         # Static analysis service (lazy)
         self._static_service = None
@@ -122,14 +124,10 @@ class AnalysisCoordinator:
         return self._ghidra_agent
 
     @property
-    def malware_agent(self) -> MalwareAnalysisAgent:
-        """Lazy-initialize malware analysis agent."""
-        if self._malware_agent is None:
-            config = AgentConfig(
-                system_prompt_path=str(self.project_dir / "prompts" / "malware_agent.md"),
-            )
-            self._malware_agent = MalwareAnalysisAgent(config)
-        return self._malware_agent
+    def report_builder(self) -> ReportBuilder:
+        if self._report_builder is None:
+            self._report_builder = ReportBuilder()
+        return self._report_builder
 
     async def analyze(
         self,
@@ -629,21 +627,21 @@ class AnalysisCoordinator:
         ghidra_results: dict[str, Any],
         progress_callback: ProgressCallback = None,
     ) -> dict[str, Any]:
-        """Run final report generation."""
+        """Run final report generation using ReportBuilder."""
         threat_intel = static_results.get("threat_intel", {})
         dynamic_results = static_results.get("dynamic_analysis", {})
 
-        result = await self.malware_agent.analyze(
-            {
-                "static_results": static_results,
-                "ghidra_analysis": ghidra_results,
-                "threat_intel": threat_intel,
-                "dynamic_results": dynamic_results,
-            },
-            progress_callback=progress_callback,
-        )
-
-        return result.data if result.success else {"error": result.error}
+        try:
+            report = await self.report_builder.build(
+                static_results=static_results,
+                ghidra_results=ghidra_results,
+                dynamic_results=dynamic_results,
+                threat_intel=threat_intel,
+            )
+            return {"report": report.model_dump()}
+        except Exception as e:
+            logger.exception("Report generation failed")
+            return {"error": str(e)}
 
     async def analyze_batch(
         self,

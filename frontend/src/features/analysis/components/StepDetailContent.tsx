@@ -47,7 +47,7 @@ export const StepDetailContent = memo(function StepDetailContent({
       case 'ghidra':
         return result.ghidra_analysis;
       case 'report':
-        return result.malware_report;
+        return result.unified_report;
       default:
         return null;
     }

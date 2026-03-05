@@ -76,9 +76,9 @@ export default function History() {
     const analyzed: AnalyzedTask[] = completed.map(task => ({
       id: task.id || task.task_id || '',
       fileName: task.file_name || 'Unknown',
-      verdict: (task.result?.malware_report?.verdict as Verdict) || 'unknown',
-      confidence: task.result?.malware_report?.confidence || 0,
-      family: task.result?.malware_report?.family || null,
+      verdict: (task.result?.unified_report?.verdict as Verdict) || 'unknown',
+      confidence: task.result?.unified_report?.confidence || 0,
+      family: task.result?.unified_report?.classification?.family || null,
     }));
 
     const stats = {

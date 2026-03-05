@@ -52,7 +52,7 @@ function App() {
   const { data: tasksData } = useTasks({ refetchInterval: 10000 });
   
   const pendingCount = tasksData?.tasks?.filter(
-    t => ['pending', 'queued', 'stage_1_4', 'stage_5', 'stage_6'].includes(t.status)
+    t => ['pending', 'queued', 'hashing', 'file_identification', 'static_analysis', 'threat_intel', 'dynamic_analysis', 'ghidra_analysis', 'report_generation'].includes(t.status)
   ).length || 0;
 
   useEffect(() => {

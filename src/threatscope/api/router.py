@@ -375,17 +375,22 @@ def _run_analysis_background(
                     "dynamic_analysis": "dynamic_analysis",  # legacy
                     "ghidra": "ghidra_analysis",
                     "ghidra_analysis": "ghidra_analysis",  # legacy
-                    "report": "malware_report",
-                    "report_generation": "malware_report",  # legacy
+                    "report": "unified_report",
+                    "report_generation": "unified_report",  # legacy
                 }
 
                 field = step_to_field.get(step_id)
-                logger.info(f"save_progress: step_id={step_id}, status={status}, field={field}, has_field={field in current_results if field else False}")
+                logger.info(
+                    f"save_progress: step_id={step_id}, status={status}, field={field}, has_field={field in current_results if field else False}"
+                )
                 if field and current_results and field in current_results:
                     db.update_task_result(task_id, field, current_results[field])
                     logger.info(f"Saved {field} to database for task {task_id}")
                 else:
-                    logger.warning(f"Did not save {step_id}: field={field}, current_results keys={list(current_results.keys()) if current_results else None})")
+                    logger.warning(
+                        f"Did not save {step_id}: field={field}, current_results keys={list(current_results.keys()) if current_results else None})"
+                    )
+
         try:
             # Update status
             db.update_task_status(task_id, TaskStatus.STATIC_ANALYSIS.value)
@@ -420,7 +425,7 @@ def _run_analysis_background(
                 if result.get("ghidra_analysis"):
                     db.update_task_result(task_id, "ghidra_analysis", result["ghidra_analysis"])
                 if result.get("report"):
-                    db.update_task_result(task_id, "malware_report", result["report"])
+                    db.update_task_result(task_id, "unified_report", result["report"])
 
                 db.update_task_status(task_id, TaskStatus.COMPLETED.value)
 
@@ -467,8 +472,8 @@ def _extract_results(task: dict) -> dict:
         results["dynamic_analysis"] = task["dynamic_analysis"]
     if task.get("ghidra_analysis"):
         results["ghidra_analysis"] = task["ghidra_analysis"]
-    if task.get("malware_report"):
-        results["malware_report"] = task["malware_report"]
+    if task.get("unified_report"):
+        results["unified_report"] = task["unified_report"]
 
     return results
 
@@ -480,11 +485,12 @@ def _extract_result_summary(result: dict | None) -> dict | None:
 
     summary = {}
 
-    if "malware_report" in result:
-        report = result["malware_report"]
+    if "unified_report" in result:
+        report = result["unified_report"]
         if isinstance(report, dict):
             summary["verdict"] = report.get("verdict")
             summary["confidence"] = report.get("confidence")
-            summary["family"] = report.get("family")
+            summary["family"] = report.get("classification", {}).get("family")
+            summary["severity"] = report.get("severity")
 
     return summary if summary else None

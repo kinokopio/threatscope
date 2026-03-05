@@ -650,6 +650,11 @@ class GhidraAgent(BaseAgent):
                     "type": "http",
                     "url": gdb_settings.mcp_url,
                 }
+            elif gdb_settings.service_mode == "sse":
+                mcp_servers["gdb"] = {
+                    "type": "sse",
+                    "url": gdb_settings.mcp_url,
+                }
             else:
                 mcp_servers["gdb"] = {
                     "type": "stdio",
@@ -657,7 +662,7 @@ class GhidraAgent(BaseAgent):
                     "env": {"GDB_PATH": gdb_settings.gdb_path},
                 }
             allowed_tools.append("mcp__gdb__*")
-            logger.info("GDB dynamic analysis enabled")
+            logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
 
         # Configure agent options with structured output
         options = ClaudeAgentOptions(

@@ -21,7 +21,7 @@ export function inferStepStates(
     };
   }
 
-  if (taskStatus === 'report_generation' && currentStep && !result?.malware_report) {
+  if (taskStatus === 'report_generation' && currentStep && !result?.unified_report) {
     newStates.report = {
       status: 'running',
       preview: { currentStep },
@@ -178,8 +178,8 @@ export function inferStepStates(
   }
 
   // AI Report
-  if (result.malware_report) {
-    const report = result.malware_report;
+  if (result.unified_report) {
+    const report = result.unified_report;
     const confidence = report?.confidence || 0;
     const confidencePercent = confidence <= 1 ? Math.round(confidence * 100) : Math.round(confidence);
     newStates.report = {
@@ -187,7 +187,7 @@ export function inferStepStates(
       preview: {
         verdict: report?.verdict || 'unknown',
         confidence: `${confidencePercent}%`,
-        family: report?.family || 'N/A',
+        family: report?.classification?.family || 'N/A',
       },
     };
   }

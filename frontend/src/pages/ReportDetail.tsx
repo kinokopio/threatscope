@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, AlertCircle, Loader2, FileText, Shield } from 'lucide-react';
 import { getTask } from '../shared/api';
 import type { AnalysisTask } from '../shared/types';
-import ReportView from '../features/report/components/ReportView';
+import UnifiedReportView from '../features/report/components/UnifiedReportView';
 
 export default function ReportDetail() {
   const { taskId } = useParams<{ taskId: string }>();
@@ -49,7 +49,9 @@ export default function ReportDetail() {
     );
   }
 
-  if (errorMessage || !task?.result) {
+  const unifiedReport = task?.result?.unified_report;
+
+  if (errorMessage || !task?.result || !unifiedReport) {
     return (
       <div className="max-w-7xl mx-auto">
         <button
@@ -75,7 +77,7 @@ export default function ReportDetail() {
     );
   }
 
-  const verdict = task.result.malware_report?.verdict || 'unknown';
+  const verdict = unifiedReport.verdict || 'unknown';
   const verdictColors: Record<string, { bg: string; border: string; text: string }> = {
     malicious: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400' },
     suspicious: { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400' },
@@ -124,7 +126,9 @@ export default function ReportDetail() {
         </div>
 
         {/* Report Content */}
-        <ReportView result={task.result} fileName={task.file_name} />
+        <UnifiedReportView 
+          report={unifiedReport} 
+        />
       </div>
     </div>
   );

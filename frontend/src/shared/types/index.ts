@@ -43,9 +43,7 @@ export interface AnalysisResult {
     domains?: string[];
     suspicious?: string[];
   };
-  // New: file_type from diec
   file_type?: FileTypeResult;
-  // New: capa capabilities
   capa?: CapaResult;
   yara?: {
     matches?: YaraMatch[];
@@ -55,7 +53,7 @@ export interface AnalysisResult {
   dynamic_analysis?: DynamicAnalysis;
   static_analysis?: StaticAnalysis;
   ghidra_analysis?: GhidraAnalysis;
-  malware_report?: MalwareReport;
+  unified_report?: UnifiedReport;
 }
 
 // New: File type identification result from diec
@@ -250,7 +248,110 @@ export interface MitreMapping {
   tactic: string;
   technique_id: string;
   technique_name: string;
+  sub_technique?: string;
   evidence: string;
+  confidence?: 'high' | 'medium' | 'low';
+  source?: string;
+}
+
+// =============================================================================
+// Unified Report Types (new report system)
+// =============================================================================
+
+export interface MalwareClassification {
+  type: string;
+  family: string | null;
+  variant: string | null;
+  aliases: string[];
+}
+
+export interface KeyFinding {
+  id: string;
+  title: string;
+  category: string;
+  severity: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO';
+  description: string;
+  evidence: string[];
+  impact: string;
+  recommendation: string;
+  mitre_technique?: string;
+}
+
+export interface AnalyzedFunctionDetail {
+  name: string;
+  address: string;
+  purpose: string;
+  analysis: string;
+  risk: 'critical' | 'high' | 'medium' | 'low';
+  category?: string;
+}
+
+export interface IoCItem {
+  value: string;
+  type: string;
+  context?: string;
+  source: string;
+  confidence: 'high' | 'medium' | 'low';
+}
+
+export interface IoCs {
+  domains: IoCItem[];
+  ips: IoCItem[];
+  urls: IoCItem[];
+  file_hashes: IoCItem[];
+  file_paths: IoCItem[];
+  registry_keys: IoCItem[];
+  mutexes: IoCItem[];
+}
+
+export interface TechnicalDetails {
+  file_format: string;
+  architecture: string;
+  platform: string;
+  file_size: number;
+  compiler?: string;
+  linker?: string;
+  build_timestamp?: string;
+  packers: string[];
+  protectors: string[];
+  obfuscation: string[];
+  c2_protocol?: string;
+  encryption?: string;
+  capabilities: string[];
+}
+
+export interface Recommendation {
+  priority: 'immediate' | 'high' | 'medium' | 'low';
+  category: string;
+  action: string;
+  details?: string;
+}
+
+export interface DataSources {
+  static_analysis: boolean;
+  dynamic_analysis: boolean;
+  ghidra_analysis: boolean;
+  threat_intel: boolean;
+  analysis_duration_seconds: number;
+  ghidra_functions_analyzed: number;
+  ghidra_findings_count: number;
+}
+
+export interface UnifiedReport {
+  verdict: 'malicious' | 'suspicious' | 'benign';
+  confidence: number;
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info';
+  summary: string;
+  executive_summary: string;
+  classification: MalwareClassification;
+  key_findings: KeyFinding[];
+  analyzed_functions: AnalyzedFunctionDetail[];
+  attack_chain: string | null;
+  mitre_mapping: MitreMapping[];
+  iocs: IoCs;
+  technical_details: TechnicalDetails;
+  recommendations: Recommendation[];
+  data_sources: DataSources;
 }
 
 export interface QueueStats {

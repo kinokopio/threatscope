@@ -70,8 +70,8 @@ class TaskRepository:
                         dynamic_analysis TEXT,
                         -- Ghidra analysis
                         ghidra_analysis TEXT,
-                        -- Final report
-                        malware_report TEXT,
+                        -- Final report (unified report)
+                        unified_report TEXT,
                         -- Options
                         options TEXT
                     )
@@ -244,7 +244,7 @@ class TaskRepository:
             "threat_intel",
             "dynamic_analysis",
             "ghidra_analysis",
-            "malware_report",
+            "unified_report",
         )
         if result_type not in valid_types:
             raise ValueError(f"Invalid result type: {result_type}. Must be one of {valid_types}")
@@ -344,7 +344,7 @@ class TaskRepository:
             "threat_intel",
             "dynamic_analysis",
             "ghidra_analysis",
-            "malware_report",
+            "unified_report",
             "options",
         )
         for field in json_fields:
@@ -372,8 +372,8 @@ class TaskRepository:
             result["dynamic_analysis"] = data["dynamic_analysis"]
         if data.get("ghidra_analysis"):
             result["ghidra_analysis"] = data["ghidra_analysis"]
-        if data.get("malware_report"):
-            result["malware_report"] = data["malware_report"]
+        if data.get("unified_report"):
+            result["unified_report"] = data["unified_report"]
 
         data["result"] = result if result else None
         return data

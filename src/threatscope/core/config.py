@@ -133,16 +133,16 @@ class GDBSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="THREATSCOPE_GDB_")
 
     enabled: bool = Field(default=False, description="Enable GDB dynamic analysis")
-    service_mode: Literal["stdio", "http"] = Field(
-        default="stdio", description="MCP server mode: stdio (subprocess) or http (Docker)"
+    service_mode: Literal["stdio", "http", "sse"] = Field(
+        default="stdio", description="MCP server mode: stdio (subprocess), http, or sse (Docker)"
     )
     mcp_command: list[str] = Field(
         default=["gdb-mcp-server"],
         description="Command to start GDB MCP server (stdio mode only)",
     )
     mcp_url: str = Field(
-        default="http://localhost:8081",
-        description="GDB MCP server URL (http mode only)",
+        default="http://localhost:8081/sse",
+        description="GDB MCP server URL (http/sse mode)",
     )
     gdb_path: str = Field(default="gdb", description="Path to GDB executable")
     timeout: int = Field(default=300, ge=30, le=1800, description="Analysis timeout in seconds")

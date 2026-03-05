@@ -118,11 +118,15 @@ class FileTypeResult(BaseModel):
 
     format: str = Field(default="", description="File format (PE32, ELF64, etc.)")
     arch: str = Field(default="", description="Architecture (x86, x64, ARM)")
-    category: str = Field(default="unknown", description="Category (pe, elf, script:python, unknown)")
+    category: str = Field(
+        default="unknown", description="Category (pe, elf, script:python, unknown)"
+    )
     platform: str = Field(default="unknown", description="Platform (windows, linux, cross)")
     packers: list[dict[str, str]] = Field(default_factory=list, description="Detected packers")
     compilers: list[dict[str, str]] = Field(default_factory=list, description="Detected compilers")
-    protectors: list[dict[str, str]] = Field(default_factory=list, description="Detected protectors")
+    protectors: list[dict[str, str]] = Field(
+        default_factory=list, description="Detected protectors"
+    )
     libraries: list[dict[str, str]] = Field(default_factory=list, description="Detected libraries")
     script_language: str | None = Field(default=None, description="Script language if detected")
     is_fallback: bool = Field(default=False, description="True if using fallback detection")
@@ -148,7 +152,9 @@ class CapaResult(BaseModel):
     format: str = Field(default="", description="Binary format")
     arch: str = Field(default="", description="Architecture")
     os: str = Field(default="", description="Operating system")
-    capabilities: list[dict[str, Any]] = Field(default_factory=list, description="Detected capabilities")
+    capabilities: list[dict[str, Any]] = Field(
+        default_factory=list, description="Detected capabilities"
+    )
     attack: AttackMappingResult = Field(default_factory=AttackMappingResult)
     mbc: MbcMappingResult = Field(default_factory=MbcMappingResult)
     analysis_time: float = Field(default=0.0, description="Analysis time in seconds")
@@ -176,6 +182,8 @@ class YaraResult(BaseModel):
     rule_count: int = Field(default=0, description="Number of rules loaded")
     match_count: int = Field(default=0, description="Number of matches found")
     message: str | None = Field(default=None, description="Optional status message")
+
+
 class ThreatIntelResult(BaseModel):
     """Threat intelligence results."""
 
@@ -208,6 +216,8 @@ class DynamicAnalysisResult(BaseModel):
     error: str | None = None
     skipped: bool = False
     help: str | None = None
+
+
 class GhidraAIAnalysis(BaseModel):
     """AI analysis results from Ghidra agent."""
 
@@ -218,17 +228,18 @@ class GhidraAIAnalysis(BaseModel):
     analysis_path: list[str] | list[dict[str, Any]] = Field(default_factory=list)
     analysis_metadata: dict[str, Any] | None = None
 
-    @field_validator('key_findings', mode='before')
+    @field_validator("key_findings", mode="before")
     @classmethod
     def normalize_findings(cls, v: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Ensure evidence field is always a list."""
         if not v:
             return v
         for finding in v:
-            if 'evidence' in finding and not isinstance(finding['evidence'], list):
+            if "evidence" in finding and not isinstance(finding["evidence"], list):
                 # Convert string evidence to list
-                finding['evidence'] = [finding['evidence']] if finding['evidence'] else []
+                finding["evidence"] = [finding["evidence"]] if finding["evidence"] else []
         return v
+
 
 class GhidraAnalysisResult(BaseModel):
     """Ghidra analysis results."""
@@ -246,21 +257,55 @@ class GhidraAnalysisResult(BaseModel):
     message: str | None = None
     error: str | None = None
 
+
 class MalwareReport(BaseModel):
-    """Final malware analysis report."""
+    """Final malware analysis report (legacy - kept for compatibility)."""
 
     verdict: str = Field(description="Malware verdict: malicious, suspicious, benign")
     confidence: float = Field(ge=0, le=1, description="Confidence score 0-1")
     family: str | None = Field(default=None, description="Malware family if identified")
     summary: str | None = Field(default=None, description="Analysis summary")
-    iocs: dict[str, Any] | list[str] = Field(default_factory=dict, description="Indicators of compromise")
+    iocs: dict[str, Any] | list[str] = Field(
+        default_factory=dict, description="Indicators of compromise"
+    )
     mitre_techniques: list[str] = Field(default_factory=list, description="MITRE ATT&CK techniques")
-    mitre_mapping: list[dict[str, Any]] = Field(default_factory=list, description="MITRE ATT&CK mapping")
+    mitre_mapping: list[dict[str, Any]] = Field(
+        default_factory=list, description="MITRE ATT&CK mapping"
+    )
     recommendations: list[str] = Field(
         default_factory=list, description="Remediation recommendations"
     )
     capabilities: list[str] = Field(default_factory=list, description="Malware capabilities")
     technical_details: dict[str, Any] = Field(default_factory=dict, description="Technical details")
+
+
+class UnifiedReportSchema(BaseModel):
+    """Unified malware analysis report - single source of truth for frontend."""
+
+    verdict: str = Field(description="Analysis verdict: malicious, suspicious, benign")
+    confidence: float = Field(ge=0, le=1, description="Confidence score 0.0-1.0")
+    severity: str = Field(description="Severity: critical, high, medium, low, info")
+    summary: str = Field(description="Detailed summary in Chinese")
+    executive_summary: str = Field(description="One-sentence summary")
+    classification: dict[str, Any] = Field(
+        default_factory=dict, description="Malware classification"
+    )
+    key_findings: list[dict[str, Any]] = Field(
+        default_factory=list, description="Key findings from Ghidra"
+    )
+    analyzed_functions: list[dict[str, Any]] = Field(
+        default_factory=list, description="Analyzed functions"
+    )
+    attack_chain: str | None = Field(default=None, description="Attack chain description")
+    mitre_mapping: list[dict[str, Any]] = Field(
+        default_factory=list, description="MITRE ATT&CK mappings"
+    )
+    iocs: dict[str, Any] = Field(default_factory=dict, description="Indicators of Compromise")
+    technical_details: dict[str, Any] = Field(default_factory=dict, description="Technical details")
+    recommendations: list[dict[str, Any]] = Field(
+        default_factory=list, description="Security recommendations"
+    )
+    data_sources: dict[str, Any] = Field(default_factory=dict, description="Data sources used")
 
 
 class AnalysisResult(BaseModel):
@@ -279,7 +324,7 @@ class AnalysisResult(BaseModel):
     threat_intel: ThreatIntelResult | None = None
     dynamic_analysis: DynamicAnalysisResult | None = None
     ghidra_analysis: GhidraAnalysisResult | None = None
-    malware_report: MalwareReport | None = None
+    unified_report: UnifiedReportSchema | None = None
     error: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

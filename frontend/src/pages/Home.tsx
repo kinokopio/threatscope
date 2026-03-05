@@ -63,8 +63,8 @@ export default function Home() {
     const tasks = tasksData.tasks;
     return {
       total: tasks.length,
-      malicious: tasks.filter(t => t.result?.malware_report?.verdict === 'malicious').length,
-      pending: tasks.filter(t => ['pending', 'stage_1_4', 'stage_5', 'stage_6', 'queued'].includes(t.status)).length,
+      malicious: tasks.filter(t => t.result?.unified_report?.verdict === 'malicious').length,
+      pending: tasks.filter(t => !['completed', 'failed'].includes(t.status)).length,
     };
   }, [tasksData]);
 
