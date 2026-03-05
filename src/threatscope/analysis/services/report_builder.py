@@ -808,7 +808,7 @@ class ReportBuilder:
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt)
                 response_text = ""
-                async for message in client.messages:
+                async for message in client.receive_response():
                     if hasattr(message, "content"):
                         for block in message.content:
                             if hasattr(block, "text"):
