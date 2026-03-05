@@ -112,7 +112,7 @@ class AnalysisCoordinator:
         if self._ghidra_agent is None:
             config = AgentConfig(
                 system_prompt_path=str(self.project_dir / "prompts" / "ghidra_agent.md"),
-                max_iterations=20,
+                max_iterations=35,
             )
             self._ghidra_agent = GhidraAgent(
                 config,
@@ -584,7 +584,7 @@ class AnalysisCoordinator:
         try:
             config = AgentConfig(
                 system_prompt_path=str(self.project_dir / "prompts" / "ghidra_agent.md"),
-                max_iterations=20,
+                max_iterations=35,
             )
 
             file_format = static_results.get("file_type", {}).get("format", "")
