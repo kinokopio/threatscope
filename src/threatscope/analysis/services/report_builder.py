@@ -755,6 +755,8 @@ class ReportBuilder:
 
         prompt = f"""基于以下恶意软件分析结果，生成中文摘要和安全建议。
 
+**重要：只能基于下面提供的信息生成摘要，不要添加任何推测或假设的功能。**
+
 ## 判定结果
 - Verdict: {verdict}
 - Severity: {severity}
@@ -776,7 +778,7 @@ class ReportBuilder:
 - C2域名: {", ".join(c2_domains) if c2_domains else "未发现"}
 
 请生成:
-1. summary: 3-5句详细中文摘要，包含恶意软件类型、主要行为、攻击目标、威胁等级
+1. summary: 3-5句详细中文摘要，只描述上述分析中明确发现的功能和行为，不要推测或添加未发现的功能
 2. executive_summary: 1句话摘要给管理层
 3. recommendations: 具体可操作的安全建议列表，每个建议包含 priority (immediate/high/medium/low), category (containment/eradication/recovery/prevention), action, details
 
