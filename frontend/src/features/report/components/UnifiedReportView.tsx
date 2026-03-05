@@ -22,6 +22,7 @@ import type {
   IoCItem,
   Recommendation 
 } from '../../../shared/types';
+import AttackChainView from './AttackChainView';
 
 interface UnifiedReportViewProps {
   report: UnifiedReport;
@@ -294,9 +295,7 @@ export default function UnifiedReportView({ report }: UnifiedReportViewProps) {
             <Link2 className="w-6 h-6 mr-2" />
             Attack Chain
           </h2>
-          <div className="bg-slate-700/50 p-4 rounded border-l-4 border-rose-500">
-            <p className="text-slate-200 font-mono text-sm whitespace-pre-wrap">{attack_chain}</p>
-          </div>
+          <AttackChainView attackChain={attack_chain} />
         </div>
       )}
 
