@@ -54,14 +54,14 @@ function parseAttackChain(chainText: string): AttackStep[] {
 
 function StepNode({ step, index }: { step: AttackStep; index: number }) {
   return (
-    <div className="flex flex-col items-center min-w-[120px] max-w-[180px]">
+    <div className="flex flex-col items-center">
       {/* Step number */}
       <div className="text-[10px] text-slate-500 mb-1">Step {index + 1}</div>
       
       {/* Node box */}
-      <div className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-center w-full hover:border-slate-500 transition-colors">
+      <div className="bg-slate-800 border border-slate-600 rounded px-3 py-2 text-center hover:border-slate-500 transition-colors whitespace-nowrap">
         {/* Function name */}
-        <div className="font-mono text-sm text-slate-200 truncate" title={step.name}>
+        <div className="font-mono text-sm text-slate-200">
           {step.name}
         </div>
         
@@ -74,7 +74,7 @@ function StepNode({ step, index }: { step: AttackStep; index: number }) {
         
         {/* Description if present */}
         {step.description && (
-          <div className="text-xs text-slate-400 mt-1 line-clamp-2" title={step.description}>
+          <div className="text-xs text-slate-400 mt-1">
             {step.description}
           </div>
         )}
