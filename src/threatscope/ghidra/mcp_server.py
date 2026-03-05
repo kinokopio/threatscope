@@ -120,17 +120,17 @@ def function_xrefs(target: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def get_callgraph(target: str, max_depth: int = 3) -> dict[str, Any]:
+def get_callgraph(target: str, depth: int = 3) -> dict[str, Any]:
     """Get call graph starting from a function.
 
     Args:
         target: Function name or address
-        max_depth: Maximum depth to traverse
+        depth: Maximum depth to traverse (default: 3)
 
     Returns:
         Hierarchical call graph structure
     """
-    return _request("GET", f"/functions/{target}/callgraph", params={"max_depth": max_depth})
+    return _request("GET", f"/functions/{target}/callgraph", params={"max_depth": depth})
 
 
 # --- String Tools ---
