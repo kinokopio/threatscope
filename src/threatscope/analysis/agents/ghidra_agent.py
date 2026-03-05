@@ -303,6 +303,46 @@ When compressing context, please preserve:
     return pre_compact_hook
 
 
+MAX_TOOL_RESULT_CHARS = 100000
+
+
+def create_post_tool_use_hook():
+    """Create PostToolUse hook to truncate large MCP tool results.
+
+    This prevents token limit errors when tools like get_exports return
+    massive results (400K+ characters).
+    """
+
+    async def post_tool_use_hook(input_data, tool_use_id, context):
+        tool_response = input_data.get("tool_response", "")
+        tool_name = input_data.get("tool_name", "")
+
+        if not isinstance(tool_response, str):
+            tool_response = str(tool_response)
+
+        if len(tool_response) > MAX_TOOL_RESULT_CHARS:
+            truncated = tool_response[:MAX_TOOL_RESULT_CHARS]
+            warning = (
+                f"\n\n[TRUNCATED: Result was {len(tool_response):,} chars, "
+                f"showing first {MAX_TOOL_RESULT_CHARS:,}. "
+                f"Use offset/limit parameters to paginate large results.]"
+            )
+            logger.warning(
+                f"Truncating large tool result from {tool_name}: "
+                f"{len(tool_response):,} -> {MAX_TOOL_RESULT_CHARS:,} chars"
+            )
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "updatedMCPToolOutput": truncated + warning,
+                }
+            }
+
+        return {}
+
+    return post_tool_use_hook
+
+
 class GhidraAgent(BaseAgent):
     """AI agent for deep binary analysis using Ghidra and claude-agent-sdk.
 
@@ -679,7 +719,8 @@ class GhidraAgent(BaseAgent):
             hooks={
                 "PreCompact": [
                     HookMatcher(matcher=None, hooks=[create_pre_compact_hook(self.memory_store)])
-                ]
+                ],
+                "PostToolUse": [HookMatcher(matcher=None, hooks=[create_post_tool_use_hook()])],
             },
         )
 
