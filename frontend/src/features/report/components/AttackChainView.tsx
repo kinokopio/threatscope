@@ -11,41 +11,46 @@ interface AttackChainViewProps {
   attackChain: string;
 }
 
+function stripQuotes(s: string): string {
+  return s.replace(/^["']|["']$/g, '');
+}
+
 function parseAttackChain(chainText: string): AttackStep[] {
   const steps: AttackStep[] = [];
-  
-  // Split by → or ->
   const parts = chainText.split(/\s*(?:→|->)\s*/);
   
   for (const part of parts) {
-    if (!part.trim()) continue;
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    
+    const cleaned = stripQuotes(trimmed);
     
     // Pattern 1: "func_name (0x00123456) description" or "func_name (0x00123456)"
-    const addressMatch = part.match(/^([^\(]+)\s*\(0x([0-9a-fA-F]+)\)\s*(.*)/);
+    const addressMatch = cleaned.match(/^([^\(]+)\s*\(0x([0-9a-fA-F]+)\)\s*(.*)/);
     if (addressMatch) {
       const [, name, address, description] = addressMatch;
       steps.push({
-        name: name.trim(),
+        name: stripQuotes(name.trim()),
         address: `0x${address}`,
-        description: description.trim() || undefined,
+        description: stripQuotes(description.trim()) || undefined,
       });
       continue;
     }
     
     // Pattern 2: "func_name (description)" - description in parentheses
-    const descMatch = part.match(/^([^\(]+)\s*\(([^)]+)\)\s*$/);
+    const descMatch = cleaned.match(/^([^\(]+)\s*\(([^)]+)\)\s*$/);
     if (descMatch) {
       const [, name, description] = descMatch;
       steps.push({
-        name: name.trim(),
-        description: description.trim(),
+        name: stripQuotes(name.trim()),
+        description: stripQuotes(description.trim()),
       });
       continue;
     }
     
     // Pattern 3: Just function name
     steps.push({
-      name: part.trim(),
+      name: stripQuotes(cleaned),
     });
   }
   
