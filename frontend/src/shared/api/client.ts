@@ -88,7 +88,7 @@ export async function getTask(taskId: string): Promise<AnalysisTask> {
     threat_intel: data.threat_intel,
     dynamic_analysis: data.dynamic_analysis,
     ghidra_analysis: data.ghidra_analysis,
-    malware_report: data.malware_report,
+    unified_report: data.unified_report,
   };
   
   return {
