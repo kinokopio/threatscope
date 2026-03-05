@@ -418,18 +418,18 @@ class ReportBuilder:
             if finding.get("category") in ("命令与控制", "Command and Control"):
                 # Look for domains in evidence
                 for evidence in finding.get("evidence", []):
-                    # Simple domain extraction from evidence strings
+                    # Extract domain from evidence strings
                     if "." in evidence and any(
                         tld in evidence.lower()
                         for tld in [".com", ".net", ".org", ".io", ".cc", ".cn"]
                     ):
-                        # Extract domain-like strings
                         import re
 
-                        domain_pattern = r"[a-zA-Z0-9][-a-zA-Z0-9]*\.[a-zA-Z]{2,}"
-                        matches = re.findall(domain_pattern, evidence)
+                        # Match full domain names including subdomains
+                        domain_pattern = r"[a-zA-Z0-9][-a-zA-Z0-9]*(?:\.[a-zA-Z0-9][-a-zA-Z0-9]*)*\.(?:com|net|org|io|cc|cn|ru|top|xyz|info)"
+                        matches = re.findall(domain_pattern, evidence, re.IGNORECASE)
                         for match in matches:
-                            if not any(d.value == match for d in iocs.domains):
+                            if not any(d.value.lower() == match.lower() for d in iocs.domains):
                                 iocs.domains.append(
                                     IoCItem(
                                         value=match,
