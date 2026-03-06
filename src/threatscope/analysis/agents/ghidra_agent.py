@@ -87,7 +87,9 @@ class KeyFinding(BaseModel):
 class MalwareClassification(BaseModel):
     """Malware classification result."""
 
-    type: str = Field(description="Malware type (e.g., Trojan, Miner, Ransomware)")
+    type: str = Field(
+        description="Malware type: RAT, Backdoor, Miner, Ransomware, Trojan, Stealer, Botnet, Benign, or Unknown"
+    )
     family: str | None = Field(default=None, description="Malware family if identified")
     severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(description="Overall severity")
 

@@ -159,10 +159,30 @@ This is INVALID. No decompilation = no understanding of HOW the malware works.
       "evidence": ["0x401120: inet_addr(\"192.168.1.100\")", "0x401130: htons(4444)"]
     }
   ],
+  "malware_classification": {
+    "type": "RAT",
+    "family": "Cobalt Strike",
+    "severity": "CRITICAL"
+  },
   "attack_chain": "main → init_config → connect_c2 → command_loop",
   "analysis_path": ["decompile main", "trace to connect_c2", "analyze network code", "extract C2 config"]
 }
 ```
+
+### malware_classification 字段说明
+
+**type** 必须是以下之一（基于代码分析结果判断，不要猜测）:
+- `RAT` - 远程访问木马（有C2通信+远程命令执行）
+- `Backdoor` - 后门（有隐蔽访问机制）
+- `Miner` - 挖矿程序（有矿池连接/挖矿算法）
+- `Ransomware` - 勒索软件（有文件加密+赎金逻辑）
+- `Trojan` - 木马（伪装成正常程序）
+- `Stealer` - 窃密软件（窃取凭据/数据）
+- `Botnet` - 僵尸网络（有DDoS/批量控制）
+- `Benign` - 无恶意行为（正常程序）
+- `Unknown` - 无法确定（证据不足）
+
+**重要**: 如果没有足够证据支持某个分类，使用 `Unknown` 或 `Benign`。不要仅凭网络通信就判定为 RAT。
 
 ## Validation Checklist (Before Output)
 

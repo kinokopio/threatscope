@@ -1,56 +1,147 @@
-version: "3.9"
+# ThreatScope Docker Compose Configuration
+# Production deployment with Nginx reverse proxy
 
 services:
-  # Ghidra analysis service (HTTP + MCP)
+  # ==========================================================================
+  # Nginx Reverse Proxy - Unified Entry Point
+  # ==========================================================================
+  nginx:
+    image: nginx:alpine
+    container_name: threatscope_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - threatscope
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================================================
+  # Frontend - React SPA served by Nginx
+  # ==========================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+      args:
+        VITE_API_URL: /api
+    container_name: threatscope_frontend
+    networks:
+      - threatscope
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================================================
+  # Backend API - FastAPI Application
+  # ==========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: threatscope_backend
+    volumes:
+      - threatscope_data:/app/data
+      - ./rules:/app/rules:ro
+      - ./prompts:/app/prompts:ro
+    environment:
+      - THREATSCOPE_ENVIRONMENT=production
+      - THREATSCOPE_GHIDRA_SERVICE_MODE=docker
+      - THREATSCOPE_GHIDRA_SERVICE_HOST=ghidra
+      - THREATSCOPE_GHIDRA_BASE_HTTP_PORT=8000
+      - THREATSCOPE_DIEC_URL=http://diec:8000
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+    depends_on:
+      ghidra:
+        condition: service_healthy
+      diec:
+        condition: service_healthy
+    networks:
+      - threatscope
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==========================================================================
+  # Ghidra Analysis Service
+  # ==========================================================================
   ghidra:
     build:
       context: .
       dockerfile: docker/Dockerfile.ghidra
     container_name: threatscope_ghidra
-    ports:
-      - "127.0.0.1:8080:8000"  # HTTP API + MCP (internal 8000 -> host 8080)
     volumes:
-      - ./data/uploads:/app/data/uploads
-      - ./data/projects:/app/data/projects
+      - threatscope_data:/app/data
     environment:
       - GHIDRA_INSTALL_DIR=/ghidra
       - GHIDRA_HTTP_PORT=8000
       - GHIDRA_HTTP_URL=http://localhost:8000
       - GHIDRA_MCP_ALLOW_ORIGINS=*
     mem_limit: 4g
+    networks:
+      - threatscope
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # diec file type identification service
+  # ==========================================================================
+  # DIEC File Type Identification Service
+  # ==========================================================================
   diec:
     build:
       context: .
       dockerfile: docker/Dockerfile.diec
     container_name: threatscope_diec
-    ports:
-      - "127.0.0.1:8082:8000"
     volumes:
-      - ./data/uploads:/data/uploads:ro
+      - threatscope_data:/data:ro
     environment:
       - DIEC_TIMEOUT=30
+    networks:
+      - threatscope
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  # Backend API service
-  backend:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.backend
-    container_name: threatscope_backend
-    ports:
-      - "127.0.0.1:8001:8001"
-    volumes:
-      - ./data:/app/data
-      - ./config.yaml:/app/config.yaml:ro
-    environment:
-      - THREATSCOPE_GHIDRA_URL=http://ghidra:8000
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-    depends_on:
-      - ghidra
-    restart: unless-stopped
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  threatscope:
+    driver: bridge
 
+# =============================================================================
+# Volumes
+# =============================================================================
 volumes:
-  data:
+  threatscope_data:
+    driver: local

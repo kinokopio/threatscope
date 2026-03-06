@@ -220,8 +220,10 @@ class ReportBuilder:
         # 7. Extract technical details
         technical_details = self._extract_technical_details(static_results, ghidra_results)
 
-        # 8. Classify malware type
-        classification = self._classify_malware(key_findings, threat_intel, attack_chain)
+        # 8. Classify malware type (prefer Ghidra AI classification)
+        classification = self._classify_malware(
+            key_findings, threat_intel, attack_chain, ghidra_results
+        )
         logger.info(
             f"Classified malware: type={classification.type}, family={classification.family}"
         )
@@ -677,23 +679,23 @@ class ReportBuilder:
         findings: list[KeyFinding],
         threat_intel: dict[str, Any] | None,
         attack_chain: str | None,
+        ghidra_results: dict[str, Any],
     ) -> MalwareClassification:
-        """Classify malware type and family.
+        ai_analysis = ghidra_results.get("ai_analysis", {})
+        ai_classification = ai_analysis.get("malware_classification")
 
-        Args:
-            findings: Key findings from analysis
-            threat_intel: Threat intelligence results
-            attack_chain: Attack chain description
+        if ai_classification and ai_classification.get("type"):
+            return MalwareClassification(
+                type=ai_classification.get("type", "Unknown"),
+                family=ai_classification.get("family"),
+                variant=ai_classification.get("variant"),
+                aliases=ai_classification.get("aliases", []),
+            )
 
-        Returns:
-            MalwareClassification object
-        """
-        # Get family from threat intel
         family = None
         if threat_intel:
             family = threat_intel.get("malwarebazaar", {}).get("family")
 
-        # Detect type from findings and attack chain
         malware_type = "Unknown"
         all_text = " ".join(
             [f.title + " " + f.description for f in findings]
@@ -704,12 +706,6 @@ class ReportBuilder:
             if any(kw.lower() in all_text for kw in keywords):
                 malware_type = mtype
                 break
-
-        # If we have C2 and command execution, it's likely a RAT
-        has_c2 = any(f.category == "命令与控制" for f in findings)
-        has_exec = any(f.category == "执行" for f in findings)
-        if has_c2 and has_exec and malware_type == "Unknown":
-            malware_type = "RAT"
 
         return MalwareClassification(
             type=malware_type,
