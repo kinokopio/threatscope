@@ -1,33 +1,28 @@
-# ThreatScope Backend
-# Ubuntu + uv + Python 3.12
-
-FROM ubuntu:24.04
+FROM python:3.12-slim-bookworm AS builder
 
 WORKDIR /app
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    UV_PYTHON_INSTALL_DIR=/opt/python \
-    PATH="/usr/local/bin:/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app" \
-    PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates unzip \
     build-essential \
-    libmagic-dev libmagic1 libffi-dev libssl-dev \
-    libyara-dev automake libtool pkg-config \
-    && curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local sh \
+    libmagic-dev \
+    libffi-dev \
+    libssl-dev \
+    libyara-dev \
+    curl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-RUN uv python install 3.12.8 && \
-    chmod -R a+rX /opt/python
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN uv venv /app/.venv --python 3.12.8 && \
+RUN uv venv /app/.venv && \
     uv pip install --python /app/.venv/bin/python ".[api,ai,docker]"
 
 RUN mkdir -p /app/rules/capa && \
@@ -36,13 +31,29 @@ RUN mkdir -p /app/rules/capa && \
     mv /tmp/capa-rules-master/* /app/rules/capa/ && \
     rm -rf /tmp/capa-rules.zip /tmp/capa-rules-master
 
-COPY prompts /app/prompts
+FROM python:3.12-slim-bookworm AS runtime
 
-RUN useradd --create-home --shell /bin/bash appuser && \
-    mkdir -p /app/data/uploads /app/data/projects && \
-    chown -R appuser:appuser /app
+WORKDIR /app
 
-ENV THREATSCOPE_ENVIRONMENT=production \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libmagic1 \
+    libyara-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /bin/bash --uid 1000 appuser \
+    && mkdir -p /app/data/uploads /app/data/projects \
+    && chown -R appuser:appuser /app
+
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --from=builder --chown=appuser:appuser /app/rules/capa /app/rules/capa
+COPY --chown=appuser:appuser src /app/src
+COPY --chown=appuser:appuser prompts /app/prompts
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    THREATSCOPE_ENVIRONMENT=production \
     THREATSCOPE_DB_PATH=/app/data/tasks.db \
     THREATSCOPE_API_HOST=0.0.0.0 \
     THREATSCOPE_API_PORT=8000 \
@@ -55,7 +66,7 @@ USER appuser
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -sf http://localhost:8000/health || exit 1
 
 CMD ["uvicorn", "src.threatscope.api:app", "--host", "0.0.0.0", "--port", "8000"]
