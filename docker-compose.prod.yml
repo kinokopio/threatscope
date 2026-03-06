@@ -27,7 +27,10 @@ services:
   # Nginx Reverse Proxy - Unified Entry Point
   # ==========================================================================
   nginx:
-    image: nginx:1.27-alpine
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.nginx
+    image: threatscope/nginx:${IMAGE_TAG:-latest}
     container_name: threatscope_nginx
     ports:
       - "${NGINX_PORT:-80}:80"
@@ -53,14 +56,10 @@ services:
           memory: 32M
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
       start_period: 10s
     security_opt:
       - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /var/cache/nginx:size=64m
-      - /var/run:size=1m
 
   # ==========================================================================
   # Frontend - React SPA served by Nginx
@@ -87,14 +86,10 @@ services:
           memory: 16M
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
       start_period: 10s
     security_opt:
       - no-new-privileges:true
-    read_only: true
-    tmpfs:
-      - /var/cache/nginx:size=32m
-      - /var/run:size=1m
 
   # ==========================================================================
   # Backend API - FastAPI Application
@@ -109,6 +104,7 @@ services:
       - threatscope_data:/app/data
       - ./rules:/app/rules:ro
       - ./prompts:/app/prompts:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
     environment:
       # Core settings
       - THREATSCOPE_ENVIRONMENT=production
@@ -153,6 +149,8 @@ services:
       start_period: 30s
     security_opt:
       - no-new-privileges:true
+    group_add:
+      - ${DOCKER_GID:-999}
 
   # ==========================================================================
   # Ghidra Analysis Service - Reverse Engineering
