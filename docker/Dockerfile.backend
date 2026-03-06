@@ -41,7 +41,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
-    gosu \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
     && chmod a+r /etc/apt/keyrings/docker.gpg \
@@ -49,15 +48,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/bash appuser \
-    && mkdir -p /app/data/uploads /app/data/projects \
-    && chown -R appuser:appuser /app
+    && mkdir -p /app/data/uploads /app/data/projects
 
-COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
-COPY --from=builder --chown=appuser:appuser /app/rules/capa /app/rules/capa
-COPY --chown=appuser:appuser src /app/src
-COPY --chown=appuser:appuser prompts /app/prompts
-COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/rules/capa /app/rules/capa
+COPY src /app/src
+COPY prompts /app/prompts
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \
@@ -77,5 +73,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -sf http://localhost:8000/health || exit 1
 
-ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "src.threatscope.api:app", "--host", "0.0.0.0", "--port", "8000"]

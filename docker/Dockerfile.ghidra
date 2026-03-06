@@ -27,9 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY src /app/src
 
-RUN useradd --create-home --shell /bin/bash ghidra && \
-    mkdir -p /app/data/uploads /app/data/projects && \
-    chown -R ghidra:ghidra /app
+RUN mkdir -p /app/data/uploads /app/data/projects
 
 ENV PYTHONPATH="/app" \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -38,8 +36,6 @@ ENV PYTHONPATH="/app" \
     GHIDRA_HTTP_PORT=8000 \
     GHIDRA_MCP_PORT=9000 \
     GHIDRA_HTTP_URL=http://localhost:8000
-
-USER ghidra
 
 EXPOSE 8000
 

@@ -24,15 +24,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY docker/diec_server.py /app/
 
-RUN useradd --create-home --shell /bin/bash diec && \
-    mkdir -p /app/temp && \
-    chown -R diec:diec /app
+RUN mkdir -p /app/temp
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     DIEC_TEMP_DIR=/app/temp
-
-USER diec
 
 EXPOSE 8000
 

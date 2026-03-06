@@ -1,15 +1,3 @@
-# ThreatScope Production Docker Compose
-# Optimized for single-server deployment with resource limits and security hardening
-#
-# Usage:
-#   1. cp .env.production.example .env
-#   2. Edit .env with your API keys
-#   3. docker compose -f docker-compose.prod.yml up -d
-#
-# Architecture:
-#   nginx:80 -> frontend (static) + backend:8000 (API)
-#   backend -> ghidra:8000 (reverse engineering) + diec:8000 (file identification)
-
 x-logging: &default-logging
   driver: json-file
   options:
@@ -23,9 +11,6 @@ x-healthcheck-defaults: &healthcheck-defaults
   retries: 3
 
 services:
-  # ==========================================================================
-  # Nginx Reverse Proxy - Unified Entry Point
-  # ==========================================================================
   nginx:
     build:
       context: .
@@ -43,27 +28,14 @@ services:
       frontend:
         condition: service_healthy
     networks:
-      - threatscope-frontend
+      - threatscope
     restart: unless-stopped
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: "0.5"
-          memory: 128M
-        reservations:
-          cpus: "0.1"
-          memory: 32M
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "curl -sf http://localhost/health || exit 1"]
+      test: ["CMD", "curl", "-sf", "http://localhost/health"]
       start_period: 10s
-    security_opt:
-      - no-new-privileges:true
 
-  # ==========================================================================
-  # Frontend - React SPA served by Nginx
-  # ==========================================================================
   frontend:
     build:
       context: .
@@ -73,40 +45,27 @@ services:
     image: threatscope/frontend:${IMAGE_TAG:-latest}
     container_name: threatscope_frontend
     networks:
-      - threatscope-frontend
+      - threatscope
     restart: unless-stopped
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 64M
-        reservations:
-          cpus: "0.05"
-          memory: 16M
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD-SHELL", "curl -sf http://localhost/ || exit 1"]
+      test: ["CMD", "curl", "-sf", "http://localhost/"]
       start_period: 10s
-    security_opt:
-      - no-new-privileges:true
 
-  # ==========================================================================
-  # Backend API - FastAPI Application
-  # ==========================================================================
   backend:
     build:
       context: .
       dockerfile: docker/Dockerfile.backend
     image: threatscope/backend:${IMAGE_TAG:-latest}
     container_name: threatscope_backend
+    privileged: true
     volumes:
       - threatscope_data:/app/data
       - ./rules:/app/rules:ro
       - ./prompts:/app/prompts:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
-      # Core settings
       - THREATSCOPE_ENVIRONMENT=production
       - THREATSCOPE_DEBUG=false
       - THREATSCOPE_DB_PATH=/app/data/tasks.db
@@ -115,13 +74,10 @@ services:
       - THREATSCOPE_GHIDRA_BASE_HTTP_PORT=8000
       - THREATSCOPE_DIEC_URL=http://diec:8000
       - THREATSCOPE_DIEC_ENABLED=true
-      # Analysis settings
       - THREATSCOPE_CAPA_RULES_PATH=/app/rules/capa
       - THREATSCOPE_ANALYSIS_DEFAULT_TIMEOUT=${ANALYSIS_TIMEOUT:-300}
-      # API Keys (from .env)
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
-      # Optional: Observability
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
       - LANGFUSE_HOST=${LANGFUSE_HOST:-}
@@ -131,30 +87,14 @@ services:
       diec:
         condition: service_healthy
     networks:
-      - threatscope-frontend
-      - threatscope-backend
+      - threatscope
     restart: unless-stopped
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: "2"
-          memory: 2G
-        reservations:
-          cpus: "0.5"
-          memory: 512M
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       start_period: 30s
-    security_opt:
-      - no-new-privileges:true
-    group_add:
-      - ${DOCKER_GID:-999}
 
-  # ==========================================================================
-  # Ghidra Analysis Service - Reverse Engineering
-  # ==========================================================================
   ghidra:
     build:
       context: .
@@ -169,31 +109,21 @@ services:
       - GHIDRA_HTTP_URL=http://localhost:8000
       - GHIDRA_UPLOAD_DIR=/app/data/uploads
       - GHIDRA_MCP_ALLOW_ORIGINS=*
-      # JVM tuning for container
       - JAVA_OPTS=-Xms512m -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=200
     networks:
-      - threatscope-backend
+      - threatscope
     restart: unless-stopped
     logging: *default-logging
     deploy:
       resources:
         limits:
-          cpus: "2"
           memory: 4G
-        reservations:
-          cpus: "0.5"
-          memory: 1G
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
       start_period: 120s
       retries: 5
-    security_opt:
-      - no-new-privileges:true
 
-  # ==========================================================================
-  # DIEC File Type Identification Service
-  # ==========================================================================
   diec:
     build:
       context: .
@@ -203,39 +133,19 @@ services:
     environment:
       - DIEC_TIMEOUT=${DIEC_TIMEOUT:-60}
     networks:
-      - threatscope-backend
+      - threatscope
     restart: unless-stopped
     logging: *default-logging
-    deploy:
-      resources:
-        limits:
-          cpus: "1"
-          memory: 512M
-        reservations:
-          cpus: "0.1"
-          memory: 64M
     healthcheck:
       <<: *healthcheck-defaults
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       start_period: 10s
-    security_opt:
-      - no-new-privileges:true
 
-# =============================================================================
-# Networks - Isolated frontend/backend
-# =============================================================================
 networks:
-  threatscope-frontend:
+  threatscope:
     driver: bridge
-    name: threatscope-frontend
-  threatscope-backend:
-    driver: bridge
-    internal: true  # No external access - backend services only
-    name: threatscope-backend
+    name: threatscope
 
-# =============================================================================
-# Volumes
-# =============================================================================
 volumes:
   threatscope_data:
     driver: local
