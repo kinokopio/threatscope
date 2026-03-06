@@ -34,13 +34,16 @@ WORKDIR /app
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
-    git \
     curl \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone capa rules at build time (shallow clone for smaller size)
-RUN git clone --depth 1 https://github.com/mandiant/capa-rules.git /app/rules/capa && \
-    rm -rf /app/rules/capa/.git
+# Download capa rules at build time
+RUN mkdir -p /app/rules/capa && \
+    curl -sL "https://github.com/mandiant/capa-rules/archive/refs/heads/master.zip" -o /tmp/capa-rules.zip && \
+    unzip -q -o /tmp/capa-rules.zip -d /tmp/capa-rules-temp && \
+    mv /tmp/capa-rules-temp/capa-rules-master/* /app/rules/capa/ && \
+    rm -rf /tmp/capa-rules.zip /tmp/capa-rules-temp
 
 # Copy virtual environment from builder
 COPY --from=builder /app/.venv /app/.venv

@@ -35,7 +35,7 @@ services:
       context: .
       dockerfile: docker/Dockerfile.frontend
       args:
-        VITE_API_URL: /api
+        VITE_API_URL: ""
     container_name: threatscope_frontend
     networks:
       - threatscope
@@ -61,10 +61,13 @@ services:
       - ./prompts:/app/prompts:ro
     environment:
       - THREATSCOPE_ENVIRONMENT=production
-      - THREATSCOPE_GHIDRA_SERVICE_MODE=docker
+      - THREATSCOPE_DB_PATH=/app/data/tasks.db
+      - THREATSCOPE_GHIDRA_SERVICE_MODE=http
       - THREATSCOPE_GHIDRA_SERVICE_HOST=ghidra
       - THREATSCOPE_GHIDRA_BASE_HTTP_PORT=8000
       - THREATSCOPE_DIEC_URL=http://diec:8000
+      - THREATSCOPE_DIEC_ENABLED=true
+      - THREATSCOPE_CAPA_RULES_PATH=/app/rules/capa
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
@@ -98,6 +101,7 @@ services:
       - GHIDRA_INSTALL_DIR=/ghidra
       - GHIDRA_HTTP_PORT=8000
       - GHIDRA_HTTP_URL=http://localhost:8000
+      - GHIDRA_UPLOAD_DIR=/app/data/uploads
       - GHIDRA_MCP_ALLOW_ORIGINS=*
     mem_limit: 4g
     networks:
@@ -107,8 +111,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 5
+      start_period: 120s
 
   # ==========================================================================
   # DIEC File Type Identification Service
@@ -118,10 +122,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile.diec
     container_name: threatscope_diec
-    volumes:
-      - threatscope_data:/data:ro
     environment:
-      - DIEC_TIMEOUT=30
+      - DIEC_TIMEOUT=60
     networks:
       - threatscope
     restart: unless-stopped
