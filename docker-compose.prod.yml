@@ -114,8 +114,7 @@ services:
       - THREATSCOPE_ENVIRONMENT=production
       - THREATSCOPE_DEBUG=false
       - THREATSCOPE_DB_PATH=/app/data/tasks.db
-      # Service connections
-      - THREATSCOPE_GHIDRA_SERVICE_MODE=http
+      - THREATSCOPE_GHIDRA_SERVICE_MODE=subprocess
       - THREATSCOPE_GHIDRA_SERVICE_HOST=ghidra
       - THREATSCOPE_GHIDRA_BASE_HTTP_PORT=8000
       - THREATSCOPE_DIEC_URL=http://diec:8000
