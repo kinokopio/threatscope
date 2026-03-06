@@ -170,7 +170,7 @@ services:
     logging: *default-logging
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "curl", "-f", "http://localhost:8081/sse"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
       start_period: 10s
 
   gdb-target:
