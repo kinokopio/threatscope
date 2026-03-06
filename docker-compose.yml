@@ -149,9 +149,8 @@ services:
 
   gdb:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.gdb
-    image: threatscope/gdb:${IMAGE_TAG:-latest}
+      context: ${GDB_MCP_PATH:-../gdb-mcp}
+    image: threatscope/gdb-mcp:${IMAGE_TAG:-latest}
     container_name: threatscope_gdb
     volumes:
       - threatscope_data:/app/data
@@ -171,7 +170,7 @@ services:
     logging: *default-logging
     healthcheck:
       <<: *healthcheck-defaults
-      test: ["CMD", "curl", "-sf", "http://localhost:8081/sse"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081/sse"]
       start_period: 10s
 
   gdb-target:
