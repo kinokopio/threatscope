@@ -3,23 +3,19 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdb \
     gdbserver \
+    git \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY docker/gdb-mcp/pyproject.toml .
-COPY docker/gdb-mcp/src/ src/
-
-RUN pip install --no-cache-dir .
+RUN pip install --no-cache-dir git+https://github.com/kinokopio/gdb-mcp.git
 
 ENV GDB_PATH=/usr/bin/gdb \
     GDB_MCP_LOG_LEVEL=INFO \
     GDB_MCP_MODE=sse \
     GDB_MCP_HOST=0.0.0.0 \
-    GDB_MCP_PORT=8081 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    GDB_MCP_PORT=8081
 
 EXPOSE 8081
 

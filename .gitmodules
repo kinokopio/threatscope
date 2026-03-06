@@ -1,3 +1,0 @@
-[submodule "docker/gdb-mcp"]
-	path = docker/gdb-mcp
-	url = https://github.com/kinokopio/gdb-mcp.git
