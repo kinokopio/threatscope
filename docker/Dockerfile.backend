@@ -9,7 +9,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_INSTALL_DIR=/opt/python \
-    PATH="/opt/uv/bin:/app/.venv/bin:$PATH" \
+    PATH="/usr/local/bin:/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \
     PYTHONUNBUFFERED=1
 
@@ -18,17 +18,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libmagic-dev libmagic1 libffi-dev libssl-dev \
     libyara-dev automake libtool pkg-config \
-    && curl -LsSf https://astral.sh/uv/install.sh | env INSTALLER_NO_MODIFY_PATH=1 UV_INSTALL_DIR=/opt/uv sh \
+    && curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local sh \
     && rm -rf /var/lib/apt/lists/*
 
-RUN /opt/uv/bin/uv python install 3.12.8 && \
+RUN uv python install 3.12.8 && \
     chmod -R a+rX /opt/python
 
 COPY pyproject.toml README.md ./
 COPY src ./src
 
-RUN /opt/uv/bin/uv venv /app/.venv --python 3.12.8 && \
-    /opt/uv/bin/uv pip install --python /app/.venv/bin/python ".[api,ai,docker]"
+RUN uv venv /app/.venv --python 3.12.8 && \
+    uv pip install --python /app/.venv/bin/python ".[api,ai,docker]"
 
 RUN mkdir -p /app/rules/capa && \
     curl -sL "https://github.com/mandiant/capa-rules/archive/refs/heads/master.zip" -o /tmp/capa-rules.zip && \
