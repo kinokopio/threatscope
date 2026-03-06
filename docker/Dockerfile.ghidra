@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY src /app/src
 
-RUN useradd --create-home --shell /bin/bash --uid 1000 ghidra && \
+RUN useradd --create-home --shell /bin/bash ghidra && \
     mkdir -p /app/data/uploads /app/data/projects && \
     chown -R ghidra:ghidra /app
 

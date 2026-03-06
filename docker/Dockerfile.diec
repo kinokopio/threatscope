@@ -24,7 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY docker/diec_server.py /app/
 
-RUN useradd --create-home --shell /bin/bash --uid 1000 diec && \
+RUN useradd --create-home --shell /bin/bash diec && \
     mkdir -p /app/temp && \
     chown -R diec:diec /app
 
