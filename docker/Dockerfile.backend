@@ -3,11 +3,19 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies (including yara-python requirements)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
+    g++ \
+    make \
     libmagic1 \
+    libmagic-dev \
     libffi-dev \
+    libssl-dev \
+    libyara-dev \
+    automake \
+    libtool \
+    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
@@ -16,7 +24,7 @@ COPY src ./src
 
 # Create venv and install dependencies using pip
 RUN python -m venv /app/.venv && \
-    /app/.venv/bin/pip install --no-cache-dir --upgrade pip && \
+    /app/.venv/bin/pip install --no-cache-dir --upgrade pip wheel setuptools && \
     /app/.venv/bin/pip install --no-cache-dir ".[api,ai,docker]"
 
 FROM python:3.11-slim AS runtime
