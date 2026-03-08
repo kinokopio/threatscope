@@ -12,12 +12,19 @@ from src.threatscope.core.dependencies import DatabaseDep, ScheduledCoordinatorD
 router = APIRouter(prefix="/system", tags=["system"])
 
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 async def _check_service(url: str, path: str = "/health") -> bool:
+    full_url = f"{url}{path}"
     try:
         async with httpx.AsyncClient(timeout=2.0) as client:
-            response = await client.get(f"{url}{path}")
+            response = await client.get(full_url)
             return response.status_code in (200, 405)
-    except Exception:
+    except Exception as e:
+        logger.debug(f"Health check failed for {full_url}: {e}")
         return False
 
 
@@ -30,12 +37,16 @@ async def _check_service(url: str, path: str = "/health") -> bool:
 async def health_check() -> HealthResponse:
     settings = get_settings()
 
-    ghidra_status = await _check_service(settings.ghidra.base_url, "/health")
-    diec_status = await _check_service(settings.diec.url, "/health")
+    ghidra_url = settings.ghidra.base_url
+    diec_url = settings.diec.url
+
+    ghidra_status = await _check_service(ghidra_url, "/health")
+    diec_status = await _check_service(diec_url, "/health")
 
     gdb_status = False
-    if settings.gdb.enabled and settings.gdb.service_mode in ("http", "sse"):
-        gdb_url = settings.gdb.mcp_url.replace("/sse", "").replace("/mcp", "")
+    gdb_enabled = settings.gdb.enabled
+    if gdb_enabled and settings.gdb.service_mode in ("http", "sse"):
+        gdb_url = settings.gdb.mcp_url.rstrip("/sse").rstrip("/mcp")
         gdb_status = await _check_service(gdb_url, "/health")
 
     return HealthResponse(
@@ -46,7 +57,7 @@ async def health_check() -> HealthResponse:
             "database": True,
             "ghidra_mcp": ghidra_status,
             "diec": diec_status,
-            "gdb": gdb_status,
+            "gdb": gdb_status if gdb_enabled else False,
         },
     )
 
