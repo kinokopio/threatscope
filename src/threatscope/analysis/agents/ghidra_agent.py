@@ -689,51 +689,51 @@ class GhidraAgent(BaseAgent):
         # Load system prompt
         system_prompt = self.load_system_prompt()
 
-        # Discover and append available skills to system prompt
+        # Discover skills and extract metadata from frontmatter
         skills_dir = self.project_dir / ".claude" / "skills"
+        skills_metadata = []
         if skills_dir.exists():
-            skills = []
             for skill_dir in skills_dir.iterdir():
                 if skill_dir.is_dir():
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        other_files = [
-                            f.name
-                            for f in skill_dir.iterdir()
-                            if f.is_file() and f.name != "SKILL.md"
-                        ]
-                        skills.append(
-                            {
-                                "name": skill_dir.name,
-                                "path": str(skill_dir),
-                                "skill_file": str(skill_file),
-                                "other_files": other_files,
-                            }
-                        )
+                        # Parse YAML frontmatter
+                        content = skill_file.read_text()
+                        if content.startswith("---"):
+                            parts = content.split("---", 2)
+                            if len(parts) >= 3:
+                                try:
+                                    import yaml
 
-            if skills:
-                skill_entries = []
-                for s in skills:
-                    entry = f"- Name: {s['name']}\n  - SKILL.md: {s['skill_file']}"
-                    if s["other_files"]:
-                        files_list = ", ".join(s["other_files"])
-                        entry += f"\n  - Other files in {s['path']}: {files_list}"
-                    skill_entries.append(entry)
+                                    metadata = yaml.safe_load(parts[1])
+                                    if metadata:
+                                        skills_metadata.append(
+                                            {
+                                                "name": metadata.get("name", skill_dir.name),
+                                                "description": metadata.get("description", ""),
+                                                "path": str(skill_file),
+                                            }
+                                        )
+                                except Exception:
+                                    pass
 
-                skill_list = "\n".join(skill_entries)
-                skill_instruction = f"""
+            if skills_metadata:
+                skill_list = "\n".join(
+                    f"- **{s['name']}**: {s['description']}\n  Path: `{s['path']}`"
+                    for s in skills_metadata
+                )
+                skill_instruction = f"""## Step 0: Load Skills
 
-## Available Skills
-
-You have access to the following skills. Before starting any relevant task,
-ALWAYS read the SKILL.md file using the Read tool.
+Available skills:
 
 {skill_list}
 
-IMPORTANT: Do NOT skip reading the skill file, even if you think you know how
-to do the task. The skill file contains critical instructions.
+Read the skill files that match your current task using the Read tool. Skills contain detailed methodology and best practices.
+
+---
+
 """
-                system_prompt = system_prompt + skill_instruction
+                system_prompt = skill_instruction + system_prompt
 
         # Create MCP servers
         utils_server = create_utils_mcp_server()
@@ -1316,33 +1316,15 @@ to do the task. The skill file contains critical instructions.
     ) -> str:
         """Build the analysis prompt for the AI agent."""
         parts = [
-            "Analyze this binary using the available Ghidra tools.",
+            "分析以下二进制文件。",
             "",
-            "## ⚠️ CRITICAL: 所有输出必须使用中文 (Chinese Output Required)",
-            "- purpose, analysis, description, evidence, attack_chain 等所有文本字段必须使用中文",
-            "- 技术术语可以保留英文（如函数名、地址、API名称）",
-            '- 示例: purpose: "建立与C2服务器的网络连接" (正确) vs "Establish network connection" (错误)',
-            "",
-            "## ⚠️ MANDATORY: You MUST use mcp__ghidra__decompile_function tool",
-            "- analyzed_functions MUST contain functions you actually decompiled",
-            "- Do NOT just read function names from symbols - you MUST see the actual code",
-            "- If you don't call mcp__ghidra__decompile_function, analyzed_functions will be EMPTY = FAILURE",
-            "- Call mcp__ghidra__decompile_function for at least 3-5 key functions",
-            "",
-            "## ⚠️ IMPORTANT: How to handle decompile_function errors",
-            "- If decompile_function('main') fails, the binary may be stripped",
-            "- Use list_functions to get actual function names (e.g., FUN_00401000)",
-            "- Try decompile_function with ADDRESS: decompile_function('0x401000')",
-            "- Try other entry points: '_start', 'entry', or addresses from list_functions",
-            "- DO NOT give up and switch to strings_search - keep trying with different targets",
-            "",
-            "## Binary Information",
+            "## 二进制信息",
             f"```json\n{json.dumps(ghidra_info, indent=2)}\n```",
             "",
-            "## Static Analysis Results",
+            "## 静态分析结果",
             f"```json\n{json.dumps(static_results, indent=2, ensure_ascii=False)[:8000]}\n```",
             "",
-            f"## Sample File Path\n{file_path}",
+            f"## 样本路径\n{file_path}",
             "",
         ]
 
@@ -1382,78 +1364,15 @@ to do the task. The skill file contains critical instructions.
                 for kw in ["network", "crypto", "anti", "persistence"]
             ):
                 suspicious_funcs.append(cap.get("name", ""))
-        parts.extend(
-            [
-                "## Investigation Protocol (MANDATORY)",
-                "",
-                "### 1. MUST Decompile Functions (CRITICAL)",
-                "- You MUST call mcp__ghidra__decompile_function for key functions",
-                "- analyzed_functions array MUST contain functions you decompiled",
-                "- Reading symbols alone is NOT enough - see the actual code",
-                "",
-                "### 2. Evidence Verification",
-                "- Any function flagged as suspicious MUST be verified with mcp__ghidra__decompile_function",
-                "- Do NOT trust static analysis classifications blindly",
-                "",
-                "### 3. Upstream Tracing",
-                "- For ANY suspicious function, MUST call mcp__ghidra__function_xrefs to find its callers",
-                "- Trace until you find: entry point, exported function, or thread creation",
-                "- Build complete chain: decrypt -> inject -> communicate",
-                "",
-            ]
-        )
 
         if suspicious_funcs:
             parts.extend(
                 [
-                    "## Suspicious Functions to Investigate",
-                    "These were flagged by static analysis - VERIFY with decompile_function:",
+                    "## 可疑函数",
                     ", ".join(suspicious_funcs[:20]),
                     "",
                 ]
             )
-
-        parts.extend(
-            [
-                "## Required Tool Usage",
-                "",
-                "### Step 1: List functions and find entry points",
-                "- Call mcp__ghidra__list_functions to see available functions",
-                "- Identify main, _start, or exported functions",
-                "",
-                "### Step 2: Decompile key functions (MANDATORY)",
-                "- Call mcp__ghidra__decompile_function for entry points",
-                "- Call mcp__ghidra__decompile_function for suspicious functions",
-                "- You MUST decompile at least 3-5 functions",
-                '- Example: mcp__ghidra__decompile_function(target="main")',
-                "",
-                "### Step 3: Trace call chains",
-                "- Call mcp__ghidra__function_xrefs to understand relationships",
-                "- Build attack chain from entry to malicious behavior",
-                "",
-                "## CRITICAL: Final Output Format (所有文本使用中文!)",
-                "After completing your analysis, you MUST output a JSON object with this EXACT structure:",
-                "```json",
-                "{",
-                '  "analyzed_functions": [',
-                '    {"name": "func_name", "address": "0x...", "purpose": "用中文描述函数用途", "analysis": "用中文详细分析", "risk": "critical|high|medium|low"}',
-                "  ],",
-                '  "key_findings": [',
-                '    {"id": "finding_001", "title": "中文标题", "category": "中文类别", "description": "用中文详细描述", "severity": "CRITICAL|HIGH|MEDIUM|LOW", "evidence": ["中文证据1", "中文证据2"]}',
-                "  ],",
-                '  "attack_chain": "函数A (中文用途) → 函数B (中文用途) → 函数C (中文用途)",',
-                '  "analysis_path": ["步骤1: 中文描述", "步骤2: 中文描述"]',
-                "}",
-                "```",
-                "",
-                "## Output Requirements:",
-                "- analyzed_functions MUST NOT be empty - include functions you decompiled with mcp__ghidra__decompile_function",
-                "- evidence MUST be an array of strings, never a single string",
-                "- risk uses lowercase: critical, high, medium, low",
-                "- severity uses UPPERCASE: CRITICAL, HIGH, MEDIUM, LOW",
-                "- **所有 purpose, analysis, title, description, evidence, attack_chain 必须使用中文**",
-            ]
-        )
 
         return "\n".join(parts)
 

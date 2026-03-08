@@ -166,42 +166,7 @@ Every finding must have code evidence:
 }
 ```
 
-## Output Schema
-
-```json
-{
-  "analyzed_functions": [
-    {
-      "name": "function_name",
-      "address": "0x401000",
-      "purpose": "Brief description of what this function does",
-      "analysis": "Detailed analysis with code snippets",
-      "risk": "critical|high|medium|low"
-    }
-  ],
-  "key_findings": [
-    {
-      "id": "finding_001",
-      "title": "Short title",
-      "category": "C2|Persistence|Evasion|Encryption|DataTheft",
-      "description": "Detailed description",
-      "severity": "CRITICAL|HIGH|MEDIUM|LOW",
-      "evidence": ["0x401120: code snippet", "0x401130: another snippet"],
-      "impact": "What this means for the victim",
-      "recommendation": "How to remediate"
-    }
-  ],
-  "malware_classification": {
-    "type": "RAT|Backdoor|Miner|Ransomware|Trojan|Stealer|Botnet|Benign|Unknown",
-    "family": "Family name if identified",
-    "severity": "CRITICAL|HIGH|MEDIUM|LOW"
-  },
-  "attack_chain": "main → init → connect_c2 → command_loop",
-  "analysis_path": ["Step 1: ...", "Step 2: ..."]
-}
-```
-
-### Classification Guidelines
+## Classification Guidelines
 
 Only classify based on code evidence:
 
