@@ -76,7 +76,9 @@ services:
       - THREATSCOPE_DIEC_ENABLED=true
       - THREATSCOPE_CAPA_RULES_PATH=/app/rules/capa
       - THREATSCOPE_ANALYSIS_DEFAULT_TIMEOUT=${ANALYSIS_TIMEOUT:-300}
-      - THREATSCOPE_GDB_ENABLED=${GDB_ENABLED:-false}
+      - THREATSCOPE_GDB_ENABLED=${GDB_ENABLED:-true}
+      - THREATSCOPE_GDB_SERVICE_MODE=sse
+      - THREATSCOPE_GDB_MCP_URL=http://gdb:8081/sse
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
       - ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}
@@ -87,6 +89,8 @@ services:
       ghidra:
         condition: service_healthy
       diec:
+        condition: service_healthy
+      gdb:
         condition: service_healthy
     networks:
       - threatscope
@@ -142,6 +146,47 @@ services:
       <<: *healthcheck-defaults
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       start_period: 10s
+
+  gdb:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.gdb
+    image: threatscope/gdb-mcp:${IMAGE_TAG:-latest}
+    container_name: threatscope_gdb
+    volumes:
+      - threatscope_data:/app/data
+    environment:
+      - GDB_PATH=/usr/bin/gdb
+      - GDB_MCP_LOG_LEVEL=INFO
+      - GDB_MCP_MODE=sse
+      - GDB_MCP_HOST=0.0.0.0
+      - GDB_MCP_PORT=8081
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    networks:
+      - threatscope
+    restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      <<: *healthcheck-defaults
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
+      start_period: 10s
+
+  gdb-target:
+    image: ubuntu:22.04
+    container_name: threatscope_gdb_target
+    command: ["sleep", "infinity"]
+    volumes:
+      - threatscope_data:/app/data
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    network_mode: "none"
+    restart: unless-stopped
+    logging: *default-logging
 
 networks:
   threatscope:
