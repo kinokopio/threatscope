@@ -536,7 +536,10 @@ export function ReportPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">状态:</span>
                   <Badge variant={task.status === 'completed' ? 'default' : task.status === 'failed' ? 'destructive' : 'secondary'}>
-                    {task.status === 'completed' ? '已完成' : task.status === 'failed' ? '失败' : task.status === 'running' ? '运行中' : '等待中'}
+                    {task.status === 'completed' ? '已完成' 
+                      : task.status === 'failed' ? '失败' 
+                      : task.status === 'pending' ? '等待中'
+                      : task.current_step || '分析中'}
                   </Badge>
                 </div>
               </div>

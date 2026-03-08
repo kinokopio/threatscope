@@ -19,6 +19,8 @@ export function useTasks(params?: TaskListParams) {
   })
 }
 
+const ACTIVE_STATUSES = ['pending', 'queued', 'static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation']
+
 export function useTask(id: string) {
   return useQuery({
     queryKey: ['task', id],
@@ -26,7 +28,7 @@ export function useTask(id: string) {
     enabled: !!id,
     refetchInterval: (query) => {
       const task = query.state.data as Task | undefined
-      if (task?.status === 'running' || task?.status === 'pending') {
+      if (task?.status && ACTIVE_STATUSES.includes(task.status)) {
         return 2000
       }
       return false
