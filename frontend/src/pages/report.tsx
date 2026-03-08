@@ -136,11 +136,21 @@ function OverviewTab({ task }: { task: any }) {
       {unifiedReport.recommendations && unifiedReport.recommendations.length > 0 && (
         <div>
           <h3 className="mb-3 text-lg font-semibold">建议措施</h3>
-          <ul className="space-y-2">
-            {unifiedReport.recommendations.map((rec: string, idx: number) => (
-              <li key={idx} className="flex items-start gap-2">
-                <Shield className="mt-0.5 h-4 w-4 text-primary" />
-                <span className="text-muted-foreground">{rec}</span>
+          <ul className="space-y-3">
+            {unifiedReport.recommendations.map((rec: any, idx: number) => (
+              <li key={idx} className="rounded-lg border p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <Shield className="h-4 w-4 text-primary" />
+                  <span className="font-medium">{typeof rec === 'string' ? rec : rec.action}</span>
+                  {rec.priority && (
+                    <Badge variant={rec.priority === 'immediate' ? 'destructive' : rec.priority === 'high' ? 'secondary' : 'outline'}>
+                      {rec.priority === 'immediate' ? '紧急' : rec.priority === 'high' ? '高' : '中'}
+                    </Badge>
+                  )}
+                </div>
+                {rec.details && (
+                  <p className="text-sm text-muted-foreground ml-6">{rec.details}</p>
+                )}
               </li>
             ))}
           </ul>
