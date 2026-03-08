@@ -163,13 +163,57 @@ function OverviewTab({ task }: { task: any }) {
 function StaticTab({ task }: { task: any }) {
   const capaResults = task.capa?.capabilities || []
   const yaraMatches = task.yara?.matches || []
-  const strings = task.strings?.strings || []
+  const strings = task.strings
+  const suspiciousStrings = strings?.suspicious || []
+  const domains = strings?.domains || []
+  const urls = strings?.urls || []
+  const ips = strings?.ips || []
 
   return (
     <div className="space-y-6">
+      {yaraMatches.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">YARA 匹配 ({yaraMatches.length})</h3>
+          <div className="space-y-3">
+            {yaraMatches.map((match: any, idx: number) => (
+              <div key={idx} className="rounded-lg border p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="destructive">{match.rule}</Badge>
+                  {match.namespace && (
+                    <Badge variant="outline">{match.namespace}</Badge>
+                  )}
+                  {match.tags?.map((tag: string, tidx: number) => (
+                    <Badge key={tidx} variant="secondary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+                {match.meta && (
+                  <div className="space-y-1 text-sm">
+                    {match.meta.description && (
+                      <p className="text-muted-foreground">{match.meta.description}</p>
+                    )}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      {match.meta.author && <span>作者: {match.meta.author}</span>}
+                      {match.meta.date && <span>日期: {match.meta.date}</span>}
+                      {match.meta.score && <span>评分: {match.meta.score}</span>}
+                      {match.meta.reference && (
+                        <a href={match.meta.reference} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                          参考链接
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {capaResults.length > 0 && (
         <div>
-          <h3 className="mb-3 text-lg font-semibold">CAPA 能力检测</h3>
+          <h3 className="mb-3 text-lg font-semibold">CAPA 能力检测 ({capaResults.length})</h3>
           <div className="space-y-2">
             {capaResults.map((cap: any, idx: number) => (
               <div key={idx} className="rounded-lg border p-3">
@@ -183,44 +227,55 @@ function StaticTab({ task }: { task: any }) {
         </div>
       )}
 
-      {yaraMatches.length > 0 && (
+      {(domains.length > 0 || urls.length > 0 || ips.length > 0 || suspiciousStrings.length > 0) && (
         <div>
-          <h3 className="mb-3 text-lg font-semibold">YARA 匹配</h3>
-          <div className="space-y-2">
-            {yaraMatches.map((match: any, idx: number) => (
-              <div key={idx} className="rounded-lg border p-3">
-                <div className="flex items-center gap-2">
-                  <Badge variant="destructive">{match.rule}</Badge>
-                  {match.tags?.map((tag: string, tidx: number) => (
-                    <Badge key={tidx} variant="outline">
-                      {tag}
-                    </Badge>
+          <h3 className="mb-3 text-lg font-semibold">提取字符串</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            {domains.length > 0 && (
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-2">域名 ({domains.length})</h4>
+                <div className="space-y-1 font-mono text-sm">
+                  {domains.map((d: string, idx: number) => (
+                    <div key={idx} className="text-muted-foreground">{d}</div>
                   ))}
                 </div>
               </div>
-            ))}
+            )}
+            {ips.length > 0 && (
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-2">IP 地址 ({ips.length})</h4>
+                <div className="space-y-1 font-mono text-sm">
+                  {ips.map((ip: string, idx: number) => (
+                    <div key={idx} className="text-muted-foreground">{ip}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {urls.length > 0 && (
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-2">URL ({urls.length})</h4>
+                <div className="space-y-1 font-mono text-sm">
+                  {urls.slice(0, 20).map((url: string, idx: number) => (
+                    <div key={idx} className="text-muted-foreground truncate">{url}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {suspiciousStrings.length > 0 && (
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-2">可疑字符串 ({suspiciousStrings.length})</h4>
+                <div className="space-y-1 font-mono text-sm">
+                  {suspiciousStrings.slice(0, 20).map((s: string, idx: number) => (
+                    <div key={idx} className="text-muted-foreground truncate">{s}</div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {strings.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-lg font-semibold">
-            提取字符串 ({strings.length})
-          </h3>
-          <ScrollArea className="h-[300px] rounded-lg border">
-            <div className="p-4 font-mono text-sm">
-              {strings.slice(0, 100).map((str: string, idx: number) => (
-                <div key={idx} className="truncate py-0.5 text-muted-foreground">
-                  {str}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </div>
-      )}
-
-      {capaResults.length === 0 && yaraMatches.length === 0 && strings.length === 0 && (
+      {capaResults.length === 0 && yaraMatches.length === 0 && !strings && (
         <div className="py-8 text-center text-muted-foreground">
           暂无静态分析数据
         </div>
@@ -230,68 +285,134 @@ function StaticTab({ task }: { task: any }) {
 }
 
 function DynamicTab({ task }: { task: any }) {
-  const dynamicAnalysis = task.dynamic_analysis || {}
-  const syscalls = dynamicAnalysis.syscalls || []
-  const network = dynamicAnalysis.network || []
-  const fileOps = dynamicAnalysis.file_operations || []
+  const da = task.dynamic_analysis || {}
+  const processTree = da.process_tree || []
+  const syscallSummary = da.syscall_summary || {}
+  const networkSummary = da.network_summary || {}
+  const fileActivity = da.file_activity || {}
+  const eventTypes = da.event_types || []
+  const skipped = da.skipped
+
+  if (skipped) {
+    return (
+      <div className="py-8 text-center text-muted-foreground">
+        动态分析已跳过
+      </div>
+    )
+  }
+
+  const hasData = processTree.length > 0 || Object.keys(syscallSummary).length > 0 || eventTypes.length > 0
 
   return (
     <div className="space-y-6">
-      {syscalls.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-lg font-semibold">系统调用</h3>
-          <ScrollArea className="h-[300px] rounded-lg border">
-            <div className="p-4">
-              {syscalls.map((call: any, idx: number) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-4 border-b py-2 last:border-0"
-                >
-                  <Badge variant="outline">{call.name}</Badge>
-                  <span className="truncate font-mono text-sm text-muted-foreground">
-                    {call.args?.join(', ')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
+      {da.success && (
+        <div className="flex items-center gap-4 text-sm text-muted-foreground">
+          <span>分析方法: <Badge variant="outline">{da.method}</Badge></span>
+          <span>执行时间: {da.duration_seconds?.toFixed(2)}s</span>
+          <span>事件数: {da.raw_events_count}</span>
         </div>
       )}
 
-      {network.length > 0 && (
+      {processTree.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">进程树</h3>
+          <div className="rounded-lg border p-4 font-mono text-sm">
+            {processTree.map((proc: any, idx: number) => (
+              <div key={idx}>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline">PID {proc.pid}</Badge>
+                  <span className="font-medium">{proc.name}</span>
+                </div>
+                <div className="text-muted-foreground ml-4 truncate">{proc.cmdline}</div>
+                {proc.children?.map((child: any, cidx: number) => (
+                  <div key={cidx} className="ml-8 mt-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">└─</span>
+                      <Badge variant="outline">PID {child.pid}</Badge>
+                      <span className="font-medium">{child.name}</span>
+                    </div>
+                    <div className="text-muted-foreground ml-8 truncate">{child.cmdline}</div>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {syscallSummary.by_type && Object.keys(syscallSummary.by_type).length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">系统调用统计 ({syscallSummary.total_count})</h3>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(syscallSummary.by_type).map(([name, count]: [string, any]) => (
+              <Badge key={name} variant="secondary">
+                {name}: {count}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {eventTypes.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">事件类型</h3>
+          <div className="flex flex-wrap gap-2">
+            {eventTypes.map((evt: string, idx: number) => (
+              <Badge key={idx} variant="outline">{evt}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {fileActivity && (fileActivity.created?.length > 0 || fileActivity.modified?.length > 0 || fileActivity.deleted?.length > 0) && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">文件活动</h3>
+          <div className="grid gap-4 md:grid-cols-3">
+            {fileActivity.created?.length > 0 && (
+              <div className="rounded-lg border p-3">
+                <h4 className="font-medium mb-2 text-green-600">创建</h4>
+                {fileActivity.created.map((f: string, idx: number) => (
+                  <div key={idx} className="text-sm text-muted-foreground truncate">{f}</div>
+                ))}
+              </div>
+            )}
+            {fileActivity.modified?.length > 0 && (
+              <div className="rounded-lg border p-3">
+                <h4 className="font-medium mb-2 text-amber-600">修改</h4>
+                {fileActivity.modified.map((f: string, idx: number) => (
+                  <div key={idx} className="text-sm text-muted-foreground truncate">{f}</div>
+                ))}
+              </div>
+            )}
+            {fileActivity.deleted?.length > 0 && (
+              <div className="rounded-lg border p-3">
+                <h4 className="font-medium mb-2 text-red-600">删除</h4>
+                {fileActivity.deleted.map((f: string, idx: number) => (
+                  <div key={idx} className="text-sm text-muted-foreground truncate">{f}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {networkSummary && (networkSummary.total_dns_queries > 0 || networkSummary.total_connections > 0) && (
         <div>
           <h3 className="mb-3 text-lg font-semibold">网络活动</h3>
-          <div className="space-y-2">
-            {network.map((net: any, idx: number) => (
-              <div key={idx} className="rounded-lg border p-3">
-                <div className="flex items-center gap-2">
-                  <Badge>{net.type}</Badge>
-                  <span className="font-mono">{net.destination}</span>
-                  {net.port && (
-                    <span className="text-muted-foreground">:{net.port}</span>
-                  )}
-                </div>
-              </div>
-            ))}
+          <div className="flex gap-4">
+            <div className="rounded-lg border p-3">
+              <div className="text-2xl font-semibold">{networkSummary.total_dns_queries}</div>
+              <div className="text-sm text-muted-foreground">DNS 查询</div>
+            </div>
+            <div className="rounded-lg border p-3">
+              <div className="text-2xl font-semibold">{networkSummary.total_connections}</div>
+              <div className="text-sm text-muted-foreground">网络连接</div>
+            </div>
           </div>
         </div>
       )}
 
-      {fileOps.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-lg font-semibold">文件操作</h3>
-          <div className="space-y-2">
-            {fileOps.map((op: any, idx: number) => (
-              <div key={idx} className="rounded-lg border p-3">
-                <Badge variant="secondary">{op.operation}</Badge>
-                <span className="ml-2 font-mono text-sm">{op.path}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {syscalls.length === 0 && network.length === 0 && fileOps.length === 0 && (
+      {!hasData && (
         <div className="py-8 text-center text-muted-foreground">
           暂无动态分析数据
         </div>
@@ -301,33 +422,104 @@ function DynamicTab({ task }: { task: any }) {
 }
 
 function GhidraTab({ task }: { task: any }) {
-  const ghidraAnalysis = task.ghidra_analysis || {}
-  const functions = ghidraAnalysis.functions || []
-  const imports = ghidraAnalysis.imports || []
+  const ga = task.ghidra_analysis || {}
+  const aiAnalysis = ga.ai_analysis || {}
+  const analyzedFunctions = aiAnalysis.analyzed_functions || ga.analyzed_functions || []
+  const keyFindings = aiAnalysis.key_findings || ga.key_findings || []
+  const ghidraInfo = ga.ghidra_info || {}
+  const analysisPath = aiAnalysis.analysis_path || []
+  const malwareClass = aiAnalysis.malware_classification
+
+  const hasData = analyzedFunctions.length > 0 || keyFindings.length > 0
 
   return (
     <div className="space-y-6">
-      {functions.length > 0 && (
+      {ghidraInfo.file && (
+        <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+          <span>格式: <Badge variant="outline">{ghidraInfo.format}</Badge></span>
+          <span>架构: {ghidraInfo.arch} {ghidraInfo.bits}位</span>
+          <span>编译器: {ghidraInfo.compiler}</span>
+          <span>大小: {ghidraInfo.human_size}</span>
+        </div>
+      )}
+
+      {malwareClass && (
+        <div className="rounded-lg border p-4 bg-red-50 dark:bg-red-950/20">
+          <h3 className="text-lg font-semibold mb-2">恶意软件分类</h3>
+          <div className="flex items-center gap-3">
+            <Badge variant="destructive">{malwareClass.type}</Badge>
+            {malwareClass.family && <span className="font-medium">家族: {malwareClass.family}</span>}
+            <Badge variant={malwareClass.severity === 'CRITICAL' ? 'destructive' : 'secondary'}>
+              {malwareClass.severity}
+            </Badge>
+          </div>
+        </div>
+      )}
+
+      {keyFindings.length > 0 && (
         <div>
-          <h3 className="mb-3 text-lg font-semibold">
-            函数列表 ({functions.length})
-          </h3>
+          <h3 className="mb-3 text-lg font-semibold">关键发现 ({keyFindings.length})</h3>
+          <div className="space-y-3">
+            {keyFindings.map((finding: any, idx: number) => (
+              <div key={idx} className="rounded-lg border p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant={
+                    finding.severity === 'CRITICAL' ? 'destructive' 
+                    : finding.severity === 'HIGH' ? 'destructive'
+                    : finding.severity === 'MEDIUM' ? 'secondary' 
+                    : 'outline'
+                  }>
+                    {finding.severity}
+                  </Badge>
+                  <span className="font-medium">{finding.title}</span>
+                  {finding.category && (
+                    <Badge variant="outline">{finding.category}</Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground mb-2">{finding.description}</p>
+                {finding.evidence && finding.evidence.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-muted-foreground mb-1">证据:</div>
+                    <ul className="text-xs text-muted-foreground space-y-0.5 font-mono">
+                      {finding.evidence.slice(0, 5).map((e: string, eidx: number) => (
+                        <li key={eidx}>• {e}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {analyzedFunctions.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">分析的函数 ({analyzedFunctions.length})</h3>
           <ScrollArea className="h-[400px] rounded-lg border">
             <div className="p-4 space-y-4">
-              {functions.map((func: any, idx: number) => (
+              {analyzedFunctions.map((func: any, idx: number) => (
                 <div key={idx} className="rounded-lg border p-4">
-                  <div className="mb-2 flex items-center gap-2">
+                  <div className="mb-2 flex items-center gap-2 flex-wrap">
                     <Code className="h-4 w-4 text-primary" />
                     <span className="font-mono font-medium">{func.name}</span>
                     <Badge variant="outline">{func.address}</Badge>
-                    <span className="text-sm text-muted-foreground">
-                      {func.size} bytes
-                    </span>
+                    {func.risk && (
+                      <Badge variant={
+                        func.risk === 'critical' ? 'destructive'
+                        : func.risk === 'high' ? 'destructive'
+                        : func.risk === 'medium' ? 'secondary'
+                        : 'outline'
+                      }>
+                        {func.risk}
+                      </Badge>
+                    )}
                   </div>
-                  {func.decompiled && (
-                    <pre className="mt-2 overflow-x-auto rounded bg-muted p-3 font-mono text-xs">
-                      {func.decompiled}
-                    </pre>
+                  {func.purpose && (
+                    <p className="text-sm font-medium mb-1">{func.purpose}</p>
+                  )}
+                  {func.analysis && (
+                    <p className="text-sm text-muted-foreground">{func.analysis}</p>
                   )}
                 </div>
               ))}
@@ -336,20 +528,18 @@ function GhidraTab({ task }: { task: any }) {
         </div>
       )}
 
-      {imports.length > 0 && (
+      {analysisPath.length > 0 && (
         <div>
-          <h3 className="mb-3 text-lg font-semibold">导入函数</h3>
-          <div className="flex flex-wrap gap-2">
-            {imports.map((imp: string, idx: number) => (
-              <Badge key={idx} variant="outline">
-                {imp}
-              </Badge>
+          <h3 className="mb-3 text-lg font-semibold">分析路径</h3>
+          <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+            {analysisPath.map((step: string, idx: number) => (
+              <li key={idx}>{step}</li>
             ))}
-          </div>
+          </ol>
         </div>
       )}
 
-      {functions.length === 0 && imports.length === 0 && (
+      {!hasData && (
         <div className="py-8 text-center text-muted-foreground">
           暂无 Ghidra 分析数据
         </div>
@@ -360,66 +550,114 @@ function GhidraTab({ task }: { task: any }) {
 
 function IOCTab({ task }: { task: any }) {
   const unifiedReport = task.unified_report || {}
-  const techniques = unifiedReport.techniques || []
+  const mitreMapping = unifiedReport.mitre_mapping || []
+  const iocs = unifiedReport.iocs || {}
   const sha256 = task.hashes?.sha256 || ''
+
+  const domains = iocs.domains || []
+  const ips = iocs.ips || []
+  const urls = iocs.urls || []
+  const fileHashes = iocs.file_hashes || []
 
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-3 text-lg font-semibold">IOC 指标</h3>
-        <div className="space-y-4">
-          <div className="rounded-lg border p-4">
-            <div className="mb-2 text-sm font-medium text-muted-foreground">
-              文件哈希
-            </div>
-            <div className="space-y-2">
-              {task.hashes?.md5 && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">MD5</Badge>
-                  <code className="flex-1 truncate font-mono text-sm">
-                    {task.hashes.md5}
-                  </code>
-                  <CopyButton text={task.hashes.md5} />
-                </div>
-              )}
-              {task.hashes?.sha1 && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">SHA1</Badge>
-                  <code className="flex-1 truncate font-mono text-sm">
-                    {task.hashes.sha1}
-                  </code>
-                  <CopyButton text={task.hashes.sha1} />
-                </div>
-              )}
-              {sha256 && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">SHA256</Badge>
-                  <code className="flex-1 truncate font-mono text-sm">
-                    {sha256}
-                  </code>
-                  <CopyButton text={sha256} />
-                </div>
-              )}
-            </div>
+        <h3 className="mb-3 text-lg font-semibold">文件哈希</h3>
+        <div className="rounded-lg border p-4">
+          <div className="space-y-2">
+            {task.hashes?.md5 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">MD5</Badge>
+                <code className="flex-1 truncate font-mono text-sm">
+                  {task.hashes.md5}
+                </code>
+                <CopyButton text={task.hashes.md5} />
+              </div>
+            )}
+            {task.hashes?.sha1 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">SHA1</Badge>
+                <code className="flex-1 truncate font-mono text-sm">
+                  {task.hashes.sha1}
+                </code>
+                <CopyButton text={task.hashes.sha1} />
+              </div>
+            )}
+            {sha256 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="outline">SHA256</Badge>
+                <code className="flex-1 truncate font-mono text-sm">
+                  {sha256}
+                </code>
+                <CopyButton text={sha256} />
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {techniques.length > 0 && (
+      {(domains.length > 0 || ips.length > 0 || urls.length > 0) && (
         <div>
-          <h3 className="mb-3 text-lg font-semibold">MITRE ATT&CK 技术</h3>
-          <div className="space-y-2">
-            {techniques.map((tech: any, idx: number) => (
-              <div key={idx} className="rounded-lg border p-4">
-                <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-primary" />
-                  <Badge>{tech.id}</Badge>
-                  <span className="font-medium">{tech.name}</span>
+          <h3 className="mb-3 text-lg font-semibold">网络 IOC</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            {domains.length > 0 && (
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-2">域名 ({domains.length})</h4>
+                <div className="space-y-1">
+                  {domains.map((d: any, idx: number) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <code className="font-mono text-sm">{d.value || d}</code>
+                      {d.confidence && (
+                        <Badge variant="outline" className="text-xs">{d.confidence}</Badge>
+                      )}
+                    </div>
+                  ))}
                 </div>
-                {tech.description && (
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {tech.description}
-                  </p>
+              </div>
+            )}
+            {ips.length > 0 && (
+              <div className="rounded-lg border p-4">
+                <h4 className="font-medium mb-2">IP 地址 ({ips.length})</h4>
+                <div className="space-y-1">
+                  {ips.map((ip: any, idx: number) => (
+                    <div key={idx} className="font-mono text-sm">{ip.value || ip}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {urls.length > 0 && (
+              <div className="rounded-lg border p-4 md:col-span-2">
+                <h4 className="font-medium mb-2">URL ({urls.length})</h4>
+                <div className="space-y-1">
+                  {urls.slice(0, 10).map((url: any, idx: number) => (
+                    <div key={idx} className="font-mono text-sm truncate">{url.value || url}</div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mitreMapping.length > 0 && (
+        <div>
+          <h3 className="mb-3 text-lg font-semibold">MITRE ATT&CK 映射 ({mitreMapping.length})</h3>
+          <div className="space-y-3">
+            {mitreMapping.map((mapping: any, idx: number) => (
+              <div key={idx} className="rounded-lg border p-4">
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Target className="h-4 w-4 text-primary" />
+                  <Badge variant="destructive">{mapping.technique_id}</Badge>
+                  <span className="font-medium">{mapping.technique_name}</span>
+                  {mapping.tactic && (
+                    <Badge variant="outline">{mapping.tactic}</Badge>
+                  )}
+                  {mapping.confidence && (
+                    <Badge variant="secondary">{mapping.confidence}</Badge>
+                  )}
+                </div>
+                {mapping.evidence && (
+                  <p className="text-sm text-muted-foreground">{mapping.evidence}</p>
                 )}
               </div>
             ))}
