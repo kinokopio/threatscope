@@ -78,6 +78,22 @@ class TaskRepository:
                         steps_status TEXT
                     )
                 """)
+            else:
+                cursor = conn.execute("PRAGMA table_info(tasks)")
+                existing_columns = {row[1] for row in cursor.fetchall()}
+
+                migrations = [
+                    ("steps_status", "TEXT"),
+                    ("capa", "TEXT"),
+                    ("file_type", "TEXT"),
+                    ("unified_report", "TEXT"),
+                    ("current_step", "TEXT"),
+                    ("options", "TEXT"),
+                ]
+
+                for col_name, col_type in migrations:
+                    if col_name not in existing_columns:
+                        conn.execute(f"ALTER TABLE tasks ADD COLUMN {col_name} {col_type}")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at)")
                 conn.commit()
