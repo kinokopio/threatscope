@@ -139,6 +139,7 @@ class AnalysisCoordinator:
         enable_strings: bool = True,
         enable_yara: bool = True,
         progress_callback: ProgressCallback = None,
+        skills: list[str] | None = None,
     ) -> dict[str, Any]:
         """Run complete analysis pipeline on a file.
 
@@ -284,7 +285,7 @@ class AnalysisCoordinator:
                         "ghidra", "Ghidra Deep Analysis", "running", None, results
                     )
                 ghidra_results = await self._run_ghidra_analysis(
-                    results, file_path, progress_callback
+                    results, file_path, progress_callback, skills=skills
                 )
                 task.ghidra_results = ghidra_results
                 if progress_callback:
@@ -530,11 +531,18 @@ class AnalysisCoordinator:
         static_results: dict[str, Any],
         file_path: Path,
         progress_callback: ProgressCallback,
+        skills: list[str] | None = None,
     ) -> dict[str, Any]:
         """Run Ghidra deep analysis.
 
         If ghidra_pool is available (Docker mode), acquires an instance from the pool.
         Otherwise, starts Ghidra service on-demand using GhidraServiceManager.
+
+        Args:
+            static_results: Results from static analysis.
+            file_path: Path to the binary file.
+            progress_callback: Callback for progress updates.
+            skills: Optional list of skill names to load for AI analysis.
         """
         from src.threatscope.ghidra.manager import GhidraServiceManager
 
@@ -622,6 +630,7 @@ class AnalysisCoordinator:
                     "sample_hash": sample_hash,
                 },
                 progress_callback=progress_callback,
+                skills=skills,
             )
 
             return result.data if result.success else {"error": result.error}

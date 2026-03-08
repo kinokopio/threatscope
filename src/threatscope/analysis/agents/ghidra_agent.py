@@ -379,6 +379,7 @@ class GhidraAgent(BaseAgent):
         self,
         context: dict[str, Any],
         progress_callback: Callable[[str, str, str, dict | None], Any] | None = None,
+        skills: list[str] | None = None,
     ) -> AgentResult:
         """Perform deep analysis using Ghidra with AI-driven exploration.
 
@@ -389,11 +390,13 @@ class GhidraAgent(BaseAgent):
                 - sample_hash: SHA256 hash of the sample
             progress_callback: Optional async callback for progress updates.
                 Signature: (step_id, step_name, status, preview_data) -> None
+            skills: Optional list of skill names to load. If None, loads all available skills.
 
         Returns:
             AgentResult with deep analysis findings.
         """
         self._progress_callback = progress_callback
+        self._selected_skills = skills  # Store for use in _run_ai_analysis
         static_results = context.get("static_results", {})
         file_path = context.get("file_path", "")
         sample_hash = context.get("sample_hash", "")
@@ -689,62 +692,38 @@ class GhidraAgent(BaseAgent):
         # Load system prompt
         system_prompt = self.load_system_prompt()
 
-        # Discover skills and extract metadata from frontmatter
+        # Load and inject skill contents directly into system prompt
+        # If _selected_skills is set, only load those skills; otherwise load all
         skills_dir = self.project_dir / ".claude" / "skills"
-        skills_metadata = []
+        skills_content = []
+        selected_skills = getattr(self, "_selected_skills", None)
+
         if skills_dir.exists():
             for skill_dir in skills_dir.iterdir():
                 if skill_dir.is_dir():
+                    # Filter by selected skills if specified
+                    if selected_skills is not None and skill_dir.name not in selected_skills:
+                        continue
+
                     skill_file = skill_dir / "SKILL.md"
                     if skill_file.exists():
-                        # Parse YAML frontmatter
                         content = skill_file.read_text()
+                        # Remove YAML frontmatter
                         if content.startswith("---"):
                             parts = content.split("---", 2)
                             if len(parts) >= 3:
-                                try:
-                                    import yaml
+                                content = parts[2].strip()
+                        skills_content.append(content)
+                        logger.info(f"Loaded skill: {skill_dir.name}")
 
-                                    metadata = yaml.safe_load(parts[1])
-                                    if metadata:
-                                        skills_metadata.append(
-                                            {
-                                                "name": metadata.get("name", skill_dir.name),
-                                                "description": metadata.get("description", ""),
-                                                "path": str(skill_file),
-                                            }
-                                        )
-                                except Exception:
-                                    pass
-
-            if skills_metadata:
-                skill_list = "\n".join(
-                    f"- **{s['name']}**: {s['description']}\n  Path: `{s['path']}`"
-                    for s in skills_metadata
-                )
-                # Build example tool calls for each skill
-                skill_examples = "\n".join(
-                    f'Skill(name="{s["name"]}")  # or Read(file_path="{s["path"]}")'
-                    for s in skills_metadata
-                )
-                skill_instruction = f"""## STEP 0 - MANDATORY FIRST ACTION
-
-Available skills:
-
-{skill_list}
-
-**Your Tool #1 must be loading a skill. Use one of these:**
-
-```
-{skill_examples}
-```
-
-Do NOT call any other tool (get_binary_info, strings_search, etc.) until you have loaded the skill. The skill contains critical analysis methodology.
+            if skills_content:
+                skills_section = "\n\n".join(skills_content)
+                system_prompt = f"""{skills_section}
 
 ---
 
-"""
-                system_prompt = skill_instruction + system_prompt
+{system_prompt}"""
+                logger.info(f"Injected {len(skills_content)} skill(s) into system prompt")
 
         # Create MCP servers
         utils_server = create_utils_mcp_server()
@@ -809,10 +788,6 @@ Do NOT call any other tool (get_binary_info, strings_search, etc.) until you hav
                     }
                 allowed_tools.append("mcp__gdb__*")
                 logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
-
-        # Add Read and Skill tools for skill loading
-        allowed_tools.append("Read")
-        allowed_tools.append("Skill")
 
         # Configure agent options with structured output
         options = ClaudeAgentOptions(

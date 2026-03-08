@@ -14,6 +14,7 @@ import {
   Code,
   FileOutput,
   TrendingUp,
+  Sparkles,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -26,18 +27,22 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+
 import { useStats } from '@/hooks/use-stats'
 import { useCreateTask } from '@/hooks/use-tasks'
+import { useSkills } from '@/hooks/use-skills'
 import { toast } from 'sonner'
 
 export function HomePage() {
   const navigate = useNavigate()
   const { data: stats } = useStats()
   const createTask = useCreateTask()
+  const { data: skills = [] } = useSkills()
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [isDragging, setIsDragging] = useState(false)
-  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(true)
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([])
   const [options, setOptions] = useState({
     enable_capa: true,
     enable_strings: true,
@@ -74,7 +79,10 @@ export function HomePage() {
     try {
       const result = await createTask.mutateAsync({
         file: selectedFile,
-        options,
+        options: {
+          ...options,
+          skills: selectedSkills.length > 0 ? selectedSkills : undefined,
+        },
       })
       toast.success('分析任务已创建')
       const fileName = selectedFile.name
@@ -403,6 +411,45 @@ export function HomePage() {
                     </div>
                   </Label>
                 </div>
+
+                {options.enable_ghidra && skills.length > 0 && (
+                  <div>
+                    <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Sparkles className="mr-1 inline h-3 w-3" />
+                      AI 分析技能
+                    </h4>
+                    <div className="space-y-2">
+                      {skills.map((skill) => (
+                        <Label
+                          key={skill.name}
+                          className="flex cursor-pointer items-start gap-3 rounded-lg border bg-background p-3 hover:bg-muted/50"
+                        >
+                          <Switch
+                            checked={selectedSkills.includes(skill.name)}
+                            onCheckedChange={(checked) => {
+                              setSelectedSkills((prev) =>
+                                checked
+                                  ? [...prev, skill.name]
+                                  : prev.filter((s) => s !== skill.name)
+                              )
+                            }}
+                          />
+                          <div className="flex-1">
+                            <span className="text-sm font-medium">{skill.name}</span>
+                            <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+                              {skill.description}
+                            </p>
+                          </div>
+                        </Label>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {selectedSkills.length === 0
+                        ? '未选择技能时将加载所有可用技能'
+                        : `已选择 ${selectedSkills.length} 个技能`}
+                    </p>
+                  </div>
+                )}
               </CollapsibleContent>
             </Collapsible>
 

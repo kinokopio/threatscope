@@ -119,6 +119,7 @@ class TaskService:
                 enable_strings=to_bool(options.get("enable_strings"), True),
                 enable_yara=to_bool(options.get("enable_yara"), True),
                 progress_callback=save_progress,
+                skills=options.get("skills"),
             )
 
             if "error" in result:
