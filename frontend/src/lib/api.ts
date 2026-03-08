@@ -7,16 +7,20 @@ export const api = axios.create({
   },
 })
 
-// Types - matching backend API response
+export interface StepProgress {
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+  updated_at?: string
+  preview?: Record<string, any>
+}
+
 export interface Task {
   task_id: string
-  id: string // alias for task_id
   status: 'pending' | 'queued' | 'static_analysis' | 'dynamic_analysis' | 'ghidra_analysis' | 'report_generation' | 'completed' | 'failed'
   file_name: string
   current_step?: string
   error?: string
   created_at?: string
-  // Analysis results
+  steps_progress?: Record<string, StepProgress>
   hashes?: {
     md5: string
     sha1: string
@@ -30,8 +34,8 @@ export interface Task {
     platform: string
   }
   capa?: any
-  strings?: string[]
-  yara?: any[]
+  strings?: any
+  yara?: { matches?: any[] }
   threat_intel?: any
   dynamic_analysis?: any
   ghidra_analysis?: any
@@ -42,12 +46,6 @@ export interface Task {
     recommendations?: string[]
     techniques?: any[]
   }
-  // Computed fields for UI
-  file_hash?: string
-  file_size?: number
-  verdict?: 'clean' | 'suspicious' | 'malicious' | 'unknown'
-  family?: string
-  progress?: number
 }
 
 // Task list item (simplified)
