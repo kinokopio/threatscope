@@ -557,7 +557,6 @@ function IOCTab({ task }: { task: any }) {
   const domains = iocs.domains || []
   const ips = iocs.ips || []
   const urls = iocs.urls || []
-  const fileHashes = iocs.file_hashes || []
 
   return (
     <div className="space-y-6">
