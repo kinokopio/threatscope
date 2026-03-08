@@ -722,13 +722,17 @@ class GhidraAgent(BaseAgent):
                     f"- **{s['name']}**: {s['description']}\n  Path: `{s['path']}`"
                     for s in skills_metadata
                 )
-                skill_instruction = f"""## Step 0: Load Skills
+                skill_instruction = f"""## Step 0: Load Skills (MANDATORY)
+
+⚠️ **STOP. Before ANY analysis, you MUST read the skill files first.**
 
 Available skills:
 
 {skill_list}
 
-Read the skill files that match your current task using the Read tool. Skills contain detailed methodology and best practices.
+**Your FIRST action must be: Use the Read tool to read the skill file(s) above.**
+
+Do NOT call any other tool until you have read the skill files. The skills contain critical methodology that you must follow.
 
 ---
 
