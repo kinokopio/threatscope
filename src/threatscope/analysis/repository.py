@@ -73,7 +73,9 @@ class TaskRepository:
                         -- Final report (unified report)
                         unified_report TEXT,
                         -- Options
-                        options TEXT
+                        options TEXT,
+                        -- Step-level progress tracking for parallel execution
+                        steps_status TEXT
                     )
                 """)
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
@@ -159,37 +161,58 @@ class TaskRepository:
         limit: int = 100,
         offset: int = 0,
         status: str | None = None,
+        verdict: str | None = None,
+        file_type: str | None = None,
+        from_date: str | None = None,
+        to_date: str | None = None,
+        search: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Get all tasks with optional filtering.
-
-        Args:
-            limit: Maximum number of tasks to return.
-            offset: Number of tasks to skip.
-            status: Filter by status.
-
-        Returns:
-            List of tasks as dictionaries.
-        """
+        """Get all tasks with optional filtering."""
         with self._connection() as conn:
+            conditions = []
+            params: list[Any] = []
+
             if status:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM tasks
-                    WHERE status = ?
-                    ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (status, limit, offset),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    """
-                    SELECT * FROM tasks
-                    ORDER BY created_at DESC
-                    LIMIT ? OFFSET ?
-                    """,
-                    (limit, offset),
-                ).fetchall()
+                conditions.append("status = ?")
+                params.append(status)
+
+            if verdict:
+                conditions.append("json_extract(unified_report, '$.verdict') = ?")
+                params.append(verdict)
+
+            if file_type:
+                conditions.append(
+                    "(json_extract(file_type, '$.category') = ? OR json_extract(file_type, '$.format') = ?)"
+                )
+                params.extend([file_type, file_type])
+
+            if from_date:
+                conditions.append("created_at >= ?")
+                params.append(from_date)
+
+            if to_date:
+                conditions.append("created_at <= ?")
+                params.append(to_date + " 23:59:59")
+
+            if search:
+                search_pattern = f"%{search}%"
+                conditions.append(
+                    "(file_name LIKE ? OR json_extract(unified_report, '$.family') LIKE ? OR json_extract(hashes, '$.sha256') LIKE ?)"
+                )
+                params.extend([search_pattern, search_pattern, search_pattern])
+
+            where_clause = " AND ".join(conditions) if conditions else "1=1"
+            params.extend([limit, offset])
+
+            rows = conn.execute(
+                f"""
+                SELECT * FROM tasks
+                WHERE {where_clause}
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                params,
+            ).fetchall()
             return [self._row_to_dict(row) for row in rows]
 
     def update_task_status(
@@ -280,6 +303,62 @@ class TaskRepository:
             )
             conn.commit()
 
+    def update_step_status(
+        self,
+        task_id: str,
+        step_id: str,
+        status: str,
+        preview: dict[str, Any] | None = None,
+    ) -> None:
+        """Update status for a specific analysis step.
+
+        Supports parallel execution tracking - each step has independent status.
+
+        Args:
+            task_id: Task identifier.
+            step_id: Step identifier (e.g., 'capa', 'strings', 'yara').
+            status: Step status ('pending', 'running', 'completed', 'failed', 'skipped').
+            preview: Optional preview data for the step.
+        """
+        now = datetime.now().isoformat()
+        with self._connection() as conn:
+            row = conn.execute("SELECT steps_status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+
+            current = json.loads(row["steps_status"]) if row and row["steps_status"] else {}
+
+            current[step_id] = {
+                "status": status,
+                "updated_at": now,
+            }
+            if preview:
+                current[step_id]["preview"] = preview
+
+            conn.execute(
+                """
+                UPDATE tasks
+                SET steps_status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (json.dumps(current), now, task_id),
+            )
+            conn.commit()
+
+    def get_steps_status(self, task_id: str) -> dict[str, Any]:
+        """Get status of all analysis steps.
+
+        Args:
+            task_id: Task identifier.
+
+        Returns:
+            Dictionary mapping step_id to status info.
+        """
+        with self._connection() as conn:
+            row = conn.execute("SELECT steps_status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+
+            if row and row["steps_status"]:
+                return json.loads(row["steps_status"])
+        return {}
+
     def delete_task(self, task_id: str) -> bool:
         """Delete a task.
 
@@ -298,11 +377,11 @@ class TaskRepository:
     # Statistics
     # =========================================================================
 
-    def get_stats(self) -> dict[str, int]:
+    def get_stats(self) -> dict[str, Any]:
         """Get task statistics.
 
         Returns:
-            Dictionary with task counts by status.
+            Dictionary with task counts by status and verdict distribution.
         """
         with self._connection() as conn:
             rows = conn.execute(
@@ -312,10 +391,27 @@ class TaskRepository:
                 GROUP BY status
                 """
             ).fetchall()
-            stats = {row["status"]: row["count"] for row in rows}
+            stats: dict[str, Any] = {row["status"]: row["count"] for row in rows}
 
             total = conn.execute("SELECT COUNT(*) as count FROM tasks").fetchone()
             stats["total"] = total["count"] if total else 0
+
+            verdict_row = conn.execute(
+                """
+                SELECT
+                    SUM(CASE WHEN json_extract(unified_report, '$.verdict') = 'malicious' THEN 1 ELSE 0 END) as malicious,
+                    SUM(CASE WHEN json_extract(unified_report, '$.verdict') = 'suspicious' THEN 1 ELSE 0 END) as suspicious,
+                    SUM(CASE WHEN json_extract(unified_report, '$.verdict') = 'benign' THEN 1 ELSE 0 END) as benign
+                FROM tasks
+                WHERE unified_report IS NOT NULL
+                """
+            ).fetchone()
+
+            stats["verdict_stats"] = {
+                "malicious": verdict_row["malicious"] or 0 if verdict_row else 0,
+                "suspicious": verdict_row["suspicious"] or 0 if verdict_row else 0,
+                "benign": verdict_row["benign"] or 0 if verdict_row else 0,
+            }
 
         return stats
 
@@ -346,6 +442,7 @@ class TaskRepository:
             "ghidra_analysis",
             "unified_report",
             "options",
+            "steps_status",
         )
         for field in json_fields:
             if data.get(field):

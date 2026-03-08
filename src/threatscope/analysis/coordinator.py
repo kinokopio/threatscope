@@ -135,6 +135,9 @@ class AnalysisCoordinator:
         enable_ghidra: bool = True,
         enable_dynamic: bool = True,
         enable_threat_intel: bool = True,
+        enable_capa: bool = True,
+        enable_strings: bool = True,
+        enable_yara: bool = True,
         progress_callback: ProgressCallback = None,
     ) -> dict[str, Any]:
         """Run complete analysis pipeline on a file.
@@ -196,14 +199,18 @@ class AnalysisCoordinator:
             # ========================================
             task.update_status(AnalysisStatus.STATIC_ANALYSIS)
 
-            enable_capa = self.settings.capa.enabled
+            capa_enabled = enable_capa and self.settings.capa.enabled
 
             # Notify all tasks starting
             if progress_callback:
-                if enable_capa:
+                if capa_enabled:
                     await progress_callback("capa", "Capability Analysis", "running", None, results)
-                await progress_callback("strings", "String Extraction", "running", None, results)
-                await progress_callback("yara", "YARA Scanning", "running", None, results)
+                if enable_strings:
+                    await progress_callback(
+                        "strings", "String Extraction", "running", None, results
+                    )
+                if enable_yara:
+                    await progress_callback("yara", "YARA Scanning", "running", None, results)
                 if enable_threat_intel:
                     await progress_callback(
                         "threat_intel", "Threat Intelligence Query", "running", None, results
@@ -237,16 +244,25 @@ class AnalysisCoordinator:
                 await self._process_dynamic_result(result, results, progress_callback)
                 return result
 
-            parallel_tasks = [
-                run_and_process_strings(),
-                run_and_process_yara(),
-            ]
+            parallel_tasks = []
 
-            if enable_capa:
+            if enable_strings:
+                parallel_tasks.append(run_and_process_strings())
+            else:
+                logger.info("Skipping string extraction (disabled)")
+                results["strings"] = {"skipped": True, "reason": "Disabled by user"}
+
+            if enable_yara:
+                parallel_tasks.append(run_and_process_yara())
+            else:
+                logger.info("Skipping YARA scanning (disabled)")
+                results["yara"] = {"skipped": True, "reason": "Disabled by user"}
+
+            if capa_enabled:
                 parallel_tasks.append(run_and_process_capa())
             else:
-                logger.info("Skipping capa analysis (disabled in config)")
-                results["capa"] = {"skipped": True, "reason": "Disabled in configuration"}
+                logger.info("Skipping capa analysis (disabled)")
+                results["capa"] = {"skipped": True, "reason": "Disabled by user or configuration"}
 
             if enable_threat_intel:
                 parallel_tasks.append(run_and_process_threat_intel())

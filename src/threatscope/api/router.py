@@ -64,7 +64,7 @@ async def analyze_file(
     The file is uploaded, saved temporarily, and analysis is started
     in the background. Returns immediately with a task ID for tracking.
     """
-    task_id = str(uuid.uuid4())[:8]
+    task_id = str(uuid.uuid4())
     logger.info(f"Creating analysis task {task_id} for {file.filename}")
 
     # Save uploaded file
@@ -128,9 +128,8 @@ async def analyze_file_sync(
     This endpoint waits for the analysis to complete before returning.
     Use for smaller files or when immediate results are needed.
     """
-    task_id = str(uuid.uuid4())[:8]
+    task_id = str(uuid.uuid4())
 
-    # Save uploaded file
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
     file_path = temp_dir / f"{task_id}_{file.filename}"

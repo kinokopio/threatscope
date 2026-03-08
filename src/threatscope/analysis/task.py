@@ -36,7 +36,7 @@ class AnalysisTask:
     """Represents a malware analysis task."""
 
     file_path: str
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: AnalysisStatus = AnalysisStatus.PENDING
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -47,6 +47,7 @@ class AnalysisTask:
     pre_ghidra_results: dict[str, Any] | None = None
     ghidra_results: dict[str, Any] | None = None
     report: dict[str, Any] | None = None
+
     def update_status(self, status: AnalysisStatus) -> None:
         self.status = status
         self.updated_at = datetime.now()

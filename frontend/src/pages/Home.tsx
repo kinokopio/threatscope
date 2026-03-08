@@ -1,285 +1,470 @@
-import { useState, useCallback, useMemo } from 'react';
-import { 
-  Upload, 
-  Shield, 
-  Cpu, 
-  FileSearch, 
-  Zap,
-  Binary,
-  Network,
-  Brain,
+import { useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  Upload,
+  Link as LinkIcon,
+  Hash,
   ChevronRight,
-  FileCode,
-  AlertTriangle
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useUploadFile, useTasks } from '../shared/api';
-import { formatFileSize } from '../shared/utils';
+  BarChart3,
+  AlertTriangle,
+  RefreshCw,
+  Search,
+  FileText,
+  Cpu,
+  Code,
+  FileOutput,
+  TrendingUp,
+} from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { useStats } from '@/hooks/use-stats'
+import { useCreateTask } from '@/hooks/use-tasks'
+import { toast } from 'sonner'
 
-const ANALYSIS_PIPELINE = [
-  { 
-    icon: FileSearch, 
-    title: 'Static Analysis', 
-    items: ['Hash calculation', 'String extraction', 'Import analysis', 'YARA scanning'],
-    color: 'from-emerald-500 to-teal-600'
-  },
-  { 
-    icon: Network, 
-    title: 'Threat Intel', 
-    items: ['MalwareBazaar', 'ThreatFox', 'URLhaus', 'Hash lookup'],
-    color: 'from-blue-500 to-cyan-600'
-  },
-  { 
-    icon: Cpu, 
-    title: 'Dynamic Analysis', 
-    items: ['Syscall tracing', 'Network monitoring', 'File operations', 'Behavior analysis'],
-    color: 'from-violet-500 to-purple-600'
-  },
-  { 
-    icon: Brain, 
-    title: 'AI Analysis', 
-    items: ['Ghidra decompilation', 'Function analysis', 'MITRE mapping', 'Report generation'],
-    color: 'from-rose-500 to-pink-600'
-  },
-] as const;
+export function HomePage() {
+  const navigate = useNavigate()
+  const { data: stats } = useStats()
+  const createTask = useCreateTask()
 
-const SUPPORTED_FORMATS = [
-  { name: 'ELF', desc: 'Linux executables' },
-  { name: 'PE', desc: 'Windows executables' },
-  { name: 'Mach-O', desc: 'macOS binaries' },
-  { name: 'APK', desc: 'Android packages' },
-] as const;
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [options, setOptions] = useState({
+    enable_capa: true,
+    enable_strings: true,
+    enable_yara: true,
+    enable_dynamic: true,
+    enable_ghidra: true,
+  })
 
-export default function Home() {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const uploadMutation = useUploadFile();
-  const { data: tasksData } = useTasks({ refetchInterval: 30000 });
-
-  const stats = useMemo(() => {
-    if (!tasksData?.tasks) return { total: 0, malicious: 0, pending: 0 };
-    const tasks = tasksData.tasks;
-    return {
-      total: tasks.length,
-      malicious: tasks.filter(t => t.result?.unified_report?.verdict === 'malicious').length,
-      pending: tasks.filter(t => !['completed', 'failed'].includes(t.status)).length,
-    };
-  }, [tasksData]);
-
-  const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const nextFile = event.target.files?.[0] || null;
-    setSelectedFile(nextFile);
-    setErrorMessage(null);
-  }, []);
-
-  const handleDrop = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(false);
-    const nextFile = event.dataTransfer.files?.[0] || null;
-    setSelectedFile(nextFile);
-    setErrorMessage(null);
-  }, []);
-
-  const handleDragOver = useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  const uploadFile = useCallback(async () => {
-    if (!selectedFile) return;
-    try {
-      const result = await uploadMutation.mutateAsync({ file: selectedFile });
-      navigate(`/task/${result.task_id}`);
-    } catch {
-      setErrorMessage('Upload failed. Please try again.');
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      setSelectedFile(files[0])
     }
-  }, [selectedFile, uploadMutation, navigate]);
+  }, [])
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const files = e.target.files
+      if (files && files.length > 0) {
+        setSelectedFile(files[0])
+      }
+    },
+    []
+  )
+
+  const handleSubmit = async () => {
+    if (!selectedFile) {
+      toast.error('请选择要分析的文件')
+      return
+    }
+
+    try {
+      const result = await createTask.mutateAsync({
+        file: selectedFile,
+        options,
+      })
+      toast.success('分析任务已创建')
+      navigate(`/report/${result.task_id}`)
+    } catch {
+      toast.error('创建任务失败')
+    }
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const threatCount =
+    (stats?.verdict_stats?.malicious ?? 0) +
+    (stats?.verdict_stats?.suspicious ?? 0)
 
   return (
-    <div className="min-h-[calc(100vh-8rem)]">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid lg:grid-cols-5 gap-8">
-          <div className="lg:col-span-3 space-y-6">
-            <div className="space-y-2">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                  <Shield className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-white tracking-tight">
-                    Malware Analysis
-                  </h1>
-                  <p className="text-slate-400 text-sm">AI-powered threat detection & analysis</p>
-                </div>
+    <div className="mx-auto max-w-5xl space-y-6 p-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">总扫描数</p>
+                <p className="mt-1 text-2xl font-semibold">
+                  {stats?.database_stats?.total ?? 0}
+                </p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <BarChart3 className="h-6 w-6 text-primary" />
               </div>
             </div>
+            <div className="mt-3 flex items-center text-sm">
+              <span className="flex items-center text-green-600">
+                <TrendingUp className="mr-1 h-4 w-4" />
+                12%
+              </span>
+              <span className="ml-2 text-muted-foreground">较上周</span>
+            </div>
+          </CardContent>
+        </Card>
 
-            <div
-              className={`relative group rounded-2xl border-2 border-dashed transition-all duration-300 ${
-                isDragging 
-                  ? 'border-emerald-400 bg-emerald-500/10' 
-                  : selectedFile 
-                    ? 'border-emerald-500/50 bg-slate-800/80' 
-                    : 'border-slate-600 bg-slate-800/50 hover:border-slate-500 hover:bg-slate-800/80'
-              }`}
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">检测威胁</p>
+                <p className="mt-1 text-2xl font-semibold">{threatCount}</p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-500/10">
+                <AlertTriangle className="h-6 w-6 text-red-500" />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-3 text-sm">
+              <span className="flex items-center text-red-600">
+                <span className="mr-1.5 h-2 w-2 rounded-full bg-red-500" />
+                恶意 {stats?.verdict_stats?.malicious ?? 0}
+              </span>
+              <span className="flex items-center text-amber-600">
+                <span className="mr-1.5 h-2 w-2 rounded-full bg-amber-500" />
+                可疑 {stats?.verdict_stats?.suspicious ?? 0}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">进行中</p>
+                <p className="mt-1 text-2xl font-semibold">
+                  {stats?.queue_stats?.pending ?? 0}
+                </p>
+              </div>
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-amber-500/10">
+                <RefreshCw className="h-6 w-6 animate-spin text-amber-500" />
+              </div>
+            </div>
+            <Button
+              variant="link"
+              className="mt-3 h-auto p-0 text-sm"
+              onClick={() => navigate('/tasks')}
             >
-              <input
-                type="file"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                onChange={handleFileChange}
-              />
-              
-              <div className="p-8 text-center">
-                {selectedFile ? (
-                  <div className="space-y-4">
-                    <div className="w-16 h-16 mx-auto rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 flex items-center justify-center">
-                      <FileCode className="w-8 h-8 text-white" />
+              查看任务列表
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <Tabs defaultValue="file" className="w-full">
+          <div className="border-b bg-muted/50">
+            <TabsList className="ml-4 mt-2 h-auto gap-0 bg-transparent p-0">
+              <TabsTrigger
+                value="file"
+                className="rounded-b-none border border-b-0 border-transparent data-[state=active]:border-border data-[state=active]:bg-background"
+              >
+                <FileText className="mr-2 h-4 w-4" />
+                文件上传
+              </TabsTrigger>
+              <TabsTrigger
+                value="url"
+                className="rounded-b-none border border-b-0 border-transparent data-[state=active]:border-border data-[state=active]:bg-background"
+              >
+                <LinkIcon className="mr-2 h-4 w-4" />
+                URL 分析
+              </TabsTrigger>
+              <TabsTrigger
+                value="hash"
+                className="rounded-b-none border border-b-0 border-transparent data-[state=active]:border-border data-[state=active]:bg-background"
+              >
+                <Hash className="mr-2 h-4 w-4" />
+                哈希搜索
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <CardContent className="p-6">
+            <TabsContent value="file" className="m-0">
+              {!selectedFile ? (
+                <div
+                  className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors ${
+                    isDragging
+                      ? 'border-primary bg-primary/5'
+                      : 'border-border hover:border-primary hover:bg-primary/5'
+                  }`}
+                  onDragOver={(e) => {
+                    e.preventDefault()
+                    setIsDragging(true)
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() =>
+                    document.getElementById('file-input')?.click()
+                  }
+                >
+                  <div className="flex flex-col items-center">
+                    <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
+                      <Upload className="h-8 w-8 text-primary" />
                     </div>
-                    <div>
-                      <p className="text-lg font-semibold text-white">{selectedFile.name}</p>
-                      <p className="text-slate-400 text-sm mt-1">{formatFileSize(selectedFile.size)}</p>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedFile(null);
-                      }}
-                      className="text-slate-400 hover:text-white text-sm underline underline-offset-2"
-                    >
-                      Choose different file
-                    </button>
+                    <p className="mb-1 font-medium">拖拽文件到此处，或点击选择</p>
+                    <p className="text-sm text-muted-foreground">
+                      支持 PE、ELF、Mach-O、APK、脚本等格式，最大 64MB
+                    </p>
                   </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="w-16 h-16 mx-auto rounded-xl bg-slate-700/50 flex items-center justify-center group-hover:bg-slate-700 transition-colors">
-                      <Upload className="w-8 h-8 text-slate-400 group-hover:text-slate-300 transition-colors" />
+                  <input
+                    type="file"
+                    id="file-input"
+                    className="hidden"
+                    onChange={handleFileSelect}
+                  />
+                </div>
+              ) : (
+                <div className="mb-4 rounded-lg bg-muted/50 p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                        <FileText className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{selectedFile.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatFileSize(selectedFile.size)}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-lg font-medium text-slate-300">
-                        Drop your binary here
-                      </p>
-                      <p className="text-slate-500 text-sm mt-1">or click to browse</p>
-                    </div>
-                    <div className="flex flex-wrap justify-center gap-2 pt-2">
-                      {SUPPORTED_FORMATS.map((format) => (
-                        <span
-                          key={format.name}
-                          className="px-2.5 py-1 rounded-md bg-slate-700/50 text-slate-400 text-xs font-medium"
-                          title={format.desc}
-                        >
-                          {format.name}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setSelectedFile(null)}
+                    >
+                      <span className="sr-only">移除文件</span>×
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="url" className="m-0">
+              <div className="space-y-2">
+                <Label>URL 地址</Label>
+                <Input placeholder="https://example.com/suspicious-file.exe" />
+                <p className="text-xs text-muted-foreground">
+                  输入完整的 URL 地址，系统将下载并分析目标文件
+                </p>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="hash" className="m-0">
+              <div className="space-y-2">
+                <Label>文件哈希</Label>
+                <Input
+                  placeholder="输入 MD5、SHA1 或 SHA256 哈希值"
+                  className="font-mono"
+                />
+                <p className="text-xs text-muted-foreground">
+                  搜索已分析的文件或从威胁情报源获取信息
+                </p>
+              </div>
+            </TabsContent>
+
+            <Collapsible
+              open={advancedOpen}
+              onOpenChange={setAdvancedOpen}
+              className="mt-4"
+            >
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" className="gap-2 p-0">
+                  <ChevronRight
+                    className={`h-4 w-4 transition-transform ${
+                      advancedOpen ? 'rotate-90' : ''
+                    }`}
+                  />
+                  高级分析选项
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-4 space-y-4 rounded-lg bg-muted/50 p-4">
+                <div>
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    静态分析
+                  </h4>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background p-3 hover:bg-muted/50">
+                      <Switch
+                        checked={options.enable_capa}
+                        onCheckedChange={(checked) =>
+                          setOptions((o) => ({ ...o, enable_capa: checked }))
+                        }
+                      />
+                      <div>
+                        <span className="text-sm font-medium">CAPA 分析</span>
+                        <p className="text-xs text-muted-foreground">能力检测</p>
+                      </div>
+                    </Label>
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background p-3 hover:bg-muted/50">
+                      <Switch
+                        checked={options.enable_strings}
+                        onCheckedChange={(checked) =>
+                          setOptions((o) => ({ ...o, enable_strings: checked }))
+                        }
+                      />
+                      <div>
+                        <span className="text-sm font-medium">字符串提取</span>
+                        <p className="text-xs text-muted-foreground">
+                          敏感字符串
+                        </p>
+                      </div>
+                    </Label>
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background p-3 hover:bg-muted/50">
+                      <Switch
+                        checked={options.enable_yara}
+                        onCheckedChange={(checked) =>
+                          setOptions((o) => ({ ...o, enable_yara: checked }))
+                        }
+                      />
+                      <div>
+                        <span className="text-sm font-medium">YARA 扫描</span>
+                        <p className="text-xs text-muted-foreground">规则匹配</p>
+                      </div>
+                    </Label>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    动态分析
+                  </h4>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background p-3 hover:bg-muted/50">
+                      <Switch
+                        checked={options.enable_dynamic}
+                        onCheckedChange={(checked) =>
+                          setOptions((o) => ({ ...o, enable_dynamic: checked }))
+                        }
+                      />
+                      <div>
+                        <span className="text-sm font-medium">沙箱执行</span>
+                        <p className="text-xs text-muted-foreground">
+                          行为监控与系统调用追踪
+                        </p>
+                      </div>
+                    </Label>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    深度分析
+                  </h4>
+                  <Label className="flex cursor-pointer items-center gap-3 rounded-lg border bg-background p-3 hover:bg-muted/50">
+                    <Switch
+                      checked={options.enable_ghidra}
+                      onCheckedChange={(checked) =>
+                        setOptions((o) => ({ ...o, enable_ghidra: checked }))
+                      }
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">
+                          Ghidra 逆向分析
                         </span>
-                      ))}
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs text-primary">
+                          AI 增强
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        反编译、函数分析、恶意行为识别
+                      </p>
                     </div>
+                  </Label>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            <Button
+              className="mt-4 w-full"
+              size="lg"
+              onClick={handleSubmit}
+              disabled={createTask.isPending}
+            >
+              <Search className="mr-2 h-5 w-5" />
+              {createTask.isPending ? '正在创建...' : '开始分析'}
+            </Button>
+          </CardContent>
+        </Tabs>
+      </Card>
+
+      <Card>
+        <CardContent className="p-6">
+          <h2 className="mb-4 text-lg font-semibold">分析流程</h2>
+          <div className="grid gap-4 md:grid-cols-4">
+            {[
+              {
+                step: 1,
+                title: '文件识别',
+                icon: Hash,
+                items: ['哈希计算', '文件类型检测'],
+              },
+              {
+                step: 2,
+                title: '深度分析',
+                icon: Cpu,
+                items: ['CAPA / YARA', '动态分析'],
+              },
+              {
+                step: 3,
+                title: 'Ghidra 分析',
+                icon: Code,
+                items: ['反编译分析', 'AI 函数分析'],
+              },
+              {
+                step: 4,
+                title: '报告生成',
+                icon: FileOutput,
+                items: ['综合评估', 'IOC 提取'],
+              },
+            ].map((phase, index) => (
+              <div key={phase.step} className="relative">
+                <div className="rounded-lg bg-muted/50 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-medium text-primary-foreground">
+                      {phase.step}
+                    </div>
+                    <span className="font-medium">{phase.title}</span>
+                  </div>
+                  <ul className="space-y-2 text-sm text-muted-foreground">
+                    {phase.items.map((item) => (
+                      <li key={item} className="flex items-center gap-2">
+                        <phase.icon className="h-4 w-4" />
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                {index < 3 && (
+                  <div className="absolute -right-2 top-1/2 hidden -translate-y-1/2 md:block">
+                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   </div>
                 )}
               </div>
-            </div>
-
-            {errorMessage && (
-              <div className="flex items-center gap-3 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
-                <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0" />
-                <p className="text-red-400 text-sm">{errorMessage}</p>
-              </div>
-            )}
-
-            <button
-              onClick={uploadFile}
-              disabled={!selectedFile || uploadMutation.isPending}
-              className="w-full py-4 px-6 rounded-xl font-semibold text-white transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-400 hover:to-cyan-500 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30"
-            >
-              {uploadMutation.isPending ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Analyzing...
-                </>
-              ) : (
-                <>
-                  <Zap className="w-5 h-5" />
-                  Start Analysis
-                </>
-              )}
-            </button>
-
-            <div className="grid grid-cols-3 gap-3">
-              <div className="p-4 rounded-xl bg-slate-800/50 border border-slate-700/50">
-                <p className="text-2xl font-bold text-white">{stats.total}</p>
-                <p className="text-slate-400 text-xs mt-1">Total Scans</p>
-              </div>
-              <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-                <p className="text-2xl font-bold text-red-400">{stats.malicious}</p>
-                <p className="text-slate-400 text-xs mt-1">Threats Found</p>
-              </div>
-              <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
-                <p className="text-2xl font-bold text-cyan-400">{stats.pending}</p>
-                <p className="text-slate-400 text-xs mt-1">In Progress</p>
-              </div>
-            </div>
+            ))}
           </div>
-
-          <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
-                Analysis Pipeline
-              </h2>
-              <Binary className="w-4 h-4 text-slate-500" />
-            </div>
-            
-            <div className="space-y-3">
-              {ANALYSIS_PIPELINE.map((stage, index) => (
-                <div
-                  key={stage.title}
-                  className="group p-4 rounded-xl bg-slate-800/50 border border-slate-700/50 hover:border-slate-600 transition-all duration-300"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${stage.color} flex items-center justify-center flex-shrink-0 shadow-lg`}>
-                      <stage.icon className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-slate-500 text-xs font-mono">0{index + 1}</span>
-                        <h3 className="text-white font-medium">{stage.title}</h3>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {stage.items.map((item) => (
-                          <span
-                            key={item}
-                            className="px-2 py-0.5 rounded bg-slate-700/50 text-slate-400 text-xs"
-                          >
-                            {item}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-600 group-hover:text-slate-400 transition-colors flex-shrink-0 mt-1" />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="p-4 rounded-xl bg-gradient-to-br from-slate-800 to-slate-800/50 border border-slate-700/50">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-500/20 flex items-center justify-center">
-                  <Shield className="w-4 h-4 text-amber-400" />
-                </div>
-                <span className="text-sm font-medium text-slate-300">MITRE ATT&CK</span>
-              </div>
-              <p className="text-slate-400 text-xs leading-relaxed">
-                Automatic mapping of detected behaviors to MITRE ATT&CK framework tactics and techniques.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }
