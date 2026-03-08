@@ -89,7 +89,7 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-hidden flex flex-col">
+      <SheetContent className="w-full sm:max-w-xl md:max-w-2xl overflow-hidden flex flex-col p-0">
         {isLoading ? (
           <div className="flex items-center justify-center py-12 flex-1">
             <RefreshCw className="h-8 w-8 animate-spin text-primary" />
@@ -100,12 +100,12 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
           </div>
         ) : (
           <>
-            <SheetHeader>
+            <SheetHeader className="p-6 pb-4">
               <SheetTitle className="break-all pr-8">{task.file_name}</SheetTitle>
               <p className="text-sm text-muted-foreground font-mono break-all">{task.task_id}</p>
             </SheetHeader>
 
-            <div className="py-4 border-b">
+            <div className="px-6 py-4 border-b">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">分析进度</span>
                 <span className="text-sm text-muted-foreground">
@@ -130,8 +130,8 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
               </div>
             </div>
 
-            <ScrollArea className="flex-1 -mx-6 px-6">
-              <div className="space-y-6 py-4">
+            <ScrollArea className="flex-1">
+              <div className="space-y-6 px-6 py-4">
                 <div>
                   <h4 className="text-sm font-medium mb-3">分析步骤</h4>
                   <div className="space-y-2">
@@ -322,7 +322,7 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
               </div>
             </ScrollArea>
 
-            <div className="pt-4 border-t">
+            <div className="p-6 pt-4 border-t">
               {task.status === 'completed' ? (
                 <Button asChild className="w-full">
                   <Link to={`/report/${task.task_id}`}>
