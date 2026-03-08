@@ -430,7 +430,7 @@ class GhidraAgent(BaseAgent):
                     pass
 
             logger.info(f"Connecting to Ghidra at: {self.ghidra_url}")
-            self.ghidra_client.health_check()
+            await asyncio.to_thread(self.ghidra_client.health_check)
             logger.info("Ghidra health check passed")
             ghidra_available = True
 
@@ -456,7 +456,7 @@ class GhidraAgent(BaseAgent):
                             pass
 
                     logger.info(f"Uploading {file_path} ({file_size_mb:.1f} MB)")
-                    self.ghidra_client.upload(file_path)
+                    await asyncio.to_thread(self.ghidra_client.upload, file_path)
                     logger.info("Upload completed")
 
                     if self._progress_callback:
@@ -483,7 +483,7 @@ class GhidraAgent(BaseAgent):
                             pass
 
                     logger.info("Running Ghidra analysis")
-                    self.ghidra_client.analyze()
+                    await asyncio.to_thread(self.ghidra_client.analyze)
                     logger.info("Ghidra analysis completed")
 
                     if self._progress_callback:
@@ -498,7 +498,7 @@ class GhidraAgent(BaseAgent):
                             pass
 
                     # Step 4: Get binary info
-                    ghidra_info = self.ghidra_client.get_info()
+                    ghidra_info = await asyncio.to_thread(self.ghidra_client.get_info)
                     logger.info(f"Got Ghidra info: {ghidra_info}")
 
                     if self._progress_callback:

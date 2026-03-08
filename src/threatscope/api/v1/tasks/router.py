@@ -50,23 +50,15 @@ async def create_task(
     enable_yara: bool = Form(default=True, description="Enable YARA scanning"),
     service: TaskService = Depends(get_task_service),
 ) -> TaskResponse:
-    import logging
-    import time
-
     import aiofiles
-
-    logger = logging.getLogger(__name__)
-    start = time.time()
 
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
     file_path = temp_dir / f"{file.filename}"
 
-    logger.info(f"[TIMING] Start file write: {time.time() - start:.3f}s")
     async with aiofiles.open(file_path, "wb") as out_file:
         while chunk := await file.read(1024 * 1024):
             await out_file.write(chunk)
-    logger.info(f"[TIMING] File write done: {time.time() - start:.3f}s")
 
     task_id = await service.create_task_async(
         file_path=file_path,
@@ -80,7 +72,6 @@ async def create_task(
             "enable_yara": enable_yara,
         },
     )
-    logger.info(f"[TIMING] Task created: {time.time() - start:.3f}s")
 
     return TaskResponse(
         task_id=task_id,
