@@ -113,7 +113,7 @@ function TaskRow({ task }: { task: TaskListItem }) {
       </TableCell>
       <TableCell>
         <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
-          {task.result_summary || '-'}
+          {task.result_summary?.family || task.result_summary?.severity || '-'}
         </span>
       </TableCell>
       <TableCell>
