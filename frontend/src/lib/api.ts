@@ -160,6 +160,8 @@ export interface HealthStatus {
     api: boolean
     database: boolean
     ghidra_mcp: boolean
+    diec: boolean
+    gdb: boolean
   }
 }
 

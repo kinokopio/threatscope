@@ -92,7 +92,7 @@ export function AppSidebar({ theme, onThemeToggle }: AppSidebarProps) {
                   health?.services?.api ? 'bg-green-500' : 'bg-red-500'
                 }`}
               />
-              <span className="text-muted-foreground">API 服务</span>
+              <span className="text-muted-foreground">API</span>
               <span
                 className={`ml-auto text-xs ${
                   health?.services?.api ? 'text-green-600' : 'text-red-600'
@@ -104,16 +104,46 @@ export function AppSidebar({ theme, onThemeToggle }: AppSidebarProps) {
             <div className="flex items-center gap-2 text-sm">
               <span
                 className={`h-2 w-2 rounded-full ${
+                  health?.services?.diec ? 'bg-green-500' : 'bg-yellow-500'
+                }`}
+              />
+              <span className="text-muted-foreground">DIE</span>
+              <span
+                className={`ml-auto text-xs ${
+                  health?.services?.diec ? 'text-green-600' : 'text-yellow-600'
+                }`}
+              >
+                {health?.services?.diec ? '正常' : '离线'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span
+                className={`h-2 w-2 rounded-full ${
                   health?.services?.ghidra_mcp ? 'bg-green-500' : 'bg-yellow-500'
                 }`}
               />
-              <span className="text-muted-foreground">Ghidra MCP</span>
+              <span className="text-muted-foreground">Ghidra</span>
               <span
                 className={`ml-auto text-xs ${
                   health?.services?.ghidra_mcp ? 'text-green-600' : 'text-yellow-600'
                 }`}
               >
                 {health?.services?.ghidra_mcp ? '正常' : '离线'}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  health?.services?.gdb ? 'bg-green-500' : 'bg-gray-400'
+                }`}
+              />
+              <span className="text-muted-foreground">GDB</span>
+              <span
+                className={`ml-auto text-xs ${
+                  health?.services?.gdb ? 'text-green-600' : 'text-gray-500'
+                }`}
+              >
+                {health?.services?.gdb ? '正常' : '未启用'}
               </span>
             </div>
           </div>
