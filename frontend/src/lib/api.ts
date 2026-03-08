@@ -11,7 +11,7 @@ export const api = axios.create({
 export interface Task {
   task_id: string
   id: string // alias for task_id
-  status: 'pending' | 'running' | 'completed' | 'failed'
+  status: 'pending' | 'queued' | 'static_analysis' | 'dynamic_analysis' | 'ghidra_analysis' | 'report_generation' | 'completed' | 'failed'
   file_name: string
   current_step?: string
   error?: string

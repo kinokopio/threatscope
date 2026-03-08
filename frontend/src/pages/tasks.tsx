@@ -32,7 +32,7 @@ function formatTimeAgo(dateString: string) {
 function TaskCard({ task }: { task: TaskListItem }) {
   const deleteTask = useDeleteTask()
 
-  const isRunning = task.status === 'running'
+  const isRunning = RUNNING_STATUSES.includes(task.status)
   const isPending = task.status === 'pending'
 
   return (

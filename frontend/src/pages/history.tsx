@@ -106,9 +106,9 @@ function TaskRow({ task }: { task: TaskListItem }) {
             ? '已完成'
             : task.status === 'failed'
               ? '失败'
-              : task.status === 'running'
-                ? '运行中'
-                : '等待中'}
+              : task.status === 'pending'
+                ? '等待中'
+                : '分析中'}
         </Badge>
       </TableCell>
       <TableCell>

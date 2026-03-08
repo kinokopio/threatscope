@@ -36,11 +36,13 @@ interface AppSidebarProps {
   onThemeToggle: () => void
 }
 
+const ACTIVE_STATUSES = ['pending', 'queued', 'static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation']
+
 export function AppSidebar({ theme, onThemeToggle }: AppSidebarProps) {
   const location = useLocation()
   const { data: health } = useHealth()
-  const { data: tasks } = useTasks({ status: 'running' })
-  const runningCount = tasks?.length ?? 0
+  const { data: tasks } = useTasks({ limit: 50 })
+  const runningCount = tasks?.filter(t => ACTIVE_STATUSES.includes(t.status)).length ?? 0
 
   return (
     <Sidebar>
