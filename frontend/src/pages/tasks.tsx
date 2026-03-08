@@ -110,17 +110,18 @@ function TaskCard({ task }: { task: TaskListItem }) {
   )
 }
 
-export function TasksPage() {
-  const { data: runningTasks } = useTasks({ status: 'running' })
-  const { data: pendingTasks } = useTasks({ status: 'pending' })
-  const { data: recentTasks } = useTasks({ limit: 10 })
+const RUNNING_STATUSES = ['static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation', 'queued']
 
-  const activeTasks = [...(runningTasks || []), ...(pendingTasks || [])]
-  const runningCount = runningTasks?.length ?? 0
-  const pendingCount = pendingTasks?.length ?? 0
+export function TasksPage() {
+  const { data: allTasks } = useTasks({ limit: 50 })
+
+  const pendingTasks = allTasks?.filter(t => t.status === 'pending') || []
+  const runningTasks = allTasks?.filter(t => RUNNING_STATUSES.includes(t.status)) || []
+  const activeTasks = [...runningTasks, ...pendingTasks]
+  const runningCount = runningTasks.length
+  const pendingCount = pendingTasks.length
   
-  // Show active tasks if any, otherwise show recent tasks
-  const displayTasks = activeTasks.length > 0 ? activeTasks : (recentTasks || [])
+  const displayTasks = activeTasks.length > 0 ? activeTasks : (allTasks || [])
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
