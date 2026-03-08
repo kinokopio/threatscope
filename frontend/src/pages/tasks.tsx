@@ -62,6 +62,17 @@ const STEP_LABELS: Record<string, string> = {
   report: '报告生成',
 }
 
+const GHIDRA_SUBSTEP_LABELS: Record<string, string> = {
+  ghidra_startup: '启动 Ghidra',
+  ghidra_connect: '连接服务',
+  ghidra_upload: '上传文件',
+  ghidra_analyze: '静态分析',
+  ghidra_info: '获取信息',
+  ghidra_ai_start: 'AI 深度分析',
+}
+
+const GHIDRA_SUBSTEPS = ['ghidra_startup', 'ghidra_connect', 'ghidra_upload', 'ghidra_analyze', 'ghidra_info', 'ghidra_ai_start']
+
 function formatTimeAgo(dateString: string) {
   const date = new Date(dateString)
   const now = new Date()
@@ -376,29 +387,54 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
                 <div>
                   <h4 className="text-sm font-medium mb-3">分析步骤</h4>
                   <div className="space-y-2">
-                    {Object.entries(task.steps_progress || {}).filter(([stepId]) => stepId !== 'ai_logs').map(([stepId, stepData]) => {
+                    {Object.entries(task.steps_progress || {})
+                      .filter(([stepId]) => stepId !== 'ai_logs' && !GHIDRA_SUBSTEPS.includes(stepId))
+                      .map(([stepId, stepData]) => {
                       const step = stepData as { status: string; updated_at?: string; preview?: any }
+                      const isGhidraStep = stepId === 'ghidra'
+                      const ghidraSubsteps = isGhidraStep 
+                        ? GHIDRA_SUBSTEPS.map(subId => ({
+                            id: subId,
+                            ...(task.steps_progress as any)?.[subId]
+                          })).filter(s => s.status)
+                        : []
+                      
                       return (
-                        <div key={stepId} className="flex items-start gap-3 p-2 rounded-lg bg-muted/30">
-                          <StepStatusIcon status={step.status} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-medium">{STEP_LABELS[stepId] || stepId}</span>
-                              <span className="text-xs text-muted-foreground flex-shrink-0">
-                                {step.status === 'completed' ? '完成' : step.status === 'running' ? '运行中' : step.status === 'failed' ? '失败' : '等待'}
-                              </span>
-                            </div>
-                            {step.preview && (
-                              <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
-                                {typeof step.preview === 'object' 
-                                  ? Object.entries(step.preview).map(([k, v]) => (
-                                      <div key={k} className="break-all"><span className="font-medium">{k}:</span> {String(v)}</div>
-                                    ))
-                                  : <div className="break-all">{String(step.preview)}</div>
-                                }
+                        <div key={stepId}>
+                          <div className="flex items-start gap-3 p-2 rounded-lg bg-muted/30">
+                            <StepStatusIcon status={step.status} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-medium">{STEP_LABELS[stepId] || stepId}</span>
+                                <span className="text-xs text-muted-foreground flex-shrink-0">
+                                  {step.status === 'completed' ? '完成' : step.status === 'running' ? '运行中' : step.status === 'failed' ? '失败' : '等待'}
+                                </span>
                               </div>
-                            )}
+                              {step.preview && (
+                                <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                                  {typeof step.preview === 'object' 
+                                    ? Object.entries(step.preview).map(([k, v]) => (
+                                        <div key={k} className="break-all"><span className="font-medium">{k}:</span> {String(v)}</div>
+                                      ))
+                                    : <div className="break-all">{String(step.preview)}</div>
+                                  }
+                                </div>
+                              )}
+                            </div>
                           </div>
+                          {isGhidraStep && ghidraSubsteps.length > 0 && (
+                            <div className="ml-7 mt-1 space-y-1 border-l-2 border-muted pl-3">
+                              {ghidraSubsteps.map((sub) => (
+                                <div key={sub.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <StepStatusIcon status={sub.status} />
+                                  <span>{GHIDRA_SUBSTEP_LABELS[sub.id] || sub.id}</span>
+                                  <span className="ml-auto">
+                                    {sub.status === 'completed' ? '完成' : sub.status === 'running' ? '运行中' : sub.status === 'failed' ? '失败' : '等待'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )
                     })}

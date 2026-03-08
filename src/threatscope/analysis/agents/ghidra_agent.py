@@ -994,6 +994,21 @@ class GhidraAgent(BaseAgent):
                                     else:
                                         logger.info(f"[Tool Result] {result_preview}")
 
+                                    if self._progress_callback:
+                                        try:
+                                            await self._progress_callback(
+                                                "ghidra_tool",
+                                                "Tool completed",
+                                                "error" if is_error else "completed",
+                                                {
+                                                    "tool_call_count": tool_call_count,
+                                                    "result": result_preview,
+                                                    "is_error": is_error,
+                                                },
+                                            )
+                                        except Exception as e:
+                                            logger.debug(f"Progress callback failed: {e}")
+
                     # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
                         logger.info("=" * 60)
