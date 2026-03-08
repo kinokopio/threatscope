@@ -689,6 +689,52 @@ class GhidraAgent(BaseAgent):
         # Load system prompt
         system_prompt = self.load_system_prompt()
 
+        # Discover and append available skills to system prompt
+        skills_dir = self.project_dir / ".claude" / "skills"
+        if skills_dir.exists():
+            skills = []
+            for skill_dir in skills_dir.iterdir():
+                if skill_dir.is_dir():
+                    skill_file = skill_dir / "SKILL.md"
+                    if skill_file.exists():
+                        other_files = [
+                            f.name
+                            for f in skill_dir.iterdir()
+                            if f.is_file() and f.name != "SKILL.md"
+                        ]
+                        skills.append(
+                            {
+                                "name": skill_dir.name,
+                                "path": str(skill_dir),
+                                "skill_file": str(skill_file),
+                                "other_files": other_files,
+                            }
+                        )
+
+            if skills:
+                skill_entries = []
+                for s in skills:
+                    entry = f"- Name: {s['name']}\n  - SKILL.md: {s['skill_file']}"
+                    if s["other_files"]:
+                        files_list = ", ".join(s["other_files"])
+                        entry += f"\n  - Other files in {s['path']}: {files_list}"
+                    skill_entries.append(entry)
+
+                skill_list = "\n".join(skill_entries)
+                skill_instruction = f"""
+
+## Available Skills
+
+You have access to the following skills. Before starting any relevant task,
+ALWAYS read the SKILL.md file using the Read tool.
+
+{skill_list}
+
+IMPORTANT: Do NOT skip reading the skill file, even if you think you know how
+to do the task. The skill file contains critical instructions.
+"""
+                system_prompt = system_prompt + skill_instruction
+
         # Create MCP servers
         utils_server = create_utils_mcp_server()
         memory_server = create_memory_tools_server(self.memory_store)
@@ -753,7 +799,8 @@ class GhidraAgent(BaseAgent):
                 allowed_tools.append("mcp__gdb__*")
                 logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
 
-        # Add Skill tool to allowed tools for automatic skill loading
+        # Add Read and Skill tools for skill loading
+        allowed_tools.append("Read")
         allowed_tools.append("Skill")
 
         # Configure agent options with structured output
