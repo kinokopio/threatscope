@@ -729,6 +729,9 @@ class GhidraAgent(BaseAgent):
                 allowed_tools.append("mcp__gdb__*")
                 logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
 
+        # Add Skill tool to allowed tools for automatic skill loading
+        allowed_tools.append("Skill")
+
         # Configure agent options with structured output
         options = ClaudeAgentOptions(
             tools=[],
@@ -737,6 +740,8 @@ class GhidraAgent(BaseAgent):
             mcp_servers=mcp_servers,
             allowed_tools=allowed_tools,
             max_turns=self.config.max_iterations,
+            setting_sources=["project"],
+            cwd=str(self.project_dir),
             output_format={
                 "type": "json_schema",
                 "schema": GhidraAnalysisOutput.model_json_schema(),

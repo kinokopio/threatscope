@@ -23,6 +23,7 @@ import { TasksPage } from '@/pages/tasks'
 import { HistoryPage } from '@/pages/history'
 import { ReportPage } from '@/pages/report'
 import { MCPPage } from '@/pages/mcp'
+import { SkillsPage } from '@/pages/skills'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,6 +39,7 @@ const routeTitles: Record<string, string> = {
   '/tasks': '任务列表',
   '/history': '分析历史',
   '/mcp': 'MCP 工具',
+  '/skills': '技能管理',
 }
 
 function PageBreadcrumb() {
@@ -113,6 +115,7 @@ function AppLayout() {
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/report/:id" element={<ReportPage />} />
             <Route path="/mcp" element={<MCPPage />} />
+            <Route path="/skills" element={<SkillsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </main>

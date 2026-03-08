@@ -266,3 +266,55 @@ export async function getHealth(): Promise<HealthStatus> {
   const response = await api.get('/system/health')
   return response.data
 }
+
+export interface SkillFileInfo {
+  name: string
+  path: string
+  size: number
+  modified_at: string
+  content?: string | null
+}
+
+export interface SkillInfo {
+  name: string
+  description: string
+  folder_name: string
+  files: SkillFileInfo[]
+  total_size: number
+  created_at: string
+  modified_at: string
+}
+
+export interface SkillDetail extends SkillInfo {}
+
+export interface SkillListResponse {
+  skills: SkillInfo[]
+}
+
+export async function getSkills(): Promise<SkillInfo[]> {
+  const response = await api.get<SkillListResponse>('/skills')
+  return response.data.skills
+}
+
+export async function getSkill(name: string): Promise<SkillDetail> {
+  const response = await api.get<SkillDetail>(`/skills/${name}`)
+  return response.data
+}
+
+export async function updateSkillFile(skillName: string, filePath: string, content: string): Promise<SkillFileInfo> {
+  const response = await api.put<SkillFileInfo>(`/skills/${skillName}/files/${filePath}`, { content })
+  return response.data
+}
+
+export async function createSkillFile(skillName: string, filePath: string, content: string): Promise<SkillFileInfo> {
+  const response = await api.post<SkillFileInfo>(`/skills/${skillName}/files/${filePath}`, { content })
+  return response.data
+}
+
+export async function deleteSkillFile(skillName: string, filePath: string): Promise<void> {
+  await api.delete(`/skills/${skillName}/files/${filePath}`)
+}
+
+export async function deleteSkill(name: string): Promise<void> {
+  await api.delete(`/skills/${name}`)
+}

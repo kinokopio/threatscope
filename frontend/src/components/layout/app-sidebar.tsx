@@ -7,6 +7,7 @@ import {
   Shield,
   Moon,
   Sun,
+  Sparkles,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -29,6 +30,7 @@ const navItems = [
   { title: '任务列表', url: '/tasks', icon: ListTodo, showBadge: true },
   { title: '分析历史', url: '/history', icon: History },
   { title: 'MCP 工具', url: '/mcp', icon: Terminal },
+  { title: '技能管理', url: '/skills', icon: Sparkles },
 ]
 
 interface AppSidebarProps {
