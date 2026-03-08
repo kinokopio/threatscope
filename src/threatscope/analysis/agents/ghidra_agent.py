@@ -884,6 +884,12 @@ to do the task. The skill file contains critical instructions.
             logger.info("[System Prompt Preview]")
             logger.info(system_prompt[:500] + "..." if len(system_prompt) > 500 else system_prompt)
 
+            # Log skills info if present
+            if "Available Skills" in system_prompt:
+                skills_section = system_prompt.split("## Available Skills")[1][:500]
+                logger.info("[Skills Section]")
+                logger.info("## Available Skills" + skills_section)
+
             # Log user prompt (first 1000 chars)
             logger.info("-" * 60)
             logger.info("[User Prompt Preview]")
