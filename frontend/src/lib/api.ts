@@ -188,6 +188,7 @@ export interface TaskCreateOptions {
   enable_yara?: boolean
   enable_dynamic?: boolean
   enable_ghidra?: boolean
+  skills?: string[]
 }
 
 export interface TaskListParams {
