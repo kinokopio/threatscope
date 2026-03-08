@@ -78,7 +78,7 @@ export function HomePage() {
       })
       toast.success('分析任务已创建')
       setSelectedFile(null)
-      navigate('/tasks')
+      setTimeout(() => navigate('/tasks'), 100)
     } catch {
       toast.error('创建任务失败')
     }

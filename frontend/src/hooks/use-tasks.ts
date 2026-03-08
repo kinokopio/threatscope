@@ -15,7 +15,7 @@ export function useTasks(params?: TaskListParams) {
   return useQuery({
     queryKey: ['tasks', params],
     queryFn: () => getTasks(params),
-    refetchInterval: 5000,
+    refetchInterval: 3000,
   })
 }
 
