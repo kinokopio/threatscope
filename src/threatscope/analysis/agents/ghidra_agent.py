@@ -722,17 +722,24 @@ class GhidraAgent(BaseAgent):
                     f"- **{s['name']}**: {s['description']}\n  Path: `{s['path']}`"
                     for s in skills_metadata
                 )
-                skill_instruction = f"""## Step 0: Load Skills (MANDATORY)
-
-⚠️ **STOP. Before ANY analysis, you MUST read the skill files first.**
+                # Build example tool calls for each skill
+                skill_examples = "\n".join(
+                    f'Skill(name="{s["name"]}")  # or Read(file_path="{s["path"]}")'
+                    for s in skills_metadata
+                )
+                skill_instruction = f"""## STEP 0 - MANDATORY FIRST ACTION
 
 Available skills:
 
 {skill_list}
 
-**Your FIRST action must be: Use the Read tool to read the skill file(s) above.**
+**Your Tool #1 must be loading a skill. Use one of these:**
 
-Do NOT call any other tool until you have read the skill files. The skills contain critical methodology that you must follow.
+```
+{skill_examples}
+```
+
+Do NOT call any other tool (get_binary_info, strings_search, etc.) until you have loaded the skill. The skill contains critical analysis methodology.
 
 ---
 
