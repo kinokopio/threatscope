@@ -72,13 +72,13 @@ export function HomePage() {
     }
 
     try {
-      await createTask.mutateAsync({
+      const result = await createTask.mutateAsync({
         file: selectedFile,
         options,
       })
       toast.success('分析任务已创建')
       setSelectedFile(null)
-      navigate('/tasks')
+      navigate('/tasks', { state: { newTaskId: result.task_id } })
     } catch {
       toast.error('创建任务失败')
     }

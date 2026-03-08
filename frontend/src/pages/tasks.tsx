@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import {
   Clock,
   RefreshCw,
@@ -418,7 +418,9 @@ function TaskCard({ task, onSelect }: { task: TaskListItem; onSelect: () => void
 }
 
 export function TasksPage() {
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const location = useLocation()
+  const newTaskId = (location.state as { newTaskId?: string } | null)?.newTaskId
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(newTaskId || null)
   const { data: allTasks } = useTasks({ limit: 50 })
 
   const pendingTasks = allTasks?.filter(t => t.status === 'pending') || []
