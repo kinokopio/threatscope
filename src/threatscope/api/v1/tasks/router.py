@@ -50,12 +50,16 @@ async def create_task(
     enable_yara: bool = Form(default=True, description="Enable YARA scanning"),
     service: TaskService = Depends(get_task_service),
 ) -> TaskResponse:
+    import aiofiles
+
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
     file_path = temp_dir / f"{file.filename}"
 
-    content = await file.read()
-    file_path.write_bytes(content)
+    # Stream file to disk in chunks to avoid blocking
+    async with aiofiles.open(file_path, "wb") as out_file:
+        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            await out_file.write(chunk)
 
     task_id = await service.create_task_async(
         file_path=file_path,
