@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
-from src.threatscope.api.router import router as analysis_router  # noqa: E402
+
 from src.threatscope.api.schemas import HealthResponse  # noqa: E402
 from src.threatscope.core.config import get_settings  # noqa: E402
 from src.threatscope.core.dependencies import (  # noqa: E402
@@ -152,9 +152,6 @@ def create_app() -> FastAPI:
 
     # Mount MCP server at /api/v1/mcp
     app.mount("/api/v1/mcp", get_mcp_app())
-
-    # Register legacy routes (backward compatibility)
-    app.include_router(analysis_router)
 
     # Health check endpoint (at root level)
     @app.get("/health", response_model=HealthResponse, tags=["health"])
