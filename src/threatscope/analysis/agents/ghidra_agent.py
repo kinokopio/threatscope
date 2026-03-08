@@ -875,7 +875,7 @@ to do the task. The skill file contains critical instructions.
             logger.info(f"Max turns: {options.max_turns}")
             logger.info(f"MCP servers: {list(mcp_servers.keys())}")
             logger.info(f"Ghidra MCP URL: {mcp_servers['ghidra']['url']}")
-            logger.info(f"Allowed tools: {len(allowed_tools)} tools")
+            logger.info(f"Allowed tools: {allowed_tools}")
             if self.enable_gdb:
                 logger.info("GDB dynamic analysis: ENABLED")
 
