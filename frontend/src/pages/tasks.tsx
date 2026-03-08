@@ -11,6 +11,8 @@ import {
   XCircle,
   ChevronRight,
   Eye,
+  Copy,
+  Check,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -48,16 +50,32 @@ function formatTimeAgo(dateString: string) {
   return `${diffDays}天前`
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={handleCopy}>
+      {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+    </Button>
+  )
+}
+
 function StepStatusIcon({ status }: { status: string }) {
   switch (status) {
     case 'completed':
-      return <CheckCircle className="h-4 w-4 text-green-500" />
+      return <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />
     case 'running':
-      return <RefreshCw className="h-4 w-4 animate-spin text-primary" />
+      return <RefreshCw className="h-4 w-4 animate-spin text-primary flex-shrink-0" />
     case 'failed':
-      return <XCircle className="h-4 w-4 text-destructive" />
+      return <XCircle className="h-4 w-4 text-destructive flex-shrink-0" />
     default:
-      return <Clock className="h-4 w-4 text-muted-foreground" />
+      return <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
   }
 }
 
@@ -94,11 +112,11 @@ function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: () => v
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b p-4">
-        <div>
-          <h3 className="font-semibold">{task.file_name}</h3>
-          <p className="text-sm text-muted-foreground font-mono">{task.task_id?.slice(0, 8)}...</p>
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold break-all">{task.file_name}</h3>
+          <p className="text-sm text-muted-foreground font-mono break-all">{task.task_id}</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
+        <Button variant="ghost" size="icon" onClick={onClose} className="flex-shrink-0 ml-2">
           <X className="h-5 w-5" />
         </Button>
       </div>
@@ -106,78 +124,251 @@ function TaskDetailPanel({ taskId, onClose }: { taskId: string; onClose: () => v
       <div className="p-4 border-b">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium">分析进度</span>
-          <span className="text-sm text-muted-foreground">{progressPercent}%</span>
+          <span className="text-sm text-muted-foreground">{completedSteps}/{totalSteps} ({progressPercent}%)</span>
         </div>
         <Progress value={progressPercent} className="h-2" />
-        <div className="mt-2 flex items-center gap-2">
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <Badge variant={isCompleted ? 'default' : isFailed ? 'destructive' : 'secondary'}>
             {isCompleted ? '已完成' : isFailed ? '失败' : task.current_step || '分析中'}
           </Badge>
           {task.file_type?.format && (
             <Badge variant="outline">{task.file_type.format}</Badge>
           )}
+          {task.file_type?.platform && (
+            <Badge variant="outline">{task.file_type.platform}</Badge>
+          )}
+          {task.file_type?.arch && (
+            <Badge variant="outline">{task.file_type.arch}</Badge>
+          )}
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-3">
-          {steps.map(([stepId, stepData]) => {
-            const step = stepData as { status: string; updated_at?: string; preview?: any }
-            return (
-              <div key={stepId} className="flex items-start gap-3">
-                <StepStatusIcon status={step.status} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">
-                      {STEP_LABELS[stepId] || stepId}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {step.status === 'completed' ? '完成' : step.status === 'running' ? '运行中' : step.status === 'failed' ? '失败' : '等待'}
-                    </span>
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-6">
+          <div>
+            <h4 className="text-sm font-medium mb-3">分析步骤</h4>
+            <div className="space-y-3">
+              {steps.map(([stepId, stepData]) => {
+                const step = stepData as { status: string; updated_at?: string; preview?: any }
+                return (
+                  <div key={stepId} className="flex items-start gap-3 p-2 rounded-lg bg-muted/30">
+                    <StepStatusIcon status={step.status} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">
+                          {STEP_LABELS[stepId] || stepId}
+                        </span>
+                        <span className="text-xs text-muted-foreground flex-shrink-0">
+                          {step.status === 'completed' ? '完成' : step.status === 'running' ? '运行中' : step.status === 'failed' ? '失败' : '等待'}
+                        </span>
+                      </div>
+                      {step.preview && (
+                        <div className="text-xs text-muted-foreground mt-1 space-y-0.5">
+                          {typeof step.preview === 'object' 
+                            ? Object.entries(step.preview).map(([k, v]) => (
+                                <div key={k} className="break-all">
+                                  <span className="font-medium">{k}:</span> {String(v)}
+                                </div>
+                              ))
+                            : <div className="break-all">{String(step.preview)}</div>
+                          }
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {step.preview && (
-                    <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {typeof step.preview === 'object' 
-                        ? Object.entries(step.preview).slice(0, 2).map(([k, v]) => `${k}: ${v}`).join(', ')
-                        : String(step.preview)
-                      }
-                    </p>
-                  )}
+                )
+              })}
+            </div>
+          </div>
+
+          {task.hashes && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3">文件哈希</h4>
+              <div className="space-y-2 text-xs font-mono bg-muted/30 p-3 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-16">MD5:</span>
+                  <span className="break-all flex-1">{task.hashes.md5}</span>
+                  <CopyButton text={task.hashes.md5} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-16">SHA1:</span>
+                  <span className="break-all flex-1">{task.hashes.sha1}</span>
+                  <CopyButton text={task.hashes.sha1} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground w-16">SHA256:</span>
+                  <span className="break-all flex-1">{task.hashes.sha256}</span>
+                  <CopyButton text={task.hashes.sha256} />
+                </div>
+                {task.hashes.ssdeep && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground w-16">SSDEEP:</span>
+                    <span className="break-all flex-1">{task.hashes.ssdeep}</span>
+                    <CopyButton text={task.hashes.ssdeep} />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {task.file_type && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3">文件类型</h4>
+              <div className="grid grid-cols-2 gap-2 text-sm bg-muted/30 p-3 rounded-lg">
+                <div>
+                  <span className="text-muted-foreground">格式:</span>
+                  <span className="ml-2">{task.file_type.format || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">架构:</span>
+                  <span className="ml-2">{task.file_type.arch || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">类别:</span>
+                  <span className="ml-2">{task.file_type.category || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">平台:</span>
+                  <span className="ml-2">{task.file_type.platform || '-'}</span>
                 </div>
               </div>
-            )
-          })}
+            </div>
+          )}
+
+          {task.yara?.matches && task.yara.matches.length > 0 && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3">YARA 匹配 ({task.yara.matches.length})</h4>
+              <div className="space-y-2">
+                {task.yara.matches.map((match: any, i: number) => (
+                  <div key={i} className="p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="destructive">{match.rule}</Badge>
+                      {match.namespace && (
+                        <span className="text-xs text-muted-foreground">{match.namespace}</span>
+                      )}
+                    </div>
+                    {match.meta && Object.keys(match.meta).length > 0 && (
+                      <div className="text-xs space-y-1">
+                        {Object.entries(match.meta).map(([k, v]) => (
+                          <div key={k} className="break-all">
+                            <span className="text-muted-foreground">{k}:</span> {String(v)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {task.strings && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3">提取的字符串</h4>
+              <div className="space-y-3">
+                {task.strings.urls && task.strings.urls.length > 0 && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">URLs ({task.strings.urls.length})</span>
+                    <div className="mt-1 p-2 bg-muted/30 rounded text-xs font-mono space-y-1">
+                      {task.strings.urls.map((url: string, i: number) => (
+                        <div key={i} className="break-all">{url}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {task.strings.domains && task.strings.domains.length > 0 && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">Domains ({task.strings.domains.length})</span>
+                    <div className="mt-1 p-2 bg-muted/30 rounded text-xs font-mono space-y-1">
+                      {task.strings.domains.map((domain: string, i: number) => (
+                        <div key={i} className="break-all">{domain}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {task.strings.ips && task.strings.ips.length > 0 && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">IPs ({task.strings.ips.length})</span>
+                    <div className="mt-1 p-2 bg-muted/30 rounded text-xs font-mono space-y-1">
+                      {task.strings.ips.map((ip: string, i: number) => (
+                        <div key={i} className="break-all">{ip}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {task.strings.suspicious && task.strings.suspicious.length > 0 && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">可疑字符串 ({task.strings.suspicious.length})</span>
+                    <div className="mt-1 p-2 bg-amber-500/10 rounded text-xs font-mono space-y-1">
+                      {task.strings.suspicious.map((s: string, i: number) => (
+                        <div key={i} className="break-all">{s}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {task.dynamic_analysis && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium mb-3">动态分析</h4>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 text-sm bg-muted/30 p-3 rounded-lg">
+                  <div>
+                    <span className="text-muted-foreground">方法:</span>
+                    <span className="ml-2">{task.dynamic_analysis.method || '-'}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">事件数:</span>
+                    <span className="ml-2">{task.dynamic_analysis.raw_events_count || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">耗时:</span>
+                    <span className="ml-2">{task.dynamic_analysis.duration_seconds?.toFixed(2) || '-'}s</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">状态:</span>
+                    <span className="ml-2">{task.dynamic_analysis.success ? '成功' : '失败'}</span>
+                  </div>
+                </div>
+
+                {task.dynamic_analysis.syscall_summary?.by_type && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">系统调用统计</span>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {Object.entries(task.dynamic_analysis.syscall_summary.by_type).map(([name, count]) => (
+                        <Badge key={name} variant="outline" className="text-xs">
+                          {name}: {String(count)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {task.dynamic_analysis.network_summary && (
+                  <div>
+                    <span className="text-xs font-medium text-muted-foreground">网络活动</span>
+                    <div className="mt-1 grid grid-cols-3 gap-2 text-xs bg-muted/30 p-2 rounded">
+                      <div>DNS: {task.dynamic_analysis.network_summary.total_dns_queries || 0}</div>
+                      <div>连接: {task.dynamic_analysis.network_summary.total_connections || 0}</div>
+                      <div>HTTP: {task.dynamic_analysis.network_summary.http_requests?.length || 0}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {task.error && (
+            <div className="pt-4 border-t">
+              <h4 className="text-sm font-medium text-destructive mb-2">错误信息</h4>
+              <div className="p-3 bg-destructive/10 rounded-lg text-sm text-destructive break-all">
+                {task.error}
+              </div>
+            </div>
+          )}
         </div>
-
-        {task.hashes && (
-          <div className="mt-6 pt-4 border-t">
-            <h4 className="text-sm font-medium mb-2">文件哈希</h4>
-            <div className="space-y-1 text-xs font-mono text-muted-foreground">
-              <p>MD5: {task.hashes.md5}</p>
-              <p>SHA256: {task.hashes.sha256?.slice(0, 32)}...</p>
-            </div>
-          </div>
-        )}
-
-        {task.yara?.matches && task.yara.matches.length > 0 && (
-          <div className="mt-4 pt-4 border-t">
-            <h4 className="text-sm font-medium mb-2">YARA 匹配</h4>
-            <div className="flex flex-wrap gap-1">
-              {task.yara.matches.map((match: any, i: number) => (
-                <Badge key={i} variant="destructive" className="text-xs">
-                  {match.rule}
-                </Badge>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {task.error && (
-          <div className="mt-4 pt-4 border-t">
-            <h4 className="text-sm font-medium text-destructive mb-2">错误信息</h4>
-            <p className="text-xs text-destructive">{task.error}</p>
-          </div>
-        )}
       </ScrollArea>
 
       <div className="border-t p-4">
@@ -245,7 +436,9 @@ function TaskCard({ task, isSelected, onSelect }: { task: TaskListItem; isSelect
 
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2">
-            <h3 className="truncate font-medium">{task.file_name}</h3>
+            <h3 className="font-medium break-all">{task.file_name}</h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
             <Badge
               variant={
                 isCompleted ? 'default' 
@@ -256,14 +449,14 @@ function TaskCard({ task, isSelected, onSelect }: { task: TaskListItem; isSelect
             >
               {isCompleted ? '已完成' : isFailed ? '失败' : isRunning ? '分析中' : isPending ? '等待中' : task.status}
             </Badge>
+            {task.file_type && (
+              <Badge variant="outline">{task.file_type}</Badge>
+            )}
+            <span className="text-xs text-muted-foreground font-mono">{task.id}</span>
           </div>
-          <p className="text-sm text-muted-foreground">
-            ID: <span className="font-mono">{task.id.slice(0, 8)}...</span>
-            {task.file_type && ` · ${task.file_type}`}
-          </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <span className="text-sm text-muted-foreground">
             {formatTimeAgo(task.created_at)}
           </span>
@@ -362,12 +555,12 @@ export function TasksPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
+        <Card className="lg:col-span-2">
           <CardHeader className="border-b">
-            <CardTitle>任务列表</CardTitle>
+            <CardTitle>任务列表 ({displayTasks.length})</CardTitle>
           </CardHeader>
           {displayTasks.length > 0 ? (
-            <ScrollArea className="h-[600px]">
+            <ScrollArea className="h-[700px]">
               <div className="divide-y">
                 {displayTasks.map((task) => (
                   <TaskCard 
@@ -396,7 +589,7 @@ export function TasksPage() {
           )}
         </Card>
 
-        <Card className="lg:col-span-2">
+        <Card className="lg:col-span-3">
           <CardHeader className="border-b">
             <CardTitle>任务详情</CardTitle>
           </CardHeader>
