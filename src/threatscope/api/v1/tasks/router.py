@@ -91,10 +91,12 @@ async def get_task(
 ) -> TaskDetailResponse:
     steps_progress = None
     if task.get("steps_status"):
-        steps_progress = {
-            step_id: StepProgress(**step_data)
-            for step_id, step_data in task["steps_status"].items()
-        }
+        steps_progress = {}
+        for step_id, step_data in task["steps_status"].items():
+            if step_id == "ai_logs":
+                steps_progress["ai_logs"] = step_data
+            elif isinstance(step_data, dict):
+                steps_progress[step_id] = StepProgress(**step_data)
 
     return TaskDetailResponse(
         task_id=task["id"],

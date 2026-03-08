@@ -51,7 +51,7 @@ class TaskService:
             step_name: str,
             status: str,
             preview: dict | None,
-            current_results: dict | None,
+            current_results: dict | None = None,
         ):
             self.db.update_step_status(task_id, step_id, status, preview)
 

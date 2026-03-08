@@ -857,6 +857,7 @@ class GhidraAgent(BaseAgent):
                                 preview_data = {
                                     "tool": tool_name,
                                     "tool_call_count": tool_call_count,
+                                    "input": tool_input,
                                 }
 
                                 # Add context based on tool type
@@ -925,8 +926,8 @@ class GhidraAgent(BaseAgent):
                                     str(block.content) if hasattr(block, "content") else str(block)
                                 )
                                 result_preview = (
-                                    result_content[:500] + "..."
-                                    if len(result_content) > 500
+                                    result_content[:2000] + "..."
+                                    if len(result_content) > 2000
                                     else result_content
                                 )
                                 tool_id = getattr(block, "tool_use_id", "unknown")
@@ -937,6 +938,22 @@ class GhidraAgent(BaseAgent):
                                     )
                                 else:
                                     logger.info(f"[Tool Result] {result_preview}")
+
+                                # Send result to frontend
+                                if self._progress_callback:
+                                    try:
+                                        await self._progress_callback(
+                                            "ghidra_tool",
+                                            "Tool completed",
+                                            "completed",
+                                            {
+                                                "tool_call_count": tool_call_count,
+                                                "result": result_preview,
+                                                "is_error": is_error,
+                                            },
+                                        )
+                                    except Exception as e:
+                                        logger.debug(f"Progress callback failed: {e}")
 
                     # Handle user messages (contains tool results)
                     elif isinstance(msg, UserMessage):

@@ -105,22 +105,173 @@ function StepStatusIcon({ status }: { status: string }) {
   }
 }
 
+interface MergedLogEntry {
+  tool_call_count: number
+  tool: string
+  status: 'running' | 'completed' | 'failed'
+  updated_at: string
+  input?: Record<string, any>
+  result?: string
+  error?: string
+  is_error?: boolean
+  function?: string
+  pattern?: string
+}
+
+function mergeLogEntries(logs: AILogEntry[]): MergedLogEntry[] {
+  const merged = new Map<number, MergedLogEntry>()
+  
+  for (const log of logs) {
+    const count = log.preview?.tool_call_count
+    if (!count) continue
+    
+    const existing = merged.get(count)
+    if (existing) {
+      if (log.status === 'completed' || log.status === 'failed') {
+        existing.status = log.status as 'completed' | 'failed'
+        existing.updated_at = log.updated_at
+        if (log.preview?.result) existing.result = log.preview.result
+        if (log.preview?.error) existing.error = log.preview.error
+        if (log.preview?.is_error) existing.is_error = log.preview.is_error
+      }
+    } else {
+      merged.set(count, {
+        tool_call_count: count,
+        tool: log.preview?.tool || log.step_id,
+        status: log.status as 'running' | 'completed' | 'failed',
+        updated_at: log.updated_at,
+        input: log.preview?.input,
+        result: log.preview?.result,
+        error: log.preview?.error,
+        is_error: log.preview?.is_error,
+        function: log.preview?.function,
+        pattern: log.preview?.pattern,
+      })
+    }
+  }
+  
+  return Array.from(merged.values()).sort((a, b) => a.tool_call_count - b.tool_call_count)
+}
+
+function MergedLogItem({ log, isExpanded, onToggle }: { log: MergedLogEntry; isExpanded: boolean; onToggle: () => void }) {
+  const toolName = log.tool?.replace('mcp__ghidra__', '').replace('mcp__memory__', '').replace('mcp__utils__', '').replace(/_/g, ' ')
+  const hasDetails = log.input || log.result || log.error
+  const isError = log.is_error || log.status === 'failed'
+
+  return (
+    <div className={`rounded text-xs ${
+      isError ? 'bg-destructive/10 border border-destructive/30' :
+      log.status === 'running' ? 'bg-primary/5 border border-primary/20' : 
+      'bg-muted/30'
+    }`}>
+      <div 
+        className={`flex items-start gap-2 p-2 ${hasDetails ? 'cursor-pointer hover:bg-muted/50' : ''}`}
+        onClick={hasDetails ? onToggle : undefined}
+      >
+        <div className="flex-shrink-0 mt-0.5">
+          {log.status === 'running' ? (
+            <RefreshCw className="h-3 w-3 animate-spin text-primary" />
+          ) : isError ? (
+            <XCircle className="h-3 w-3 text-destructive" />
+          ) : log.status === 'completed' ? (
+            <CheckCircle className="h-3 w-3 text-green-500" />
+          ) : (
+            <Wrench className="h-3 w-3 text-muted-foreground" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">#{log.tool_call_count}</span>
+            <span className={`font-medium ${isError ? 'text-destructive' : ''}`}>{toolName}</span>
+            {isError && (
+              <Badge variant="destructive" className="text-[10px] px-1 py-0 h-4">
+                错误
+              </Badge>
+            )}
+            {hasDetails && (
+              <ChevronDown className={`h-3 w-3 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+            )}
+          </div>
+          {log.function && (
+            <div className="text-muted-foreground">
+              函数: <span className="font-mono">{log.function}</span>
+            </div>
+          )}
+          {log.pattern && (
+            <div className="text-muted-foreground">
+              模式: <span className="font-mono">{log.pattern}</span>
+            </div>
+          )}
+          {isError && !isExpanded && (log.error || log.result) && (
+            <div className="text-destructive truncate mt-1">
+              {String(log.error || log.result).slice(0, 100)}
+            </div>
+          )}
+        </div>
+        <span className="text-muted-foreground flex-shrink-0">
+          {new Date(log.updated_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </span>
+      </div>
+      {isExpanded && hasDetails && (
+        <div className="px-2 pb-2 space-y-2 border-t border-border/50 mt-1 pt-2">
+          {log.input && (
+            <div>
+              <div className="text-muted-foreground mb-1 font-medium">输入参数:</div>
+              <pre className="bg-background/50 p-2 rounded text-[10px] overflow-x-auto max-h-[150px] overflow-y-auto whitespace-pre-wrap break-all">
+                {typeof log.input === 'object' 
+                  ? JSON.stringify(log.input, null, 2)
+                  : String(log.input)}
+              </pre>
+            </div>
+          )}
+          {(log.result || log.error) && (
+            <div>
+              <div className={`mb-1 font-medium ${isError ? 'text-destructive' : 'text-muted-foreground'}`}>
+                {isError ? '错误信息:' : '返回结果:'}
+              </div>
+              <pre className={`p-2 rounded text-[10px] overflow-x-auto max-h-[200px] overflow-y-auto whitespace-pre-wrap break-all ${isError ? 'bg-destructive/10 text-destructive' : 'bg-background/50'}`}>
+                {String(log.error || log.result)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AILogsSection({ logs }: { logs?: AILogEntry[] }) {
   const [isOpen, setIsOpen] = useState(true)
+  const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set())
   const scrollRef = useRef<HTMLDivElement>(null)
   const prevLogsLength = useRef(0)
 
+  const mergedLogs = logs ? mergeLogEntries(logs) : []
+
   useEffect(() => {
-    if (logs && logs.length > prevLogsLength.current && scrollRef.current) {
+    if (mergedLogs.length > prevLogsLength.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-    prevLogsLength.current = logs?.length || 0
-  }, [logs])
+    prevLogsLength.current = mergedLogs.length
+  }, [mergedLogs.length])
 
   if (!logs || logs.length === 0) return null
 
-  const runningCount = logs.filter(l => l.status === 'running').length
-  const completedCount = logs.filter(l => l.status === 'completed').length
+  const runningCount = mergedLogs.filter(l => l.status === 'running').length
+  const completedCount = mergedLogs.filter(l => l.status === 'completed').length
+  const errorCount = mergedLogs.filter(l => l.status === 'failed' || l.is_error).length
+
+  const toggleLog = (count: number) => {
+    setExpandedLogs(prev => {
+      const next = new Set(prev)
+      if (next.has(count)) {
+        next.delete(count)
+      } else {
+        next.add(count)
+      }
+      return next
+    })
+  }
 
   return (
     <div className="pt-4 border-t">
@@ -131,11 +282,16 @@ function AILogsSection({ logs }: { logs?: AILogEntry[] }) {
               <Bot className="h-4 w-4 text-primary" />
               <h4 className="text-sm font-medium">AI 分析日志</h4>
               <Badge variant="secondary" className="text-xs">
-                {logs.length} 条
+                {mergedLogs.length} 次调用
               </Badge>
               {runningCount > 0 && (
                 <Badge variant="default" className="text-xs animate-pulse">
                   {runningCount} 运行中
+                </Badge>
+              )}
+              {errorCount > 0 && (
+                <Badge variant="destructive" className="text-xs">
+                  {errorCount} 错误
                 </Badge>
               )}
             </div>
@@ -143,54 +299,22 @@ function AILogsSection({ logs }: { logs?: AILogEntry[] }) {
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ScrollArea className="h-[200px] mt-3" ref={scrollRef}>
+          <ScrollArea className="h-[400px] mt-3" ref={scrollRef}>
             <div className="space-y-1.5 pr-4">
-              {logs.map((log, idx) => (
-                <div 
-                  key={idx} 
-                  className={`flex items-start gap-2 p-2 rounded text-xs ${
-                    log.status === 'running' ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30'
-                  }`}
-                >
-                  <div className="flex-shrink-0 mt-0.5">
-                    {log.status === 'running' ? (
-                      <RefreshCw className="h-3 w-3 animate-spin text-primary" />
-                    ) : log.status === 'completed' ? (
-                      <CheckCircle className="h-3 w-3 text-green-500" />
-                    ) : (
-                      <Wrench className="h-3 w-3 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      {log.preview?.tool_call_count && (
-                        <span className="text-muted-foreground">#{log.preview.tool_call_count}</span>
-                      )}
-                      <span className="font-medium truncate">
-                        {log.preview?.tool?.replace('mcp__ghidra__', '').replace('mcp__memory__', '').replace(/_/g, ' ') || log.step_id}
-                      </span>
-                    </div>
-                    {log.preview?.function && (
-                      <div className="text-muted-foreground truncate">
-                        函数: <span className="font-mono">{log.preview.function}</span>
-                      </div>
-                    )}
-                    {log.preview?.pattern && (
-                      <div className="text-muted-foreground truncate">
-                        模式: <span className="font-mono">{log.preview.pattern}</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-muted-foreground flex-shrink-0">
-                    {new Date(log.updated_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                </div>
+              {mergedLogs.map((log) => (
+                <MergedLogItem 
+                  key={log.tool_call_count} 
+                  log={log} 
+                  isExpanded={expandedLogs.has(log.tool_call_count)}
+                  onToggle={() => toggleLog(log.tool_call_count)}
+                />
               ))}
             </div>
           </ScrollArea>
           {completedCount > 0 && (
             <div className="mt-2 text-xs text-muted-foreground text-center">
               已完成 {completedCount} 次工具调用
+              {errorCount > 0 && <span className="text-destructive ml-1">({errorCount} 错误)</span>}
             </div>
           )}
         </CollapsibleContent>

@@ -15,13 +15,17 @@ export interface StepProgress {
 
 export interface AILogEntry {
   step_id: string
-  status: string
+  status: 'running' | 'completed' | 'failed' | string
   updated_at: string
   preview?: {
     tool?: string
     tool_call_count?: number
     function?: string
     pattern?: string
+    input?: Record<string, any>
+    result?: string
+    error?: string
+    is_error?: boolean
     [key: string]: any
   }
 }

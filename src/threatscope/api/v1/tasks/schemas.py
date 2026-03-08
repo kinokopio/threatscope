@@ -30,6 +30,13 @@ class StepProgress(BaseModel):
     preview: dict | None = None
 
 
+class AILogEntry(BaseModel):
+    step_id: str
+    status: str
+    updated_at: str
+    preview: dict | None = None
+
+
 class TaskCreateOptions(BaseModel):
     enable_ghidra: bool = Field(default=True, description="Enable Ghidra deep analysis")
     enable_dynamic: bool = Field(default=True, description="Enable dynamic analysis")
@@ -60,7 +67,7 @@ class TaskDetailResponse(BaseModel):
     file_name: str | None
     current_step: str | None
     error: str | None
-    steps_progress: dict[str, StepProgress] | None = None
+    steps_progress: dict[str, StepProgress | list[AILogEntry]] | None = None
     hashes: HashesResult | None = None
     file_type: FileTypeResult | None = None
     capa: CapaResult | None = None
