@@ -208,8 +208,10 @@ export async function createTask(file: File, options?: TaskCreateOptions): Promi
   formData.append('file', file)
   if (options) {
     Object.entries(options).forEach(([key, value]) => {
-      if (value !== undefined) {
-        formData.append(key, String(value))
+      // Only append boolean options - FastAPI Query params handle missing as default (true)
+      // We only need to explicitly send 'false' values
+      if (typeof value === 'boolean') {
+        formData.append(key, value ? 'true' : 'false')
       }
     })
   }

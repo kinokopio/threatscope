@@ -100,17 +100,24 @@ class TaskService:
                     keys = list(current_results.keys()) if current_results else None
                     logger.warning(f"Did not save {step_id}: {field=}, result_keys={keys}")
 
+        def to_bool(value, default: bool = True) -> bool:
+            if isinstance(value, bool):
+                return value
+            if isinstance(value, str):
+                return value.lower() not in ("false", "0", "no", "off")
+            return default
+
         try:
             self.db.update_task_status(task_id, TaskStatus.STATIC_ANALYSIS.value)
 
             result = await self.coordinator.analyze(
                 file_path=file_path,
-                enable_ghidra=options.get("enable_ghidra", True),
-                enable_dynamic=options.get("enable_dynamic", True),
-                enable_threat_intel=options.get("enable_threat_intel", True),
-                enable_capa=options.get("enable_capa", True),
-                enable_strings=options.get("enable_strings", True),
-                enable_yara=options.get("enable_yara", True),
+                enable_ghidra=to_bool(options.get("enable_ghidra"), True),
+                enable_dynamic=to_bool(options.get("enable_dynamic"), True),
+                enable_threat_intel=to_bool(options.get("enable_threat_intel"), True),
+                enable_capa=to_bool(options.get("enable_capa"), True),
+                enable_strings=to_bool(options.get("enable_strings"), True),
+                enable_yara=to_bool(options.get("enable_yara"), True),
                 progress_callback=save_progress,
             )
 
