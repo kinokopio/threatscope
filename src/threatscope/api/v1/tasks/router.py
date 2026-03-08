@@ -2,7 +2,7 @@ import tempfile
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from src.threatscope.api.schemas import TaskStatus
 from src.threatscope.api.shared.schemas import PaginatedResponse
@@ -42,12 +42,12 @@ def get_task_service(
 )
 async def create_task(
     file: UploadFile = File(..., description="File to analyze"),
-    enable_ghidra: bool = Query(default=True, description="Enable Ghidra analysis"),
-    enable_dynamic: bool = Query(default=True, description="Enable dynamic analysis"),
-    enable_threat_intel: bool = Query(default=True, description="Enable threat intel"),
-    enable_capa: bool = Query(default=True, description="Enable CAPA capability analysis"),
-    enable_strings: bool = Query(default=True, description="Enable string extraction"),
-    enable_yara: bool = Query(default=True, description="Enable YARA scanning"),
+    enable_ghidra: bool = Form(default=True, description="Enable Ghidra analysis"),
+    enable_dynamic: bool = Form(default=True, description="Enable dynamic analysis"),
+    enable_threat_intel: bool = Form(default=True, description="Enable threat intel"),
+    enable_capa: bool = Form(default=True, description="Enable CAPA capability analysis"),
+    enable_strings: bool = Form(default=True, description="Enable string extraction"),
+    enable_yara: bool = Form(default=True, description="Enable YARA scanning"),
     service: TaskService = Depends(get_task_service),
 ) -> TaskResponse:
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
