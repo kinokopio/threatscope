@@ -434,6 +434,18 @@ class GhidraAgent(BaseAgent):
             logger.info("Ghidra health check passed")
             ghidra_available = True
 
+            # Mark connect as completed
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        "ghidra_connect",
+                        "Connected to Ghidra service",
+                        "completed",
+                        {"url": self.ghidra_url},
+                    )
+                except Exception:
+                    pass
+
             # If file provided and not already loaded, upload it
             if file_path and Path(file_path).exists():
                 try:
@@ -566,6 +578,18 @@ class GhidraAgent(BaseAgent):
                     previous_findings=previous_findings,
                     ghidra_info=ghidra_info,
                 )
+
+                # Mark AI analysis as completed
+                if self._progress_callback:
+                    try:
+                        await self._progress_callback(
+                            "ghidra_ai_start",
+                            "AI analysis completed",
+                            "completed",
+                            {},
+                        )
+                    except Exception:
+                        pass
 
                 return AgentResult(
                     success=True,
