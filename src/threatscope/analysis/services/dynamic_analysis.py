@@ -6,6 +6,7 @@ Supports:
 - Other files → Skipped (not supported)
 """
 
+import asyncio
 import logging
 from pathlib import Path
 from typing import Any
@@ -113,9 +114,11 @@ class DynamicAnalysisService:
                 "file_type": "elf",
             }
 
-        # Run Tracee analysis
+        # Run Tracee analysis in thread pool to avoid blocking event loop
         try:
-            result = self.tracee_analyzer.analyze(str(file_path), target_arch)
+            result = await asyncio.to_thread(
+                self.tracee_analyzer.analyze, str(file_path), target_arch
+            )
             return {
                 "success": result.success,
                 "skipped": False,
