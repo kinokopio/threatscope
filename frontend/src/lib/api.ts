@@ -55,7 +55,12 @@ export interface TaskListItem {
   file_name: string
   created_at: string
   file_type?: string
-  result_summary?: string
+  result_summary?: {
+    verdict?: string
+    confidence?: number
+    severity?: string
+    family?: string
+  }
 }
 
 export interface StaticAnalysis {

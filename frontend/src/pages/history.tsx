@@ -55,19 +55,10 @@ function VerdictBadge({ verdict }: { verdict?: string }) {
   }
 }
 
-function getVerdictFromSummary(summary?: string): string | undefined {
-  if (!summary) return undefined
-  const lower = summary.toLowerCase()
-  if (lower.includes('malicious') || lower.includes('恶意')) return 'malicious'
-  if (lower.includes('suspicious') || lower.includes('可疑')) return 'suspicious'
-  if (lower.includes('clean') || lower.includes('安全') || lower.includes('benign')) return 'clean'
-  return undefined
-}
-
 function TaskRow({ task }: { task: TaskListItem }) {
   const deleteTask = useDeleteTask()
   const exportTask = useExportTask()
-  const verdict = getVerdictFromSummary(task.result_summary)
+  const verdict = task.result_summary?.verdict
 
   const handleExport = async () => {
     const blob = await exportTask.mutateAsync(task.id)
