@@ -41,11 +41,9 @@ export function useCreateTask() {
   return useMutation({
     mutationFn: ({ file, options }: { file: File; options?: TaskCreateOptions }) =>
       createTask(file, options),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-        queryClient.invalidateQueries({ queryKey: ['stats'] }),
-      ])
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
     },
   })
 }
