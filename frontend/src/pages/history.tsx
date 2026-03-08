@@ -48,6 +48,7 @@ function VerdictBadge({ verdict }: { verdict?: string }) {
         </Badge>
       )
     case 'clean':
+    case 'benign':
       return (
         <Badge className="bg-green-500 hover:bg-green-600 text-white">
           安全
@@ -64,8 +65,11 @@ function SeverityBadge({ verdict }: { verdict?: string }) {
       return <Badge variant="destructive">高</Badge>
     case 'suspicious':
       return <Badge variant="secondary">中</Badge>
-    default:
+    case 'clean':
+    case 'benign':
       return <Badge variant="outline">低</Badge>
+    default:
+      return <Badge variant="secondary">中</Badge>
   }
 }
 
