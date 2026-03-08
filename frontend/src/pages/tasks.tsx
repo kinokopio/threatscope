@@ -17,7 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Sheet,
   SheetContent,
@@ -130,7 +129,7 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
               </div>
             </div>
 
-            <ScrollArea className="flex-1">
+            <div className="flex-1 overflow-y-auto">
               <div className="space-y-6 px-6 py-4">
                 <div>
                   <h4 className="text-sm font-medium mb-3">分析步骤</h4>
@@ -320,7 +319,7 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
 
             <div className="p-6 pt-4 border-t">
               {task.status === 'completed' ? (
