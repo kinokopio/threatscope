@@ -77,8 +77,18 @@ export function HomePage() {
         options,
       })
       toast.success('分析任务已创建')
+      const fileName = selectedFile.name
       setSelectedFile(null)
-      navigate('/tasks', { state: { newTaskId: result.task_id } })
+      navigate('/tasks', { 
+        state: { 
+          newTask: {
+            id: result.task_id,
+            status: 'pending',
+            file_name: fileName,
+            created_at: new Date().toISOString(),
+          }
+        } 
+      })
     } catch {
       toast.error('创建任务失败')
     }

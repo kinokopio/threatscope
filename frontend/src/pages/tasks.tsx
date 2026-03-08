@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import {
   Clock,
@@ -419,16 +419,23 @@ function TaskCard({ task, onSelect }: { task: TaskListItem; onSelect: () => void
 
 export function TasksPage() {
   const location = useLocation()
-  const newTaskId = (location.state as { newTaskId?: string } | null)?.newTaskId
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(newTaskId || null)
-  const { data: allTasks } = useTasks({ limit: 50 })
+  const newTask = (location.state as { newTask?: TaskListItem } | null)?.newTask
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(newTask?.id || null)
+  const { data: fetchedTasks } = useTasks({ limit: 50 })
 
-  const pendingTasks = allTasks?.filter(t => t.status === 'pending') || []
-  const runningTasks = allTasks?.filter(t => RUNNING_STATUSES.includes(t.status)) || []
+  const allTasks = useMemo(() => {
+    if (!newTask) return fetchedTasks || []
+    const tasks = fetchedTasks || []
+    if (tasks.some(t => t.id === newTask.id)) return tasks
+    return [newTask, ...tasks]
+  }, [fetchedTasks, newTask])
+
+  const pendingTasks = allTasks.filter(t => t.status === 'pending')
+  const runningTasks = allTasks.filter(t => RUNNING_STATUSES.includes(t.status))
   const runningCount = runningTasks.length
   const pendingCount = pendingTasks.length
   
-  const displayTasks = allTasks || []
+  const displayTasks = allTasks
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
