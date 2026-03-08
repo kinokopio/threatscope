@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
 import {
@@ -14,6 +14,9 @@ import {
   Check,
   MoreHorizontal,
   Trash2,
+  ChevronDown,
+  Bot,
+  Wrench,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,12 +35,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { DataTable } from '@/components/ui/data-table'
 import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
 import { useTasks, useTask, useDeleteTask } from '@/hooks/use-tasks'
-import type { TaskListItem } from '@/lib/api'
+import type { TaskListItem, AILogEntry } from '@/lib/api'
 
 const RUNNING_STATUSES = ['static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation', 'queued']
 
@@ -96,6 +105,100 @@ function StepStatusIcon({ status }: { status: string }) {
   }
 }
 
+function AILogsSection({ logs }: { logs?: AILogEntry[] }) {
+  const [isOpen, setIsOpen] = useState(true)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const prevLogsLength = useRef(0)
+
+  useEffect(() => {
+    if (logs && logs.length > prevLogsLength.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+    prevLogsLength.current = logs?.length || 0
+  }, [logs])
+
+  if (!logs || logs.length === 0) return null
+
+  const runningCount = logs.filter(l => l.status === 'running').length
+  const completedCount = logs.filter(l => l.status === 'completed').length
+
+  return (
+    <div className="pt-4 border-t">
+      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="w-full justify-between p-0 h-auto hover:bg-transparent">
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-primary" />
+              <h4 className="text-sm font-medium">AI 分析日志</h4>
+              <Badge variant="secondary" className="text-xs">
+                {logs.length} 条
+              </Badge>
+              {runningCount > 0 && (
+                <Badge variant="default" className="text-xs animate-pulse">
+                  {runningCount} 运行中
+                </Badge>
+              )}
+            </div>
+            <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <ScrollArea className="h-[200px] mt-3" ref={scrollRef}>
+            <div className="space-y-1.5 pr-4">
+              {logs.map((log, idx) => (
+                <div 
+                  key={idx} 
+                  className={`flex items-start gap-2 p-2 rounded text-xs ${
+                    log.status === 'running' ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30'
+                  }`}
+                >
+                  <div className="flex-shrink-0 mt-0.5">
+                    {log.status === 'running' ? (
+                      <RefreshCw className="h-3 w-3 animate-spin text-primary" />
+                    ) : log.status === 'completed' ? (
+                      <CheckCircle className="h-3 w-3 text-green-500" />
+                    ) : (
+                      <Wrench className="h-3 w-3 text-muted-foreground" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      {log.preview?.tool_call_count && (
+                        <span className="text-muted-foreground">#{log.preview.tool_call_count}</span>
+                      )}
+                      <span className="font-medium truncate">
+                        {log.preview?.tool?.replace('mcp__ghidra__', '').replace('mcp__memory__', '').replace(/_/g, ' ') || log.step_id}
+                      </span>
+                    </div>
+                    {log.preview?.function && (
+                      <div className="text-muted-foreground truncate">
+                        函数: <span className="font-mono">{log.preview.function}</span>
+                      </div>
+                    )}
+                    {log.preview?.pattern && (
+                      <div className="text-muted-foreground truncate">
+                        模式: <span className="font-mono">{log.preview.pattern}</span>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-muted-foreground flex-shrink-0">
+                    {new Date(log.updated_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </ScrollArea>
+          {completedCount > 0 && (
+            <div className="mt-2 text-xs text-muted-foreground text-center">
+              已完成 {completedCount} 次工具调用
+            </div>
+          )}
+        </CollapsibleContent>
+      </Collapsible>
+    </div>
+  )
+}
+
 function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: task, isLoading } = useTask(taskId || '')
 
@@ -149,7 +252,7 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
                 <div>
                   <h4 className="text-sm font-medium mb-3">分析步骤</h4>
                   <div className="space-y-2">
-                    {Object.entries(task.steps_progress || {}).map(([stepId, stepData]) => {
+                    {Object.entries(task.steps_progress || {}).filter(([stepId]) => stepId !== 'ai_logs').map(([stepId, stepData]) => {
                       const step = stepData as { status: string; updated_at?: string; preview?: any }
                       return (
                         <div key={stepId} className="flex items-start gap-3 p-2 rounded-lg bg-muted/30">
@@ -177,6 +280,8 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
                     })}
                   </div>
                 </div>
+
+                <AILogsSection logs={(task.steps_progress as any)?.ai_logs} />
 
                 {task.hashes && (
                   <div className="pt-4 border-t">

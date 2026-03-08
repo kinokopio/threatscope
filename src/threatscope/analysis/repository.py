@@ -329,6 +329,7 @@ class TaskRepository:
         """Update status for a specific analysis step.
 
         Supports parallel execution tracking - each step has independent status.
+        For AI tool logs (ghidra_tool, report_tool), appends to ai_logs array.
 
         Args:
             task_id: Task identifier.
@@ -342,12 +343,26 @@ class TaskRepository:
 
             current = json.loads(row["steps_status"]) if row and row["steps_status"] else {}
 
-            current[step_id] = {
-                "status": status,
-                "updated_at": now,
-            }
-            if preview:
-                current[step_id]["preview"] = preview
+            if step_id in ("ghidra_tool", "report_tool"):
+                if "ai_logs" not in current:
+                    current["ai_logs"] = []
+                current["ai_logs"].append(
+                    {
+                        "step_id": step_id,
+                        "status": status,
+                        "updated_at": now,
+                        "preview": preview,
+                    }
+                )
+                if len(current["ai_logs"]) > 100:
+                    current["ai_logs"] = current["ai_logs"][-100:]
+            else:
+                current[step_id] = {
+                    "status": status,
+                    "updated_at": now,
+                }
+                if preview:
+                    current[step_id]["preview"] = preview
 
             conn.execute(
                 """

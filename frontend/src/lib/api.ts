@@ -13,6 +13,19 @@ export interface StepProgress {
   preview?: Record<string, any>
 }
 
+export interface AILogEntry {
+  step_id: string
+  status: string
+  updated_at: string
+  preview?: {
+    tool?: string
+    tool_call_count?: number
+    function?: string
+    pattern?: string
+    [key: string]: any
+  }
+}
+
 export interface Task {
   task_id: string
   status: 'pending' | 'queued' | 'static_analysis' | 'dynamic_analysis' | 'ghidra_analysis' | 'report_generation' | 'completed' | 'failed'
@@ -20,7 +33,7 @@ export interface Task {
   current_step?: string
   error?: string
   created_at?: string
-  steps_progress?: Record<string, StepProgress>
+  steps_progress?: Record<string, StepProgress> & { ai_logs?: AILogEntry[] }
   hashes?: {
     md5: string
     sha1: string

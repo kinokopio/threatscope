@@ -444,13 +444,34 @@ function GhidraTab({ task }: { task: any }) {
       )}
 
       {malwareClass && (
-        <div className="rounded-lg border p-4 bg-red-50 dark:bg-red-950/20">
-          <h3 className="text-lg font-semibold mb-2">恶意软件分类</h3>
+        <div className={`rounded-lg border p-4 ${
+          malwareClass.type === 'Benign' || malwareClass.severity === 'LOW'
+            ? 'bg-green-50 dark:bg-green-950/20'
+            : malwareClass.severity === 'MEDIUM'
+              ? 'bg-amber-50 dark:bg-amber-950/20'
+              : 'bg-red-50 dark:bg-red-950/20'
+        }`}>
+          <h3 className="text-lg font-semibold mb-2">安全分类</h3>
           <div className="flex items-center gap-3">
-            <Badge variant="destructive">{malwareClass.type}</Badge>
+            <Badge variant={
+              malwareClass.type === 'Benign' || malwareClass.severity === 'LOW'
+                ? 'outline'
+                : malwareClass.severity === 'MEDIUM'
+                  ? 'secondary'
+                  : 'destructive'
+            }>
+              {malwareClass.type === 'Benign' ? '安全' : malwareClass.type}
+            </Badge>
             {malwareClass.family && <span className="font-medium">家族: {malwareClass.family}</span>}
-            <Badge variant={malwareClass.severity === 'CRITICAL' ? 'destructive' : 'secondary'}>
-              {malwareClass.severity}
+            <Badge variant={
+              malwareClass.severity === 'LOW' ? 'outline'
+                : malwareClass.severity === 'MEDIUM' ? 'secondary'
+                : 'destructive'
+            }>
+              {malwareClass.severity === 'LOW' ? '低风险' 
+                : malwareClass.severity === 'MEDIUM' ? '中风险'
+                : malwareClass.severity === 'HIGH' ? '高风险'
+                : '严重'}
             </Badge>
           </div>
         </div>
