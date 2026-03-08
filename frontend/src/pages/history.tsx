@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Eye, Download, RotateCcw, Trash2 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { type ColumnDef } from '@tanstack/react-table'
+import { Search, Eye, Download, RotateCcw, Trash2, MoreHorizontal } from 'lucide-react'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -13,13 +14,15 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { DataTable } from '@/components/ui/data-table'
+import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
+import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { useTasks, useDeleteTask, useExportTask } from '@/hooks/use-tasks'
 import type { TaskListItem, TaskListParams } from '@/lib/api'
 
@@ -55,10 +58,33 @@ function VerdictBadge({ verdict }: { verdict?: string }) {
   }
 }
 
-function TaskRow({ task }: { task: TaskListItem }) {
+function SeverityBadge({ verdict }: { verdict?: string }) {
+  switch (verdict) {
+    case 'malicious':
+      return <Badge variant="destructive">高</Badge>
+    case 'suspicious':
+      return <Badge variant="secondary">中</Badge>
+    default:
+      return <Badge variant="outline">低</Badge>
+  }
+}
+
+function StatusBadge({ status }: { status: string }) {
+  switch (status) {
+    case 'completed':
+      return <Badge>已完成</Badge>
+    case 'failed':
+      return <Badge variant="destructive">失败</Badge>
+    case 'pending':
+      return <Badge variant="outline">等待中</Badge>
+    default:
+      return <Badge variant="secondary">分析中</Badge>
+  }
+}
+
+function TaskActions({ task }: { task: TaskListItem }) {
   const deleteTask = useDeleteTask()
   const exportTask = useExportTask()
-  const verdict = task.result_summary?.verdict
 
   const handleExport = async () => {
     const blob = await exportTask.mutateAsync(task.id)
@@ -71,89 +97,39 @@ function TaskRow({ task }: { task: TaskListItem }) {
   }
 
   return (
-    <TableRow>
-      <TableCell>
-        <div>
-          <p className="font-medium truncate max-w-[200px]">{task.file_name}</p>
-          <p className="text-xs text-muted-foreground">
-            {task.file_type || '-'}
-          </p>
-        </div>
-      </TableCell>
-      <TableCell>
-        <VerdictBadge verdict={verdict} />
-      </TableCell>
-      <TableCell>
-        <Badge
-          variant={
-            task.status === 'completed'
-              ? 'default'
-              : task.status === 'failed'
-                ? 'destructive'
-                : 'secondary'
-          }
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="h-8 w-8 p-0">
+          <span className="sr-only">打开菜单</span>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem asChild>
+          <Link to={`/report/${task.id}`}>
+            <Eye className="mr-2 h-4 w-4" />
+            查看报告
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleExport} disabled={exportTask.isPending}>
+          <Download className="mr-2 h-4 w-4" />
+          导出报告
+        </DropdownMenuItem>
+        <DropdownMenuItem>
+          <RotateCcw className="mr-2 h-4 w-4" />
+          重新分析
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive"
+          onClick={() => deleteTask.mutate(task.id)}
+          disabled={deleteTask.isPending}
         >
-          {task.status === 'completed'
-            ? '已完成'
-            : task.status === 'failed'
-              ? '失败'
-              : task.status === 'pending'
-                ? '等待中'
-                : '分析中'}
-        </Badge>
-      </TableCell>
-      <TableCell>
-        {verdict === 'malicious' ? (
-          <Badge variant="destructive">高</Badge>
-        ) : verdict === 'suspicious' ? (
-          <Badge variant="secondary">中</Badge>
-        ) : (
-          <Badge variant="outline">低</Badge>
-        )}
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
-          {task.result_summary?.family || task.result_summary?.severity || '-'}
-        </span>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm">{task.file_type || '-'}</span>
-      </TableCell>
-      <TableCell>
-        <span className="text-sm text-muted-foreground">
-          {formatDate(task.created_at)}
-        </span>
-      </TableCell>
-      <TableCell>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" asChild>
-            <Link to={`/report/${task.id}`}>
-              <Eye className="h-4 w-4" />
-            </Link>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleExport}
-            disabled={exportTask.isPending}
-          >
-            <Download className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon">
-            <RotateCcw className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground hover:text-destructive"
-            onClick={() => deleteTask.mutate(task.id)}
-            disabled={deleteTask.isPending}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </TableCell>
-    </TableRow>
+          <Trash2 className="mr-2 h-4 w-4" />
+          删除
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -168,6 +144,86 @@ export function HistoryPage() {
     ...filters,
     search: search || undefined,
   })
+
+  const columns = useMemo<ColumnDef<TaskListItem>[]>(() => [
+    {
+      accessorKey: 'file_name',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="文件名" />
+      ),
+      cell: ({ row }) => (
+        <div>
+          <p className="font-medium truncate max-w-[200px]">{row.original.file_name}</p>
+          <p className="text-xs text-muted-foreground">
+            {row.original.file_type || '-'}
+          </p>
+        </div>
+      ),
+    },
+    {
+      accessorKey: 'verdict',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="判定" />
+      ),
+      cell: ({ row }) => (
+        <VerdictBadge verdict={row.original.result_summary?.verdict} />
+      ),
+      filterFn: (row, _id, value) => {
+        const verdict = row.original.result_summary?.verdict
+        return value.includes(verdict)
+      },
+    },
+    {
+      accessorKey: 'status',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="状态" />
+      ),
+      cell: ({ row }) => <StatusBadge status={row.original.status} />,
+      filterFn: (row, id, value) => value.includes(row.getValue(id)),
+    },
+    {
+      accessorKey: 'severity',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="严重程度" />
+      ),
+      cell: ({ row }) => (
+        <SeverityBadge verdict={row.original.result_summary?.verdict} />
+      ),
+    },
+    {
+      accessorKey: 'summary',
+      header: '摘要',
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground truncate max-w-[200px] block">
+          {row.original.result_summary?.family || row.original.result_summary?.severity || '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'file_type',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="类型" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-sm">{row.original.file_type || '-'}</span>
+      ),
+    },
+    {
+      accessorKey: 'created_at',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="时间" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {formatDate(row.original.created_at)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => <TaskActions task={row.original} />,
+    },
+  ], [])
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-6">
@@ -247,42 +303,26 @@ export function HistoryPage() {
       </Card>
 
       <Card>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>文件名</TableHead>
-                <TableHead>判定</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>严重程度</TableHead>
-                <TableHead>摘要</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>时间</TableHead>
-                <TableHead>操作</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
-                    加载中...
-                  </TableCell>
-                </TableRow>
-              ) : tasks && tasks.length > 0 ? (
-                tasks.map((task) => <TaskRow key={task.id} task={task} />)
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="text-center py-8 text-muted-foreground"
-                  >
-                    暂无分析记录
-                  </TableCell>
-                </TableRow>
+        <CardHeader className="pb-3">
+          <CardTitle>分析历史</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="py-12 text-center text-muted-foreground">
+              加载中...
+            </div>
+          ) : tasks && tasks.length > 0 ? (
+            <DataTable columns={columns} data={tasks} pageSize={10}>
+              {(table) => (
+                <DataTablePagination table={table} showRowSelection={false} />
               )}
-            </TableBody>
-          </Table>
-        </div>
+            </DataTable>
+          ) : (
+            <div className="py-12 text-center text-muted-foreground">
+              暂无分析记录
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   )

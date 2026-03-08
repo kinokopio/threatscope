@@ -737,7 +737,7 @@ export function ReportPage() {
   }
 
   const verdict = task.unified_report?.verdict
-  const sha256 = task.hashes?.sha256 || ''
+  const md5 = task.hashes?.md5 || ''
   const fileType = task.file_type?.format || task.file_type?.category || '-'
 
   return (
@@ -769,11 +769,11 @@ export function ReportPage() {
 
               </div>
               <div className="mb-3 flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">SHA256:</span>
+                <span className="text-sm text-muted-foreground">MD5:</span>
                 <code className="rounded bg-muted px-2 py-0.5 font-mono text-sm">
-                  {sha256 ? `${sha256.slice(0, 48)}...` : '-'}
+                  {md5 || '-'}
                 </code>
-                {sha256 && <CopyButton text={sha256} />}
+                {md5 && <CopyButton text={md5} />}
               </div>
               <div className="flex flex-wrap items-center gap-4 text-sm">
                 <div className="flex items-center gap-2">

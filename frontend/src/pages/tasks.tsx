@@ -1,17 +1,19 @@
 import { useState, useMemo } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { type ColumnDef } from '@tanstack/react-table'
 import {
   Clock,
   RefreshCw,
   Code,
   FileText,
-  X,
   Plus,
   CheckCircle,
   XCircle,
   Eye,
   Copy,
   Check,
+  MoreHorizontal,
+  Trash2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,6 +25,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { DataTable } from '@/components/ui/data-table'
+import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
+import { DataTablePagination } from '@/components/ui/data-table-pagination'
+import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
 import { useTasks, useTask, useDeleteTask } from '@/hooks/use-tasks'
 import type { TaskListItem } from '@/lib/api'
 
@@ -85,6 +98,8 @@ function StepStatusIcon({ status }: { status: string }) {
 
 function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { data: task, isLoading } = useTask(taskId || '')
+
+  if (!open) return null
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -340,82 +355,65 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
   )
 }
 
-function TaskCard({ task, onSelect }: { task: TaskListItem; onSelect: () => void }) {
-  const deleteTask = useDeleteTask()
-
-  const isRunning = RUNNING_STATUSES.includes(task.status)
-  const isPending = task.status === 'pending'
-  const isCompleted = task.status === 'completed'
-  const isFailed = task.status === 'failed'
+function TaskStatusBadge({ status }: { status: string }) {
+  const isRunning = RUNNING_STATUSES.includes(status)
+  const isCompleted = status === 'completed'
+  const isFailed = status === 'failed'
+  const isPending = status === 'pending'
 
   return (
-    <div 
-      className="p-4 transition-colors cursor-pointer hover:bg-muted/50"
-      onClick={onSelect}
+    <Badge
+      variant={
+        isCompleted ? 'default' 
+        : isFailed ? 'destructive'
+        : isRunning ? 'secondary' 
+        : 'outline'
+      }
     >
-      <div className="flex items-start gap-4">
-        <div
-          className={`relative flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg ${
-            isRunning ? 'bg-primary/10'
-              : isPending ? 'bg-amber-500/10'
-              : isCompleted ? 'bg-green-500/10'
-              : isFailed ? 'bg-destructive/10'
-              : 'bg-muted'
-          }`}
-        >
-          <FileText
-            className={`h-5 w-5 ${
-              isRunning ? 'text-primary'
-                : isPending ? 'text-amber-500'
-                : isCompleted ? 'text-green-500'
-                : isFailed ? 'text-destructive'
-                : 'text-muted-foreground'
-            }`}
-          />
-          {isRunning && (
-            <span className="absolute -right-1 -top-1 h-3 w-3 animate-pulse rounded-full bg-primary" />
-          )}
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <div className="mb-1 flex items-center gap-2">
-            <h3 className="font-medium break-all">{task.file_name}</h3>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant={
-                isCompleted ? 'default' 
-                : isFailed ? 'destructive'
-                : isRunning ? 'secondary' 
-                : 'outline'
-              }
-            >
-              {isCompleted ? '已完成' : isFailed ? '失败' : isRunning ? '分析中' : isPending ? '等待中' : task.status}
-            </Badge>
-            {task.file_type && <Badge variant="outline">{task.file_type}</Badge>}
-            <span className="text-xs text-muted-foreground font-mono">{task.id}</span>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <span className="text-sm text-muted-foreground">{formatTimeAgo(task.created_at)}</span>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-muted-foreground hover:text-destructive"
-            onClick={(e) => {
-              e.stopPropagation()
-              deleteTask.mutate(task.id)
-            }}
-            disabled={deleteTask.isPending}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-      </div>
-    </div>
+      {isCompleted ? '已完成' : isFailed ? '失败' : isRunning ? '分析中' : isPending ? '等待中' : status}
+    </Badge>
   )
 }
+
+function TaskActions({ task, onViewDetail }: { task: TaskListItem; onViewDetail: () => void }) {
+  const deleteTask = useDeleteTask()
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" className="h-8 w-8 p-0">
+          <span className="sr-only">打开菜单</span>
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onViewDetail}>
+          <Eye className="mr-2 h-4 w-4" />
+          查看详情
+        </DropdownMenuItem>
+        {task.status === 'completed' && (
+          <DropdownMenuItem asChild>
+            <Link to={`/report/${task.id}`}>
+              <FileText className="mr-2 h-4 w-4" />
+              查看报告
+            </Link>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-destructive"
+          onClick={() => deleteTask.mutate(task.id)}
+          disabled={deleteTask.isPending}
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          删除任务
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+
 
 export function TasksPage() {
   const location = useLocation()
@@ -430,12 +428,91 @@ export function TasksPage() {
     return [newTask, ...tasks]
   }, [fetchedTasks, newTask])
 
+  const columns = useMemo<ColumnDef<TaskListItem>[]>(() => [
+    {
+      accessorKey: 'file_name',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="文件名" />
+      ),
+      cell: ({ row }) => {
+        const task = row.original
+        const isRunning = RUNNING_STATUSES.includes(task.status)
+        return (
+          <div className="flex items-center gap-3">
+            <div
+              className={`relative flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${
+                isRunning ? 'bg-primary/10'
+                  : task.status === 'pending' ? 'bg-amber-500/10'
+                  : task.status === 'completed' ? 'bg-green-500/10'
+                  : task.status === 'failed' ? 'bg-destructive/10'
+                  : 'bg-muted'
+              }`}
+            >
+              <FileText
+                className={`h-4 w-4 ${
+                  isRunning ? 'text-primary'
+                    : task.status === 'pending' ? 'text-amber-500'
+                    : task.status === 'completed' ? 'text-green-500'
+                    : task.status === 'failed' ? 'text-destructive'
+                    : 'text-muted-foreground'
+                }`}
+              />
+              {isRunning && (
+                <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-primary" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium truncate max-w-[200px]">{task.file_name}</p>
+              <p className="text-xs text-muted-foreground font-mono truncate max-w-[200px]">{task.id}</p>
+            </div>
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: 'status',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="状态" />
+      ),
+      cell: ({ row }) => <TaskStatusBadge status={row.original.status} />,
+      filterFn: (row, id, value) => value.includes(row.getValue(id)),
+    },
+    {
+      accessorKey: 'file_type',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="类型" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.file_type || '-'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'created_at',
+      header: ({ column }) => (
+        <DataTableColumnHeader column={column} title="创建时间" />
+      ),
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {formatTimeAgo(row.original.created_at)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      cell: ({ row }) => (
+        <TaskActions 
+          task={row.original} 
+          onViewDetail={() => setSelectedTaskId(row.original.id)}
+        />
+      ),
+    },
+  ], [])
+
   const pendingTasks = allTasks.filter(t => t.status === 'pending')
   const runningTasks = allTasks.filter(t => RUNNING_STATUSES.includes(t.status))
-  const runningCount = runningTasks.length
-  const pendingCount = pendingTasks.length
-  
-  const displayTasks = allTasks
+  const completedTasks = allTasks.filter(t => t.status === 'completed')
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -447,7 +524,7 @@ export function TasksPage() {
                 <Clock className="h-5 w-5 text-amber-500" />
               </div>
               <div>
-                <p className="text-2xl font-semibold">{pendingCount}</p>
+                <p className="text-2xl font-semibold">{pendingTasks.length}</p>
                 <p className="text-sm text-muted-foreground">等待中</p>
               </div>
             </div>
@@ -458,14 +535,14 @@ export function TasksPage() {
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                {runningCount > 0 ? (
+                {runningTasks.length > 0 ? (
                   <RefreshCw className="h-5 w-5 animate-spin text-primary" />
                 ) : (
                   <RefreshCw className="h-5 w-5 text-primary" />
                 )}
               </div>
               <div>
-                <p className="text-2xl font-semibold">{runningCount}</p>
+                <p className="text-2xl font-semibold">{runningTasks.length}</p>
                 <p className="text-sm text-muted-foreground">分析中</p>
               </div>
             </div>
@@ -493,7 +570,7 @@ export function TasksPage() {
                 <FileText className="h-5 w-5 text-green-500" />
               </div>
               <div>
-                <p className="text-2xl font-semibold">{allTasks?.filter(t => t.status === 'completed').length || 0}</p>
+                <p className="text-2xl font-semibold">{completedTasks.length}</p>
                 <p className="text-sm text-muted-foreground">已完成</p>
               </div>
             </div>
@@ -502,34 +579,44 @@ export function TasksPage() {
       </div>
 
       <Card>
-        <CardHeader className="border-b">
-          <CardTitle>任务列表 ({displayTasks.length})</CardTitle>
+        <CardHeader className="pb-3">
+          <CardTitle>任务列表</CardTitle>
         </CardHeader>
-        {displayTasks.length > 0 ? (
-          <div className="divide-y">
-            {displayTasks.map((task) => (
-              <TaskCard 
-                key={task.id} 
-                task={task} 
-                onSelect={() => setSelectedTaskId(task.id)}
-              />
-            ))}
-          </div>
-        ) : (
-          <CardContent className="py-12 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-              <FileText className="h-8 w-8 text-muted-foreground" />
+        <CardContent>
+          {allTasks.length > 0 ? (
+            <DataTable 
+              columns={columns} 
+              data={allTasks}
+              onRowClick={(row) => setSelectedTaskId(row.id)}
+              pageSize={10}
+            >
+              {(table) => (
+                <>
+                  <DataTableToolbar 
+                    table={table}
+                    filterColumn="file_name"
+                    filterPlaceholder="搜索文件名..."
+                  />
+                  <DataTablePagination table={table} showRowSelection={false} />
+                </>
+              )}
+            </DataTable>
+          ) : (
+            <div className="py-12 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                <FileText className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="mb-2 text-lg font-medium">暂无任务</h3>
+              <p className="mb-4 text-muted-foreground">上传文件开始新的分析</p>
+              <Button asChild>
+                <Link to="/">
+                  <Plus className="mr-2 h-5 w-5" />
+                  上传文件
+                </Link>
+              </Button>
             </div>
-            <h3 className="mb-2 text-lg font-medium">暂无任务</h3>
-            <p className="mb-4 text-muted-foreground">上传文件开始新的分析</p>
-            <Button asChild>
-              <Link to="/">
-                <Plus className="mr-2 h-5 w-5" />
-                上传文件
-              </Link>
-            </Button>
-          </CardContent>
-        )}
+          )}
+        </CardContent>
       </Card>
 
       <TaskDetailSheet 
