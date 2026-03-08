@@ -38,7 +38,16 @@ def _request(method: str, path: str, params: dict | None = None, json: Any = Non
     if response.status_code == 409:
         raise RuntimeError("No binary loaded. Upload and analyze first.")
     if response.status_code == 404:
-        raise RuntimeError(f"Target not found: {params or json}")
+        target = (
+            (params or json or {}).get("target") or path.split("/")[-2]
+            if "/decompile" in path or "/disassemble" in path
+            else path.split("/")[-1]
+        )
+        raise RuntimeError(
+            f"Function '{target}' not found. "
+            "The binary may be stripped. Use list_functions to get actual function names "
+            "(e.g., FUN_00401000) or try using an address like '0x401000'."
+        )
     if response.status_code >= 400:
         raise RuntimeError(f"Ghidra error {response.status_code}: {response.text}")
 
