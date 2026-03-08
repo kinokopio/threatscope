@@ -457,6 +457,7 @@ class GhidraAgent(BaseAgent):
 
                     logger.info(f"Uploading {file_path} ({file_size_mb:.1f} MB)")
                     self.ghidra_client.upload(file_path)
+                    logger.info("Upload completed")
 
                     if self._progress_callback:
                         try:
@@ -483,6 +484,7 @@ class GhidraAgent(BaseAgent):
 
                     logger.info("Running Ghidra analysis")
                     self.ghidra_client.analyze()
+                    logger.info("Ghidra analysis completed")
 
                     if self._progress_callback:
                         try:
@@ -644,20 +646,14 @@ class GhidraAgent(BaseAgent):
             asyncio.TimeoutError: If analysis times out.
             ClaudeSDKError: If SDK encounters an error.
         """
-        logger.info("_run_ai_analysis: Starting")
-
         # Check for API key first to fail fast
         from src.threatscope.core.config import get_settings
 
         settings = get_settings()
-        logger.info(
-            f"_run_ai_analysis: Got settings, API key present: {bool(settings.llm.api_key)}"
-        )
         if not settings.llm.api_key:
             raise ValueError("ANTHROPIC_API_KEY not configured in .env or environment")
 
         # Build the analysis prompt
-        logger.info("_run_ai_analysis: Building prompt")
         prompt = self._build_analysis_prompt(
             static_results=static_results,
             file_path=file_path,
@@ -667,12 +663,9 @@ class GhidraAgent(BaseAgent):
         )
 
         # Load system prompt
-        logger.info("_run_ai_analysis: Loading system prompt")
         system_prompt = self.load_system_prompt()
-        logger.info(f"_run_ai_analysis: System prompt loaded, length={len(system_prompt)}")
 
         # Create MCP servers
-        logger.info("_run_ai_analysis: Creating MCP servers")
         utils_server = create_utils_mcp_server()
         memory_server = create_memory_tools_server(self.memory_store)
 
@@ -694,26 +687,47 @@ class GhidraAgent(BaseAgent):
         ]
 
         # Add GDB MCP server if enabled
+        gdb_enabled = False
         if self.enable_gdb:
             gdb_settings = settings.gdb
-            if gdb_settings.service_mode == "http":
-                mcp_servers["gdb"] = {
-                    "type": "http",
-                    "url": gdb_settings.mcp_url,
-                }
-            elif gdb_settings.service_mode == "sse":
-                mcp_servers["gdb"] = {
-                    "type": "sse",
-                    "url": gdb_settings.mcp_url,
-                }
+            # For SSE/HTTP modes, check if service is reachable before adding
+            if gdb_settings.service_mode in ("http", "sse"):
+                import httpx
+
+                try:
+                    # Quick health check with short timeout
+                    health_url = gdb_settings.mcp_url.replace("/sse", "/health").replace(
+                        "/mcp", "/health"
+                    )
+                    httpx.get(health_url, timeout=3.0)
+                    gdb_enabled = True
+                except Exception as e:
+                    logger.warning(
+                        f"GDB MCP server not reachable at {gdb_settings.mcp_url}, disabling: {e}"
+                    )
             else:
-                mcp_servers["gdb"] = {
-                    "type": "stdio",
-                    "command": gdb_settings.mcp_command,
-                    "env": {"GDB_PATH": gdb_settings.gdb_path},
-                }
-            allowed_tools.append("mcp__gdb__*")
-            logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
+                # stdio mode - assume it will work
+                gdb_enabled = True
+
+            if gdb_enabled:
+                if gdb_settings.service_mode == "http":
+                    mcp_servers["gdb"] = {
+                        "type": "http",
+                        "url": gdb_settings.mcp_url,
+                    }
+                elif gdb_settings.service_mode == "sse":
+                    mcp_servers["gdb"] = {
+                        "type": "sse",
+                        "url": gdb_settings.mcp_url,
+                    }
+                else:
+                    mcp_servers["gdb"] = {
+                        "type": "stdio",
+                        "command": gdb_settings.mcp_command,
+                        "env": {"GDB_PATH": gdb_settings.gdb_path},
+                    }
+                allowed_tools.append("mcp__gdb__*")
+                logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
 
         # Configure agent options with structured output
         options = ClaudeAgentOptions(
