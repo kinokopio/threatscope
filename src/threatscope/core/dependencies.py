@@ -160,14 +160,12 @@ def get_scheduled_coordinator(
         # Import here to avoid circular imports
         from src.threatscope.analysis.scheduler import (
             ScheduledCoordinator as Scheduler,
-        )
-        from src.threatscope.analysis.scheduler import (
             SchedulerConfig,
         )
 
         config = SchedulerConfig(
-            stage_1_4_workers=settings.workers.stage_1_4,
-            stage_6_workers=settings.workers.stage_6,
+            pre_ghidra_workers=settings.workers.stage_1_4,
+            report_workers=settings.workers.stage_6,
             ghidra_pool_size=settings.ghidra.pool_size,
         )
         _scheduled_coordinator_instance = Scheduler(coordinator, config)

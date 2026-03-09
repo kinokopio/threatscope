@@ -1,5 +1,6 @@
 """YARA scanner with precompiled rules support."""
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -163,21 +164,7 @@ class YaraScanner(AnalysisTool):
             )
 
         try:
-            import warnings
-
-            matches = []
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", RuntimeWarning)
-                for match in self._rules.match(str(file_path)):
-                    matches.append(
-                        {
-                            "rule": match.rule,
-                            "namespace": match.namespace,
-                            "tags": list(match.tags),
-                            "meta": dict(match.meta) if match.meta else {},
-                        }
-                    )
-
+            matches = await asyncio.to_thread(self._scan_file, str(file_path))
             return ToolResult(
                 success=True,
                 data={
@@ -188,6 +175,23 @@ class YaraScanner(AnalysisTool):
             )
         except Exception as e:
             return ToolResult(success=False, error=str(e))
+
+    def _scan_file(self, file_path: str) -> list[dict]:
+        import warnings
+
+        matches = []
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for match in self._rules.match(file_path):
+                matches.append(
+                    {
+                        "rule": match.rule,
+                        "namespace": match.namespace,
+                        "tags": list(match.tags),
+                        "meta": dict(match.meta) if match.meta else {},
+                    }
+                )
+        return matches
 
     @staticmethod
     def compile_rules(source_dir: str | Path, output_file: str | Path) -> bool:

@@ -16,8 +16,11 @@ from claude_agent_sdk import (
     HookMatcher,
     ProcessError,
     ResultMessage,
+    SystemMessage,
     TextBlock,
+    ToolResultBlock,
     ToolUseBlock,
+    UserMessage,
     create_sdk_mcp_server,
     tool,
 )
@@ -31,16 +34,20 @@ from src.threatscope.ghidra.client import GhidraClient
 # Try to import Langfuse observe decorator
 try:
     from langfuse import observe as langfuse_observe
+
     LANGFUSE_AVAILABLE = True
 except ImportError:
     LANGFUSE_AVAILABLE = False
+
     # Create a no-op decorator if langfuse not available
     def langfuse_observe(*args, **kwargs):
         def decorator(func):
             return func
+
         if args and callable(args[0]):
             return args[0]
         return decorator
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +87,9 @@ class KeyFinding(BaseModel):
 class MalwareClassification(BaseModel):
     """Malware classification result."""
 
-    type: str = Field(description="Malware type (e.g., Trojan, Miner, Ransomware)")
+    type: str = Field(
+        description="Malware type: RAT, Backdoor, Miner, Ransomware, Trojan, Stealer, Botnet, Benign, or Unknown"
+    )
     family: str | None = Field(default=None, description="Malware family if identified")
     severity: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"] = Field(description="Overall severity")
 
@@ -296,6 +305,46 @@ When compressing context, please preserve:
     return pre_compact_hook
 
 
+MAX_TOOL_RESULT_CHARS = 100000
+
+
+def create_post_tool_use_hook():
+    """Create PostToolUse hook to truncate large MCP tool results.
+
+    This prevents token limit errors when tools like get_exports return
+    massive results (400K+ characters).
+    """
+
+    async def post_tool_use_hook(input_data, tool_use_id, context):
+        tool_response = input_data.get("tool_response", "")
+        tool_name = input_data.get("tool_name", "")
+
+        if not isinstance(tool_response, str):
+            tool_response = str(tool_response)
+
+        if len(tool_response) > MAX_TOOL_RESULT_CHARS:
+            truncated = tool_response[:MAX_TOOL_RESULT_CHARS]
+            warning = (
+                f"\n\n[TRUNCATED: Result was {len(tool_response):,} chars, "
+                f"showing first {MAX_TOOL_RESULT_CHARS:,}. "
+                f"Use offset/limit parameters to paginate large results.]"
+            )
+            logger.warning(
+                f"Truncating large tool result from {tool_name}: "
+                f"{len(tool_response):,} -> {MAX_TOOL_RESULT_CHARS:,} chars"
+            )
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUse",
+                    "updatedMCPToolOutput": truncated + warning,
+                }
+            }
+
+        return {}
+
+    return post_tool_use_hook
+
+
 class GhidraAgent(BaseAgent):
     """AI agent for deep binary analysis using Ghidra and claude-agent-sdk.
 
@@ -310,19 +359,13 @@ class GhidraAgent(BaseAgent):
         project_dir: str | Path = ".",
         ghidra_url: str = "http://localhost:8000",
         ai_timeout: int = DEFAULT_AI_TIMEOUT,
+        enable_gdb: bool = False,
     ):
-        """Initialize GhidraAgent.
-
-        Args:
-            config: Agent configuration.
-            project_dir: Project directory for memory storage.
-            ghidra_url: URL of Ghidra HTTP service.
-            ai_timeout: Timeout in seconds for AI analysis (default: 300s).
-        """
         super().__init__(config)
         self.project_dir = Path(project_dir)
         self.ghidra_url = ghidra_url
         self.ai_timeout = ai_timeout
+        self.enable_gdb = enable_gdb
         self.memory_store: MemoryStore | None = None
         self.ghidra_client: GhidraClient | None = None
         self._progress_callback: Callable | None = None
@@ -336,6 +379,7 @@ class GhidraAgent(BaseAgent):
         self,
         context: dict[str, Any],
         progress_callback: Callable[[str, str, str, dict | None], Any] | None = None,
+        skills: list[str] | None = None,
     ) -> AgentResult:
         """Perform deep analysis using Ghidra with AI-driven exploration.
 
@@ -346,11 +390,13 @@ class GhidraAgent(BaseAgent):
                 - sample_hash: SHA256 hash of the sample
             progress_callback: Optional async callback for progress updates.
                 Signature: (step_id, step_name, status, preview_data) -> None
+            skills: Optional list of skill names to load. If None, loads all available skills.
 
         Returns:
             AgentResult with deep analysis findings.
         """
         self._progress_callback = progress_callback
+        self._selected_skills = skills  # Store for use in _run_ai_analysis
         static_results = context.get("static_results", {})
         file_path = context.get("file_path", "")
         sample_hash = context.get("sample_hash", "")
@@ -358,8 +404,10 @@ class GhidraAgent(BaseAgent):
         if not sample_hash:
             sample_hash = static_results.get("hashes", {}).get("sha256", "unknown")
 
-        # Initialize memory store
+        # Initialize memory store and clear previous analysis
         self.memory_store = MemoryStore(self.project_dir, sample_hash)
+        self.memory_store.clear()
+        logger.info(f"Cleared previous analysis cache for sample {sample_hash[:16]}...")
 
         # Initialize Ghidra client
         self.ghidra_client = GhidraClient(self.ghidra_url)
@@ -385,9 +433,21 @@ class GhidraAgent(BaseAgent):
                     pass
 
             logger.info(f"Connecting to Ghidra at: {self.ghidra_url}")
-            self.ghidra_client.health_check()
+            await asyncio.to_thread(self.ghidra_client.health_check)
             logger.info("Ghidra health check passed")
             ghidra_available = True
+
+            # Mark connect as completed
+            if self._progress_callback:
+                try:
+                    await self._progress_callback(
+                        "ghidra_connect",
+                        "Connected to Ghidra service",
+                        "completed",
+                        {"url": self.ghidra_url},
+                    )
+                except Exception:
+                    pass
 
             # If file provided and not already loaded, upload it
             if file_path and Path(file_path).exists():
@@ -411,7 +471,8 @@ class GhidraAgent(BaseAgent):
                             pass
 
                     logger.info(f"Uploading {file_path} ({file_size_mb:.1f} MB)")
-                    self.ghidra_client.upload(file_path)
+                    await asyncio.to_thread(self.ghidra_client.upload, file_path)
+                    logger.info("Upload completed")
 
                     if self._progress_callback:
                         try:
@@ -437,7 +498,8 @@ class GhidraAgent(BaseAgent):
                             pass
 
                     logger.info("Running Ghidra analysis")
-                    self.ghidra_client.analyze()
+                    await asyncio.to_thread(self.ghidra_client.analyze)
+                    logger.info("Ghidra analysis completed")
 
                     if self._progress_callback:
                         try:
@@ -451,7 +513,7 @@ class GhidraAgent(BaseAgent):
                             pass
 
                     # Step 4: Get binary info
-                    ghidra_info = self.ghidra_client.get_info()
+                    ghidra_info = await asyncio.to_thread(self.ghidra_client.get_info)
                     logger.info(f"Got Ghidra info: {ghidra_info}")
 
                     if self._progress_callback:
@@ -519,6 +581,18 @@ class GhidraAgent(BaseAgent):
                     previous_findings=previous_findings,
                     ghidra_info=ghidra_info,
                 )
+
+                # Mark AI analysis as completed
+                if self._progress_callback:
+                    try:
+                        await self._progress_callback(
+                            "ghidra_ai_start",
+                            "AI analysis completed",
+                            "completed",
+                            {},
+                        )
+                    except Exception:
+                        pass
 
                 return AgentResult(
                     success=True,
@@ -618,62 +692,113 @@ class GhidraAgent(BaseAgent):
         # Load system prompt
         system_prompt = self.load_system_prompt()
 
+        # Load and inject skill contents directly into system prompt
+        # If _selected_skills is set, only load those skills; otherwise load all
+        skills_dir = self.project_dir / ".claude" / "skills"
+        skills_content = []
+        selected_skills = getattr(self, "_selected_skills", None)
+
+        if skills_dir.exists():
+            for skill_dir in skills_dir.iterdir():
+                if skill_dir.is_dir():
+                    # Filter by selected skills if specified
+                    if selected_skills is not None and skill_dir.name not in selected_skills:
+                        continue
+
+                    skill_file = skill_dir / "SKILL.md"
+                    if skill_file.exists():
+                        content = skill_file.read_text()
+                        # Remove YAML frontmatter
+                        if content.startswith("---"):
+                            parts = content.split("---", 2)
+                            if len(parts) >= 3:
+                                content = parts[2].strip()
+                        skills_content.append(content)
+                        logger.info(f"Loaded skill: {skill_dir.name}")
+
+            if skills_content:
+                skills_section = "\n\n".join(skills_content)
+                system_prompt = f"""{skills_section}
+
+---
+
+{system_prompt}"""
+                logger.info(f"Injected {len(skills_content)} skill(s) into system prompt")
+
         # Create MCP servers
         utils_server = create_utils_mcp_server()
         memory_server = create_memory_tools_server(self.memory_store)
 
-        # Configure agent options with structured output
-        # tools=[] disables all built-in tools (Bash, Read, Write, etc.)
-        # We only want AI to use our MCP tools for controlled analysis
-        options = ClaudeAgentOptions(
-            tools=[],  # Disable built-in tools - only use MCP tools
-            system_prompt=system_prompt,
-            model="claude-sonnet-4-20250514",
-            mcp_servers={
-                "ghidra": {
-                    "type": "http",
-                    "url": f"{self.ghidra_url}/mcp",
-                },
-                "utils": utils_server,
-                "memory": memory_server,
+        # Build MCP servers configuration
+        mcp_servers: dict[str, Any] = {
+            "ghidra": {
+                "type": "http",
+                "url": f"{self.ghidra_url}/mcp/",
             },
-            allowed_tools=[
-                # Ghidra tools
-                "mcp__ghidra__list_functions",
-                "mcp__ghidra__decompile_function",
-                "mcp__ghidra__disassemble_function",
-                "mcp__ghidra__get_function_details",
-                "mcp__ghidra__list_strings",
-                "mcp__ghidra__search_strings",
-                "mcp__ghidra__function_xrefs",
-                "mcp__ghidra__get_callgraph",
-                "mcp__ghidra__read_memory",
-                "mcp__ghidra__get_imports",
-                "mcp__ghidra__get_exports",
-                "mcp__ghidra__get_sections",
-                "mcp__ghidra__run_script",
-                "mcp__ghidra__clear_flow_overrides",
-                "mcp__ghidra__find_orphan_code",
-                # Utility tools
-                "mcp__utils__decode_base64",
-                "mcp__utils__encode_base64",
-                "mcp__utils__decode_hex",
-                "mcp__utils__encode_hex",
-                "mcp__utils__xor_decrypt",
-                "mcp__utils__calculate_hash",
-                "mcp__utils__strings_search",
-                "mcp__utils__grep_binary",
-                "mcp__utils__hexdump",
-                # Memory tools
-                "mcp__memory__memory_save_finding",
-                "mcp__memory__memory_get_findings",
-                "mcp__memory__memory_cache_function",
-                "mcp__memory__memory_get_function",
-                "mcp__memory__memory_list_cached_functions",
-                "mcp__memory__memory_save_checkpoint",
-                "mcp__memory__memory_restore_checkpoint",
-            ],
+            "utils": utils_server,
+            "memory": memory_server,
+        }
+
+        # Build allowed tools list - use wildcards for MCP servers
+        allowed_tools = [
+            "mcp__ghidra__*",
+            "mcp__utils__*",
+            "mcp__memory__*",
+        ]
+
+        # Add GDB MCP server if enabled
+        gdb_enabled = False
+        if self.enable_gdb:
+            gdb_settings = settings.gdb
+            # For SSE/HTTP modes, check if service is reachable before adding
+            if gdb_settings.service_mode in ("http", "sse"):
+                import httpx
+
+                try:
+                    # Quick health check with short timeout
+                    health_url = gdb_settings.mcp_url.replace("/sse", "/health").replace(
+                        "/mcp", "/health"
+                    )
+                    httpx.get(health_url, timeout=3.0)
+                    gdb_enabled = True
+                except Exception as e:
+                    logger.warning(
+                        f"GDB MCP server not reachable at {gdb_settings.mcp_url}, disabling: {e}"
+                    )
+            else:
+                # stdio mode - assume it will work
+                gdb_enabled = True
+
+            if gdb_enabled:
+                if gdb_settings.service_mode == "http":
+                    mcp_servers["gdb"] = {
+                        "type": "http",
+                        "url": gdb_settings.mcp_url,
+                    }
+                elif gdb_settings.service_mode == "sse":
+                    mcp_servers["gdb"] = {
+                        "type": "sse",
+                        "url": gdb_settings.mcp_url,
+                    }
+                else:
+                    mcp_servers["gdb"] = {
+                        "type": "stdio",
+                        "command": gdb_settings.mcp_command,
+                        "env": {"GDB_PATH": gdb_settings.gdb_path},
+                    }
+                allowed_tools.append("mcp__gdb__*")
+                logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
+
+        # Configure agent options with structured output
+        options = ClaudeAgentOptions(
+            tools=[],
+            system_prompt=system_prompt,
+            model=settings.llm.model,
+            mcp_servers=mcp_servers,
+            allowed_tools=allowed_tools,
             max_turns=self.config.max_iterations,
+            setting_sources=["project"],
+            cwd=str(self.project_dir),
             output_format={
                 "type": "json_schema",
                 "schema": GhidraAnalysisOutput.model_json_schema(),
@@ -681,12 +806,14 @@ class GhidraAgent(BaseAgent):
             hooks={
                 "PreCompact": [
                     HookMatcher(matcher=None, hooks=[create_pre_compact_hook(self.memory_store)])
-                ]
+                ],
+                "PostToolUse": [HookMatcher(matcher=None, hooks=[create_post_tool_use_hook()])],
             },
         )
 
         # Tool name to human-readable description mapping
         tool_descriptions = {
+            # Ghidra tools (static analysis)
             "mcp__ghidra__list_functions": "Listing functions",
             "mcp__ghidra__decompile_function": "Decompiling function",
             "mcp__ghidra__disassemble_function": "Disassembling function",
@@ -695,24 +822,81 @@ class GhidraAgent(BaseAgent):
             "mcp__ghidra__search_strings": "Searching strings",
             "mcp__ghidra__function_xrefs": "Getting cross-references",
             "mcp__ghidra__get_callgraph": "Building call graph",
-            "mcp__ghidra__read_memory": "Reading memory",
+            "mcp__ghidra__read_memory": "Reading memory (static)",
             "mcp__ghidra__get_imports": "Getting imports",
             "mcp__ghidra__get_exports": "Getting exports",
             "mcp__ghidra__get_sections": "Getting sections",
+            # Memory tools
             "mcp__memory__memory_save_finding": "Saving finding",
             "mcp__memory__memory_cache_function": "Caching function analysis",
+            # GDB tools (dynamic analysis)
+            "mcp__gdb__gdb_start_session": "Starting GDB session",
+            "mcp__gdb__gdb_stop_session": "Stopping GDB session",
+            "mcp__gdb__gdb_set_breakpoint": "Setting breakpoint",
+            "mcp__gdb__gdb_continue": "Continuing execution",
+            "mcp__gdb__gdb_step": "Stepping into",
+            "mcp__gdb__gdb_next": "Stepping over",
+            "mcp__gdb__gdb_interrupt": "Interrupting execution",
+            "mcp__gdb__gdb_get_backtrace": "Getting backtrace",
+            "mcp__gdb__gdb_get_registers": "Reading registers",
+            "mcp__gdb__gdb_get_variables": "Getting variables",
+            "mcp__gdb__gdb_evaluate_expression": "Evaluating expression",
+            "mcp__gdb__gdb_read_memory": "Reading memory (dynamic)",
+            "mcp__gdb__gdb_write_memory": "Writing memory",
+            "mcp__gdb__gdb_disassemble": "Disassembling (dynamic)",
+            "mcp__gdb__gdb_set_watchpoint": "Setting watchpoint",
         }
 
         async def _call_ai() -> dict[str, Any]:
-            """Inner function for AI call."""
+            """Inner function for AI call with detailed logging."""
             result_text = ""
             tool_call_count = 0
             functions_analyzed = 0
             findings_saved = 0
 
+            logger.info("=" * 60)
+            logger.info("Starting AI Analysis Session")
+            logger.info("=" * 60)
+            logger.info(f"Model: {options.model}")
+            logger.info(f"Max turns: {options.max_turns}")
+            logger.info(f"MCP servers: {list(mcp_servers.keys())}")
+            logger.info(f"Ghidra MCP URL: {mcp_servers['ghidra']['url']}")
+            logger.info(f"Allowed tools: {allowed_tools}")
+            if self.enable_gdb:
+                logger.info("GDB dynamic analysis: ENABLED")
+
+            # Log system prompt (first 500 chars)
+            logger.info("-" * 60)
+            logger.info("[System Prompt Preview]")
+            logger.info(system_prompt[:500] + "..." if len(system_prompt) > 500 else system_prompt)
+
+            # Log skills info if present
+            if "Available Skills" in system_prompt:
+                skills_section = system_prompt.split("## Available Skills")[1][:500]
+                logger.info("[Skills Section]")
+                logger.info("## Available Skills" + skills_section)
+
+            # Log user prompt (first 1000 chars)
+            logger.info("-" * 60)
+            logger.info("[User Prompt Preview]")
+            logger.info(prompt[:1000] + "..." if len(prompt) > 1000 else prompt)
+            logger.info("-" * 60)
+
             async with ClaudeSDKClient(options=options) as client:
                 await client.query(prompt)
                 async for msg in client.receive_response():
+                    # Handle system messages (MCP connection status)
+                    if isinstance(msg, SystemMessage):
+                        if msg.subtype == "init":
+                            mcp_status = msg.data.get("mcp_servers", [])
+                            logger.info(f"[MCP Connection Status] {mcp_status}")
+                            for server in mcp_status:
+                                if server.get("status") != "connected":
+                                    logger.warning(
+                                        f"MCP server '{server.get('name')}' status: {server.get('status')}"
+                                    )
+                        continue
+
                     # Handle assistant messages (AI responses with potential tool use)
                     if isinstance(msg, AssistantMessage):
                         if not hasattr(msg, "content") or not msg.content:
@@ -736,12 +920,15 @@ class GhidraAgent(BaseAgent):
                                 preview_data = {
                                     "tool": tool_name,
                                     "tool_call_count": tool_call_count,
+                                    "input": tool_input,
                                 }
 
                                 # Add context based on tool type
                                 if "function" in tool_name.lower():
-                                    func_name = tool_input.get("name") or tool_input.get(
-                                        "function_name", ""
+                                    func_name = (
+                                        tool_input.get("name")
+                                        or tool_input.get("function_name", "")
+                                        or tool_input.get("target", "")
                                     )
                                     if func_name:
                                         description = f"{description}: {func_name}"
@@ -754,6 +941,24 @@ class GhidraAgent(BaseAgent):
                                         preview_data["pattern"] = pattern
                                 elif "save" in tool_name.lower() or "finding" in tool_name.lower():
                                     findings_saved += 1
+                                elif "breakpoint" in tool_name.lower():
+                                    location = tool_input.get("location", "")
+                                    if location:
+                                        description = f"{description}: {location}"
+                                        preview_data["location"] = location
+                                elif "memory" in tool_name.lower():
+                                    address = tool_input.get("address", "")
+                                    if address:
+                                        description = f"{description}: {address}"
+                                        preview_data["address"] = address
+
+                                # Detailed logging
+                                logger.info("-" * 50)
+                                logger.info(f"[Tool #{tool_call_count}] {tool_name}")
+                                logger.info(f"  Description: {description}")
+                                logger.info(
+                                    f"  Input: {json.dumps(tool_input, ensure_ascii=False)[:500]}"
+                                )
 
                                 # Send progress notification
                                 if self._progress_callback:
@@ -767,17 +972,116 @@ class GhidraAgent(BaseAgent):
                                     except Exception as e:
                                         logger.debug(f"Progress callback failed: {e}")
 
-                                logger.info(f"AI tool call #{tool_call_count}: {description}")
-
                             elif isinstance(block, TextBlock):
                                 result_text = block.text
+                                if block.text and len(block.text) > 0:
+                                    # Log AI's thinking/response
+                                    text_preview = (
+                                        block.text[:1000] + "..."
+                                        if len(block.text) > 1000
+                                        else block.text
+                                    )
+                                    logger.info(f"[AI Thinking] {text_preview}")
+
+                            elif isinstance(block, ToolResultBlock):
+                                # Log tool result
+                                result_content = (
+                                    str(block.content) if hasattr(block, "content") else str(block)
+                                )
+                                result_preview = (
+                                    result_content[:2000] + "..."
+                                    if len(result_content) > 2000
+                                    else result_content
+                                )
+                                tool_id = getattr(block, "tool_use_id", "unknown")
+                                is_error = getattr(block, "is_error", False)
+                                if is_error:
+                                    logger.warning(
+                                        f"[Tool Result ERROR] {tool_id}: {result_preview}"
+                                    )
+                                else:
+                                    logger.info(f"[Tool Result] {result_preview}")
+
+                                # Send result to frontend
+                                if self._progress_callback:
+                                    try:
+                                        await self._progress_callback(
+                                            "ghidra_tool",
+                                            "Tool completed",
+                                            "completed",
+                                            {
+                                                "tool_call_count": tool_call_count,
+                                                "result": result_preview,
+                                                "is_error": is_error,
+                                            },
+                                        )
+                                    except Exception as e:
+                                        logger.debug(f"Progress callback failed: {e}")
+
+                    # Handle user messages (contains tool results)
+                    elif isinstance(msg, UserMessage):
+                        # Check for tool_use_result
+                        if hasattr(msg, "tool_use_result") and msg.tool_use_result:
+                            tool_result = msg.tool_use_result
+                            if isinstance(tool_result, dict):
+                                result_str = json.dumps(tool_result, ensure_ascii=False)
+                                is_error = tool_result.get("is_error", False)
+                            else:
+                                result_str = str(tool_result)
+                                is_error = False
+                            result_preview = (
+                                result_str[:800] + "..." if len(result_str) > 800 else result_str
+                            )
+                            if is_error:
+                                logger.warning(f"[Tool Result ERROR] {result_preview}")
+                            else:
+                                logger.info(f"[Tool Result] {result_preview}")
+
+                        # Also check content for ToolResultBlock
+                        if hasattr(msg, "content") and msg.content:
+                            for block in msg.content if isinstance(msg.content, list) else []:
+                                if isinstance(block, ToolResultBlock):
+                                    result_content = (
+                                        str(block.content)
+                                        if hasattr(block, "content")
+                                        else str(block)
+                                    )
+                                    result_preview = (
+                                        result_content[:800] + "..."
+                                        if len(result_content) > 800
+                                        else result_content
+                                    )
+                                    is_error = getattr(block, "is_error", False)
+                                    if is_error:
+                                        logger.warning(f"[Tool Result ERROR] {result_preview}")
+                                    else:
+                                        logger.info(f"[Tool Result] {result_preview}")
+
+                                    if self._progress_callback:
+                                        try:
+                                            await self._progress_callback(
+                                                "ghidra_tool",
+                                                "Tool completed",
+                                                "error" if is_error else "completed",
+                                                {
+                                                    "tool_call_count": tool_call_count,
+                                                    "result": result_preview,
+                                                    "is_error": is_error,
+                                                },
+                                            )
+                                        except Exception as e:
+                                            logger.debug(f"Progress callback failed: {e}")
 
                     # Handle result message - check for structured output first
                     elif isinstance(msg, ResultMessage):
-                        logger.info(
-                            f"AI analysis result: turns={getattr(msg, 'num_turns', 'N/A')}, "
-                            f"cost=${getattr(msg, 'total_cost_usd', 0):.4f}"
-                        )
+                        logger.info("=" * 60)
+                        logger.info("AI Analysis Complete")
+                        logger.info("=" * 60)
+                        logger.info(f"  Total tool calls: {tool_call_count}")
+                        logger.info(f"  Turns used: {getattr(msg, 'num_turns', 'N/A')}")
+                        logger.info(f"  Cost: ${getattr(msg, 'total_cost_usd', 0):.4f}")
+                        logger.info(f"  Input tokens: {getattr(msg, 'input_tokens', 'N/A')}")
+                        logger.info(f"  Output tokens: {getattr(msg, 'output_tokens', 'N/A')}")
 
                         # Try structured output first (preferred)
                         if hasattr(msg, "structured_output") and msg.structured_output:
@@ -793,7 +1097,9 @@ class GhidraAgent(BaseAgent):
                                     if isinstance(defs_value, str):
                                         try:
                                             structured_result = json.loads(defs_value)
-                                            logger.info("Parsed structured output from $defs string")
+                                            logger.info(
+                                                "Parsed structured output from $defs string"
+                                            )
                                         except json.JSONDecodeError:
                                             logger.warning("Failed to parse $defs as JSON")
                                             structured_result = None
@@ -802,7 +1108,10 @@ class GhidraAgent(BaseAgent):
 
                             # Validate we have the expected structure
                             if structured_result and isinstance(structured_result, dict):
-                                if "analyzed_functions" in structured_result or "key_findings" in structured_result:
+                                if (
+                                    "analyzed_functions" in structured_result
+                                    or "key_findings" in structured_result
+                                ):
                                     # Send completion notification
                                     if self._progress_callback:
                                         try:
@@ -813,7 +1122,9 @@ class GhidraAgent(BaseAgent):
                                                 {
                                                     "tool_call_count": tool_call_count,
                                                     "functions_analyzed": len(
-                                                        structured_result.get("analyzed_functions", [])
+                                                        structured_result.get(
+                                                            "analyzed_functions", []
+                                                        )
                                                     ),
                                                     "findings_saved": len(
                                                         structured_result.get("key_findings", [])
@@ -827,7 +1138,9 @@ class GhidraAgent(BaseAgent):
 
                                     return structured_result
                                 else:
-                                    logger.warning(f"Structured output missing expected keys: {list(structured_result.keys())}")
+                                    logger.warning(
+                                        f"Structured output missing expected keys: {list(structured_result.keys())}"
+                                    )
 
                         # Send completion notification for non-structured
                         if self._progress_callback:
@@ -989,26 +1302,15 @@ class GhidraAgent(BaseAgent):
     ) -> str:
         """Build the analysis prompt for the AI agent."""
         parts = [
-            "Analyze this binary using the available Ghidra tools.",
+            "分析以下二进制文件。",
             "",
-            "## ⚠️ CRITICAL: 所有输出必须使用中文 (Chinese Output Required)",
-            "- purpose, analysis, description, evidence, attack_chain 等所有文本字段必须使用中文",
-            "- 技术术语可以保留英文（如函数名、地址、API名称）",
-            "- 示例: purpose: \"建立与C2服务器的网络连接\" (正确) vs \"Establish network connection\" (错误)",
-            "",
-            "## ⚠️ MANDATORY: You MUST use mcp__ghidra__decompile_function tool",
-            "- analyzed_functions MUST contain functions you actually decompiled",
-            "- Do NOT just read function names from symbols - you MUST see the actual code",
-            "- If you don't call mcp__ghidra__decompile_function, analyzed_functions will be EMPTY = FAILURE",
-            "- Call mcp__ghidra__decompile_function for at least 3-5 key functions",
-            "",
-            "## Binary Information",
+            "## 二进制信息",
             f"```json\n{json.dumps(ghidra_info, indent=2)}\n```",
             "",
-            "## Static Analysis Results",
+            "## 静态分析结果",
             f"```json\n{json.dumps(static_results, indent=2, ensure_ascii=False)[:8000]}\n```",
             "",
-            f"## Sample File Path\n{file_path}",
+            f"## 样本路径\n{file_path}",
             "",
         ]
 
@@ -1038,85 +1340,25 @@ class GhidraAgent(BaseAgent):
                 ]
             )
 
-        # Build suspicious functions list from static analysis
+        # Build suspicious functions list from capa capabilities
         suspicious_funcs = []
-        func_categories = static_results.get("function_categories", {})
-        for category in ["Networking", "Cryptography", "Evasion", "Process", "Persistence"]:
-            if category in func_categories:
-                suspicious_funcs.extend(func_categories[category][:5])
-
-        parts.extend(
-            [
-                "## Investigation Protocol (MANDATORY)",
-                "",
-                "### 1. MUST Decompile Functions (CRITICAL)",
-                "- You MUST call mcp__ghidra__decompile_function for key functions",
-                "- analyzed_functions array MUST contain functions you decompiled",
-                "- Reading symbols alone is NOT enough - see the actual code",
-                "",
-                "### 2. Evidence Verification",
-                "- Any function flagged as suspicious MUST be verified with mcp__ghidra__decompile_function",
-                "- Do NOT trust static analysis classifications blindly",
-                "",
-                "### 3. Upstream Tracing",
-                "- For ANY suspicious function, MUST call mcp__ghidra__function_xrefs to find its callers",
-                "- Trace until you find: entry point, exported function, or thread creation",
-                "- Build complete chain: decrypt -> inject -> communicate",
-                "",
-            ]
-        )
+        capa_result = static_results.get("capa", {})
+        capabilities = capa_result.get("capabilities", [])
+        for cap in capabilities:
+            if any(
+                kw in cap.get("namespace", "").lower()
+                for kw in ["network", "crypto", "anti", "persistence"]
+            ):
+                suspicious_funcs.append(cap.get("name", ""))
 
         if suspicious_funcs:
             parts.extend(
                 [
-                    "## Suspicious Functions to Investigate",
-                    "These were flagged by static analysis - VERIFY with decompile_function:",
+                    "## 可疑函数",
                     ", ".join(suspicious_funcs[:20]),
                     "",
                 ]
             )
-
-        parts.extend(
-            [
-                "## Required Tool Usage",
-                "",
-                "### Step 1: List functions and find entry points",
-                "- Call mcp__ghidra__list_functions to see available functions",
-                "- Identify main, _start, or exported functions",
-                "",
-                "### Step 2: Decompile key functions (MANDATORY)",
-                "- Call mcp__ghidra__decompile_function for entry points",
-                "- Call mcp__ghidra__decompile_function for suspicious functions",
-                "- You MUST decompile at least 3-5 functions",
-                "- Example: mcp__ghidra__decompile_function(target=\"main\")",
-                "",
-                "### Step 3: Trace call chains",
-                "- Call mcp__ghidra__function_xrefs to understand relationships",
-                "- Build attack chain from entry to malicious behavior",
-                "",
-                "## CRITICAL: Final Output Format (所有文本使用中文!)",
-                "After completing your analysis, you MUST output a JSON object with this EXACT structure:",
-                "```json",
-                "{",
-                '  "analyzed_functions": [',
-                '    {"name": "func_name", "address": "0x...", "purpose": "用中文描述函数用途", "analysis": "用中文详细分析", "risk": "critical|high|medium|low"}',
-                "  ],",
-                '  "key_findings": [',
-                '    {"id": "finding_001", "title": "中文标题", "category": "中文类别", "description": "用中文详细描述", "severity": "CRITICAL|HIGH|MEDIUM|LOW", "evidence": ["中文证据1", "中文证据2"]}',
-                "  ],",
-                '  "attack_chain": "函数A (中文用途) → 函数B (中文用途) → 函数C (中文用途)",',
-                '  "analysis_path": ["步骤1: 中文描述", "步骤2: 中文描述"]',
-                "}",
-                "```",
-                "",
-                "## Output Requirements:",
-                "- analyzed_functions MUST NOT be empty - include functions you decompiled with mcp__ghidra__decompile_function",
-                "- evidence MUST be an array of strings, never a single string",
-                "- risk uses lowercase: critical, high, medium, low",
-                "- severity uses UPPERCASE: CRITICAL, HIGH, MEDIUM, LOW",
-                "- **所有 purpose, analysis, title, description, evidence, attack_chain 必须使用中文**",
-            ]
-        )
 
         return "\n".join(parts)
 
@@ -1130,17 +1372,23 @@ class GhidraAgent(BaseAgent):
             if func.get("name") in entry_names:
                 targets.append(func["name"])
 
-        # Priority 2: Functions with suspicious imports
-        suspicious_apis = static_results.get("function_categories", {})
-        for category in ["Networking", "Cryptography", "Evasion", "Process"]:
-            if category in suspicious_apis:
-                for func in functions:
-                    name = func.get("name", "")
-                    if name.startswith("FUN_") and name not in targets:
-                        targets.append(name)
-                        if len(targets) >= 30:
-                            break
-
+        # Priority 2: Functions based on capa capabilities
+        capa_result = static_results.get("capa", {})
+        capabilities = capa_result.get("capabilities", [])
+        has_suspicious_caps = any(
+            any(
+                kw in cap.get("namespace", "").lower()
+                for kw in ["network", "crypto", "anti", "persistence"]
+            )
+            for cap in capabilities
+        )
+        if has_suspicious_caps:
+            for func in functions:
+                name = func.get("name", "")
+                if name.startswith("FUN_") and name not in targets:
+                    targets.append(name)
+                    if len(targets) >= 30:
+                        break
         # Priority 3: Auto-named functions
         for func in functions:
             name = func.get("name", "")
@@ -1251,7 +1499,7 @@ class GhidraAgent(BaseAgent):
         for canonical_type, group in grouped.items():
             # Prefer Chinese content (contains CJK characters)
             def has_chinese(text: str) -> bool:
-                return any('\u4e00' <= c <= '\u9fff' for c in str(text))
+                return any("\u4e00" <= c <= "\u9fff" for c in str(text))
 
             # Sort: Chinese content first, then by severity
             severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -1291,7 +1539,9 @@ class GhidraAgent(BaseAgent):
             # Build normalized finding
             normalized = {
                 "id": f"finding_{finding_id:03d}",
-                "title": best.get("title") or best.get("type") or best.get("summary", "Finding")[:50],
+                "title": best.get("title")
+                or best.get("type")
+                or best.get("summary", "Finding")[:50],
                 "category": best.get("category") or best.get("type", "Unknown"),
                 "description": best.get("description") or best.get("summary", ""),
                 "severity": best.get("severity", "MEDIUM").upper(),

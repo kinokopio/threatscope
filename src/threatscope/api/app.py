@@ -26,7 +26,7 @@ from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 
-from src.threatscope.api.router import router as analysis_router  # noqa: E402
+
 from src.threatscope.api.schemas import HealthResponse  # noqa: E402
 from src.threatscope.core.config import get_settings  # noqa: E402
 from src.threatscope.core.dependencies import (  # noqa: E402
@@ -39,74 +39,76 @@ from src.threatscope.shared.exceptions import ThreatScopeError  # noqa: E402
 logger = logging.getLogger(__name__)
 
 
+_mcp_app = None
+
+
+def get_mcp_app():
+    global _mcp_app
+    if _mcp_app is None:
+        from src.threatscope.api.mcp_server import mcp
+
+        _mcp_app = mcp.http_app(path="/")
+    return _mcp_app
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan context manager.
-
-    Handles startup and shutdown events properly using the modern
-    lifespan pattern instead of deprecated on_event decorators.
-    """
+    """Application lifespan context manager."""
     from src.threatscope.ghidra.pool import GhidraInstancePool, PoolConfig  # noqa: E402
 
-    # Startup
-    logger.info("Starting ThreatScope API...")
-    settings = get_settings()
+    mcp_app = get_mcp_app()
 
-    # Initialize Langfuse observability (must be before any AI calls)
-    init_langfuse()
+    async with mcp_app.lifespan(app):
+        logger.info("Starting ThreatScope API...")
+        settings = get_settings()
 
-    # Start Ghidra instance pool if enabled (Docker mode)
-    ghidra_pool: GhidraInstancePool | None = None
-    if settings.analysis.enable_ghidra_analysis:
-        if settings.ghidra.service_mode == "docker":
-            logger.info(f"Starting Ghidra instance pool (size: {settings.ghidra.pool_size})...")
-            pool_config = PoolConfig(
-                pool_size=settings.ghidra.pool_size,
-                docker_image=settings.ghidra.docker_image,
-                base_http_port=settings.ghidra.base_http_port,
-                base_mcp_port=settings.ghidra.base_mcp_port,
-                memory_limit=settings.ghidra.memory_limit,
-                startup_timeout=settings.ghidra.startup_timeout,
-            )
-            ghidra_pool = GhidraInstancePool(pool_config)
-            if await ghidra_pool.initialize():
-                stats = ghidra_pool.get_stats()
-                logger.info(f"Ghidra pool initialized: {stats['total']} instances ready")
+        init_langfuse()
+
+        ghidra_pool: GhidraInstancePool | None = None
+        if settings.analysis.enable_ghidra_analysis:
+            if settings.ghidra.service_mode == "docker":
+                logger.info(f"Starting Ghidra instance pool (size: {settings.ghidra.pool_size})...")
+                pool_config = PoolConfig(
+                    pool_size=settings.ghidra.pool_size,
+                    docker_image=settings.ghidra.docker_image,
+                    base_http_port=settings.ghidra.base_http_port,
+                    base_mcp_port=settings.ghidra.base_mcp_port,
+                    memory_limit=settings.ghidra.memory_limit,
+                    startup_timeout=settings.ghidra.startup_timeout,
+                )
+                ghidra_pool = GhidraInstancePool(pool_config)
+                if await ghidra_pool.initialize():
+                    stats = ghidra_pool.get_stats()
+                    logger.info(f"Ghidra pool initialized: {stats['total']} instances ready")
+                else:
+                    logger.warning(
+                        "Failed to initialize Ghidra pool - deep analysis will be unavailable"
+                    )
+                    ghidra_pool = None
             else:
-                logger.warning("Failed to initialize Ghidra pool - deep analysis will be unavailable")
-                ghidra_pool = None
-        else:
-            # Subprocess mode - single instance, no pool needed
-            logger.info("Ghidra in subprocess mode - using single instance (no Docker pool)")
-            logger.warning("For multi-file concurrent analysis, use docker mode with pool_size > 1")
+                logger.info("Ghidra in subprocess mode - using single instance (no Docker pool)")
+                logger.warning(
+                    "For multi-file concurrent analysis, use docker mode with pool_size > 1"
+                )
 
-    # Set ghidra pool in dependencies for coordinator to use
-    set_ghidra_pool(ghidra_pool)
+        set_ghidra_pool(ghidra_pool)
+        app.state.ghidra_pool = ghidra_pool
 
-    # Store in app state for access elsewhere
-    app.state.ghidra_pool = ghidra_pool
-
-    try:
         logger.info(f"Environment: {settings.environment}")
         logger.info(f"Debug mode: {settings.debug}")
-    except Exception as e:
-        logger.error(f"Startup error: {e}")
 
-    yield
+        yield
 
-    # Shutdown
-    logger.info("Shutting down ThreatScope API...")
+        logger.info("Shutting down ThreatScope API...")
 
-    # Shutdown Ghidra pool
-    if ghidra_pool is not None:
-        logger.info("Shutting down Ghidra pool...")
-        await ghidra_pool.shutdown()
+        if ghidra_pool is not None:
+            logger.info("Shutting down Ghidra pool...")
+            await ghidra_pool.shutdown()
 
-    # Shutdown Langfuse
-    shutdown_langfuse()
+        shutdown_langfuse()
+        await shutdown_dependencies()
+        logger.info("Shutdown complete")
 
-    await shutdown_dependencies()
-    logger.info("Shutdown complete")
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application.
@@ -143,8 +145,13 @@ def create_app() -> FastAPI:
     # Register exception handlers
     _register_exception_handlers(app)
 
-    # Register routers
-    app.include_router(analysis_router)
+    # Register v1 API routes
+    from src.threatscope.api.v1.router import router as v1_router
+
+    app.include_router(v1_router, prefix="/api/v1")
+
+    # Mount MCP server at /api/v1/mcp
+    app.mount("/api/v1/mcp", get_mcp_app())
 
     # Health check endpoint (at root level)
     @app.get("/health", response_model=HealthResponse, tags=["health"])
@@ -155,9 +162,23 @@ def create_app() -> FastAPI:
             version="0.2.0",
             services={
                 "api": True,
-                "database": True,  # TODO: Actually check database
+                "database": True,
             },
         )
+
+    # Deprecation warning middleware
+    @app.middleware("http")
+    async def deprecation_warning(request: Request, call_next):
+        response = await call_next(request)
+        if not request.url.path.startswith("/api/v1") and request.url.path not in [
+            "/health",
+            "/docs",
+            "/redoc",
+            "/openapi.json",
+        ]:
+            response.headers["X-API-Deprecated"] = "true"
+            response.headers["X-API-Migrate-To"] = "/api/v1"
+        return response
 
     return app
 

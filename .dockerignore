@@ -11,6 +11,8 @@ __pycache__
 .venv
 venv
 ENV
+*.egg-info
+.eggs
 
 # IDE
 .idea
@@ -18,20 +20,56 @@ ENV
 *.swp
 *.swo
 
-# Data
+# Runtime data (use volumes instead)
+.threatscope/
 data/
 *.db
+*.db-shm
+*.db-wal
 
 # Tests
 .pytest_cache
 .coverage
 htmlcov
+tests/
 
-# Docs
+# Cache
+.ruff_cache
+.mypy_cache
+
+# Docs (keep README for reference)
 *.md
 !README.md
 
-# Docker
-Dockerfile*
+# Docker (don't include in context)
 docker-compose*.yml
-.docker
+
+# Frontend node_modules (rebuilt in container)
+frontend/node_modules
+frontend/dist
+frontend/.env
+frontend/.env.local
+
+# OpenCode / Sisyphus
+.opencode/
+.sisyphus/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Temporary
+tmp/
+temp/
+*.tmp
+
+# Secrets (never include)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json

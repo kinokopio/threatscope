@@ -15,9 +15,8 @@ class AnalysisStatus(str, Enum):
 
     # Static Analysis Pipeline
     HASHING = "hashing"
-    STRING_EXTRACTION = "string_extraction"
-    BINARY_PARSING = "binary_parsing"
-    YARA_SCANNING = "yara_scanning"
+    FILE_IDENTIFICATION = "file_identification"
+    STATIC_ANALYSIS = "static_analysis"  # capa + strings + yara + threat_intel + dynamic
     THREAT_INTEL = "threat_intel"
     DYNAMIC_ANALYSIS = "dynamic_analysis"
 
@@ -37,7 +36,7 @@ class AnalysisTask:
     """Represents a malware analysis task."""
 
     file_path: str
-    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))
     status: AnalysisStatus = AnalysisStatus.PENDING
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
@@ -45,7 +44,7 @@ class AnalysisTask:
     retry_count: int = 0
 
     # Results from each analysis phase
-    static_results: dict[str, Any] | None = None
+    pre_ghidra_results: dict[str, Any] | None = None
     ghidra_results: dict[str, Any] | None = None
     report: dict[str, Any] | None = None
 
@@ -67,7 +66,7 @@ class AnalysisTask:
             "updated_at": self.updated_at.isoformat(),
             "error": self.error,
             "retry_count": self.retry_count,
-            "static_results": self.static_results,
+            "pre_ghidra_results": self.pre_ghidra_results,
             "ghidra_results": self.ghidra_results,
             "report": self.report,
         }

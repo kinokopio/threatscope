@@ -13,17 +13,46 @@ from typing import Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from src.threatscope.ghidra.analyzer import GhidraAnalyzer
+from src.threatscope.ghidra.mcp_server import mcp
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+ALLOW_ORIGINS = os.getenv("GHIDRA_MCP_ALLOW_ORIGINS", "*")
+if ALLOW_ORIGINS.strip() == "*":
+    allow_origins = ["*"]
+else:
+    allow_origins = [o.strip() for o in ALLOW_ORIGINS.split(",") if o.strip()]
+
+mcp_middleware = [
+    Middleware(
+        CORSMiddleware,
+        allow_origins=allow_origins,
+        allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+        allow_headers=[
+            "mcp-protocol-version",
+            "mcp-session-id",
+            "Authorization",
+            "Content-Type",
+        ],
+        expose_headers=["mcp-session-id"],
+    )
+]
+
+mcp_app = mcp.http_app(path="/", middleware=mcp_middleware, stateless_http=True)
 
 app = FastAPI(
     title="ThreatScope Ghidra Service",
     version="1.0.0",
     description="Binary analysis service using Ghidra/pyghidra",
+    lifespan=mcp_app.lifespan,
 )
+
+app.mount("/mcp/", mcp_app)
 
 # Global analyzer state (single instance per service)
 analyzer: GhidraAnalyzer | None = None

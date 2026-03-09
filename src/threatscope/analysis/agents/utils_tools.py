@@ -165,10 +165,9 @@ async def grep_binary(args: dict[str, Any]) -> dict:
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
             timeout=30,
         )
-        output = result.stdout[:20000]
+        output = result.stdout.decode("utf-8", errors="replace")[:20000]
         return {"content": [{"type": "text", "text": output}]}
     except subprocess.TimeoutExpired:
         return {"content": [{"type": "text", "text": "Error: Command timed out"}]}
@@ -226,6 +225,5 @@ def create_utils_mcp_server():
             decompress_zlib,
             strings_search,
             grep_binary,
-            hexdump,
         ],
     )
