@@ -125,7 +125,7 @@ def create_memory_tools_server(memory_store: MemoryStore):
     Returns:
         SDK MCP server with memory tools.
     """
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     @tool(
         "memory_save_finding",
@@ -172,7 +172,7 @@ def create_memory_tools_server(memory_store: MemoryStore):
             "summary": new_summary,
             "evidence": args.get("evidence", {}),
             "severity": args.get("severity", "medium"),
-            "discovered_at": datetime.now().isoformat(),
+            "discovered_at": datetime.now(timezone.utc).isoformat(),
         }
         findings.append(finding)
         memory_store.save_findings(findings)

@@ -1,7 +1,7 @@
 """Local memory store for agent context persistence."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -33,7 +33,7 @@ class MemoryStore:
         data = {
             "version": "1.0",
             "sample_hash": self.sample_hash,
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
             "findings": findings,
         }
         findings_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
@@ -58,7 +58,7 @@ class MemoryStore:
         """
         findings = self.get_findings()
         finding["id"] = f"finding_{len(findings) + 1:03d}"
-        finding["discovered_at"] = datetime.now().isoformat()
+        finding["discovered_at"] = datetime.now(timezone.utc).isoformat()
         findings.append(finding)
         self.save_findings(findings)
 
@@ -76,7 +76,7 @@ class MemoryStore:
         safe_name = name.replace("/", "_").replace("\\", "_")
         func_file = func_dir / f"{safe_name}.json"
 
-        analysis["analyzed_at"] = datetime.now().isoformat()
+        analysis["analyzed_at"] = datetime.now(timezone.utc).isoformat()
         func_file.write_text(json.dumps(analysis, indent=2, ensure_ascii=False))
 
     def get_function(self, name: str) -> dict | None:
@@ -112,7 +112,7 @@ class MemoryStore:
             state: State dictionary with phase, summary, etc.
         """
         state_file = self.base_path / "analysis_state.json"
-        state["last_checkpoint"] = datetime.now().isoformat()
+        state["last_checkpoint"] = datetime.now(timezone.utc).isoformat()
         state["analyzed_functions"] = self.list_cached_functions()
         state_file.write_text(json.dumps(state, indent=2, ensure_ascii=False))
 
@@ -135,7 +135,7 @@ class MemoryStore:
         """
         ioc_file = self.base_path / "iocs.json"
         data = {
-            "updated_at": datetime.now().isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
             "iocs": iocs,
         }
         ioc_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))

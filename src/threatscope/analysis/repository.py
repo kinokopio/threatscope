@@ -12,7 +12,7 @@ Updated for static analysis refactor:
 import json
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Generator
 
@@ -136,7 +136,7 @@ class TaskRepository:
         Returns:
             Created task as dictionary.
         """
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             conn.execute(
                 """
@@ -244,7 +244,7 @@ class TaskRepository:
             status: New status value.
             error: Error message if failed.
         """
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             conn.execute(
                 """
@@ -288,7 +288,7 @@ class TaskRepository:
         if result_type not in valid_types:
             raise ValueError(f"Invalid result type: {result_type}. Must be one of {valid_types}")
 
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             conn.execute(
                 f"""
@@ -307,7 +307,7 @@ class TaskRepository:
             task_id: Task identifier.
             step_name: Name of the current step.
         """
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             conn.execute(
                 """
@@ -337,7 +337,7 @@ class TaskRepository:
             status: Step status ('pending', 'running', 'completed', 'failed', 'skipped').
             preview: Optional preview data for the step.
         """
-        now = datetime.now().isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         with self._connection() as conn:
             row = conn.execute("SELECT steps_status FROM tasks WHERE id = ?", (task_id,)).fetchone()
 
