@@ -493,11 +493,13 @@ class AnalysisCoordinator:
         """Query threat intelligence services."""
         results: dict[str, Any] = {}
 
-        # Query by hash
+        # Query by hash — prefer MD5 (required by TIX); all providers accept MD5
         hashes = static_results.get("hashes", {})
+        md5 = hashes.get("md5")
         sha256 = hashes.get("sha256")
-        if sha256:
-            hash_results = await self.threat_intel.query_hash(sha256)
+        query_hash_value = md5 or sha256
+        if query_hash_value:
+            hash_results = await self.threat_intel.query_hash(query_hash_value)
             results["hash_lookup"] = {
                 source: {
                     "found": r.found,
