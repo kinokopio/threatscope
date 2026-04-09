@@ -794,20 +794,42 @@ function ThreatIntelTab({ task }: { task: any }) {
 
             {!error && found && provider === 'tencent_tix' && (
               <div className="space-y-2 text-sm">
-                {data.risk_level != null && (
+                {data.threat_level != null && (
                   <div className="flex gap-2 items-center">
-                    <span className="text-muted-foreground w-24 shrink-0">风险等级</span>
+                    <span className="text-muted-foreground w-24 shrink-0">威胁等级</span>
                     <Badge
-                      variant={data.risk_level >= 3 ? 'destructive' : data.risk_level >= 2 ? 'default' : 'secondary'}
+                      variant={data.threat_level >= 3 ? 'destructive' : data.threat_level >= 2 ? 'default' : 'secondary'}
                     >
-                      {data.risk_level === 4 ? '高危' : data.risk_level === 3 ? '中危' : data.risk_level === 2 ? '低危' : `${data.risk_level}`}
+                      {data.threat_level === 4 ? '高危' : data.threat_level === 3 ? '中危' : data.threat_level === 2 ? '低危' : `${data.threat_level}`}
                     </Badge>
                   </div>
                 )}
-                {data.virusname && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">病毒名称</span>
-                    <span className="font-mono font-semibold">{data.virusname}</span>
+                {data.result && (
+                  <div className="flex gap-2 items-center">
+                    <span className="text-muted-foreground w-24 shrink-0">判定结果</span>
+                    <span className="font-mono font-semibold">
+                      {data.result === 'black' ? '黑' : data.result === 'white' ? '白' : data.result === 'grey' ? '灰' : data.result}
+                    </span>
+                  </div>
+                )}
+                {Array.isArray(data.threat_type) && data.threat_type.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">威胁类型</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.threat_type.map((t: string) => (
+                        <Badge key={t} variant="destructive" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(data.tags) && data.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">威胁标签</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.tags.map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-xs font-mono">{t}</Badge>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {data.file_type && (
@@ -816,10 +838,28 @@ function ThreatIntelTab({ task }: { task: any }) {
                     <span>{data.file_type}</span>
                   </div>
                 )}
-                {data.tag_info && (
+                {data.file_size && (
                   <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">标签信息</span>
-                    <span className="text-xs text-muted-foreground">{JSON.stringify(data.tag_info)}</span>
+                    <span className="text-muted-foreground w-24 shrink-0">文件大小</span>
+                    <span>{Number(data.file_size) ? `${(Number(data.file_size) / 1024).toFixed(1)} KB` : data.file_size}</span>
+                  </div>
+                )}
+                {data.submit_time && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">首次提交</span>
+                    <span>{data.submit_time}</span>
+                  </div>
+                )}
+                {Array.isArray(data.intelligences) && data.intelligences.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">情报来源</span>
+                    <div className="flex flex-col gap-1">
+                      {data.intelligences.map((intel: { Source?: string; Stamp?: string; Time?: string }, i: number) => (
+                        <span key={i} className="text-xs text-muted-foreground">
+                          {[intel.Source, intel.Stamp, intel.Time].filter(Boolean).join(' · ')}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
