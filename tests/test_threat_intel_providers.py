@@ -224,6 +224,7 @@ class TestURLhausProvider:
 
     @pytest.mark.asyncio
     async def test_query_ioc_url_found(self):
+        """URLhaus 找到 URL IOC，返回 found=True 及 threat 字段。"""
         from src.threatscope.analysis.services.threat_intel.providers.urlhaus import (
             URLhausProvider,
         )
@@ -251,6 +252,7 @@ class TestURLhausProvider:
 
     @pytest.mark.asyncio
     async def test_query_ioc_url_not_found(self):
+        """URLhaus 未找到 URL IOC，返回 found=False。"""
         from src.threatscope.analysis.services.threat_intel.providers.urlhaus import (
             URLhausProvider,
         )
@@ -267,6 +269,7 @@ class TestURLhausProvider:
             result = await provider.query_ioc("http://clean.com", "url")
 
         assert result.found is False
+        assert result.data.get("url") == "http://clean.com"
 
     @pytest.mark.asyncio
     async def test_query_ioc_non_url_not_supported(self):
@@ -278,3 +281,4 @@ class TestURLhausProvider:
         result = await provider.query_ioc("192.168.1.1", "ip:port")
         assert result.found is False
         assert result.source == "urlhaus"
+        assert result.data.get("ioc") == "192.168.1.1"

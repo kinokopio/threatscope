@@ -1,4 +1,3 @@
-# src/threatscope/analysis/services/threat_intel/providers/urlhaus.py
 """URLhaus threat intelligence provider."""
 
 import httpx
@@ -30,7 +29,7 @@ class URLhausProvider(BaseThreatIntelProvider):
     async def query_ioc(self, ioc: str, ioc_type: str) -> ThreatIntelResult:
         """Query URLhaus for a URL IOC. Non-URL ioc_types return found=False."""
         if ioc_type != "url":
-            return ThreatIntelResult(source=self.name, found=False, data={})
+            return ThreatIntelResult(source=self.name, found=False, data={"ioc": ioc})
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
