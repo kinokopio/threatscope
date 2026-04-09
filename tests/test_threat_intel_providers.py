@@ -1,8 +1,5 @@
 # tests/test_threat_intel_providers.py
 """Unit tests for threat intel provider architecture."""
-from dataclasses import dataclass
-from unittest.mock import AsyncMock, MagicMock, patch
-
 import pytest
 
 from src.threatscope.analysis.services.threat_intel.base import (
