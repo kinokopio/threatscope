@@ -357,33 +357,48 @@ def create_todo_enforcement_hook():
     Returns:
         Tuple of (hook function, state dict) - state dict tracks todo_written flag.
     """
-    # Shared state to track if TodoWrite has been called
     state = {"todo_written": False, "tool_count": 0}
 
     async def pre_tool_use_hook(input_data, tool_use_id, context):
         tool_name = input_data.get("tool_name", "")
         state["tool_count"] += 1
 
-        # If TodoWrite is called, mark it and allow
         if tool_name == "TodoWrite":
             state["todo_written"] = True
             logger.info("[TodoEnforcement] TodoWrite called - analysis plan created")
             return {}
 
-        # If TodoWrite hasn't been called yet and this is an early tool call
+        # Block the first tool call if it's not TodoWrite
+        if not state["todo_written"] and state["tool_count"] == 1:
+            logger.warning(
+                f"[TodoEnforcement] BLOCKING tool '{tool_name}' - TodoWrite must be called first"
+            )
+            return {
+                "systemMessage": (
+                    "⚠️ MANDATORY REQUIREMENT VIOLATED: Your FIRST tool call MUST be TodoWrite. "
+                    "You attempted to call a different tool first. Please call TodoWrite NOW "
+                    "to create your analysis plan before proceeding with any other tools."
+                ),
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "deny",
+                    "permissionDecisionReason": (
+                        "TodoWrite must be called first. Create your analysis plan with TodoWrite, "
+                        "then retry this tool."
+                    ),
+                },
+            }
+
+        # For subsequent calls (2nd, 3rd), just remind but allow
         if not state["todo_written"] and state["tool_count"] <= 3:
             logger.warning(
                 f"[TodoEnforcement] Tool '{tool_name}' called before TodoWrite "
                 f"(call #{state['tool_count']})"
             )
-            # Inject a system message reminding the AI to use TodoWrite first
-            # but allow the tool to proceed (don't block, just remind)
             return {
                 "systemMessage": (
-                    "⚠️ REMINDER: You MUST call TodoWrite FIRST to create your analysis plan "
-                    "before using any other tools. This is a mandatory requirement from your "
-                    "skill instructions. Please call TodoWrite immediately with your analysis "
-                    "tasks, then continue with your current tool."
+                    "⚠️ REMINDER: You still haven't called TodoWrite. Please create your "
+                    "analysis plan with TodoWrite as soon as possible."
                 ),
             }
 
