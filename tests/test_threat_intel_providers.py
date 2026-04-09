@@ -3,6 +3,7 @@
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from src.threatscope.analysis.services.threat_intel.base import (
@@ -402,3 +403,29 @@ class TestVirusTotalProvider:
 
         assert result.found is False
         assert "SSL error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_query_hash_server_error(self):
+        """HTTP 5xx 返回 found=False，error 包含状态码。"""
+        from src.threatscope.analysis.services.threat_intel.providers.virustotal import (
+            VirusTotalProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "500 Internal Server Error", request=MagicMock(), response=mock_response
+        )
+
+        provider = VirusTotalProvider(api_key="test-key")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert result.error is not None
+        assert "500" in result.error
