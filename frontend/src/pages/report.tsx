@@ -794,27 +794,30 @@ function ThreatIntelTab({ task }: { task: any }) {
 
             {!error && found && provider === 'tencent_tix' && (
               <div className="space-y-2 text-sm">
-                {data.threat_level != null && (
-                  <div className="flex gap-2 items-center">
-                    <span className="text-muted-foreground w-24 shrink-0">威胁等级</span>
-                    <Badge
-                      variant={data.threat_level >= 3 ? 'destructive' : data.threat_level >= 2 ? 'default' : 'secondary'}
-                    >
-                      {data.threat_level === 4 ? '高危' : data.threat_level === 3 ? '中危' : data.threat_level === 2 ? '低危' : `${data.threat_level}`}
-                    </Badge>
-                  </div>
-                )}
-                {data.result && (
-                  <div className="flex gap-2 items-center">
-                    <span className="text-muted-foreground w-24 shrink-0">判定结果</span>
-                    <span className="font-mono font-semibold">
-                      {data.result === 'black' ? '黑' : data.result === 'white' ? '白' : data.result === 'grey' ? '灰' : data.result}
-                    </span>
-                  </div>
-                )}
+                {/* Row 1: threat level + result side by side */}
+                <div className="flex gap-4 flex-wrap items-center">
+                  {data.threat_level != null && (
+                    <div className="flex gap-2 items-center">
+                      <span className="text-muted-foreground shrink-0">威胁等级</span>
+                      <Badge variant={data.threat_level >= 3 ? 'destructive' : data.threat_level >= 2 ? 'default' : 'secondary'}>
+                        {data.threat_level === 4 ? '高危 (4)' : data.threat_level === 3 ? '中危 (3)' : data.threat_level === 2 ? '低危 (2)' : `等级 ${data.threat_level}`}
+                      </Badge>
+                    </div>
+                  )}
+                  {data.result && (
+                    <div className="flex gap-2 items-center">
+                      <span className="text-muted-foreground shrink-0">判定</span>
+                      <Badge variant={data.result === 'black' ? 'destructive' : data.result === 'grey' ? 'default' : 'secondary'}>
+                        {data.result === 'black' ? '黑 (black)' : data.result === 'white' ? '白 (white)' : data.result === 'grey' ? '灰 (grey)' : data.result}
+                      </Badge>
+                    </div>
+                  )}
+                </div>
+
+                {/* Threat types */}
                 {Array.isArray(data.threat_type) && data.threat_type.length > 0 && (
                   <div className="flex gap-2 flex-wrap items-start">
-                    <span className="text-muted-foreground w-24 shrink-0">威胁类型</span>
+                    <span className="text-muted-foreground w-20 shrink-0">威胁类型</span>
                     <div className="flex flex-wrap gap-1">
                       {data.threat_type.map((t: string) => (
                         <Badge key={t} variant="destructive" className="text-xs">{t}</Badge>
@@ -822,44 +825,95 @@ function ThreatIntelTab({ task }: { task: any }) {
                     </div>
                   </div>
                 )}
+
+                {/* Tags (malware family names) */}
                 {Array.isArray(data.tags) && data.tags.length > 0 && (
                   <div className="flex gap-2 flex-wrap items-start">
-                    <span className="text-muted-foreground w-24 shrink-0">威胁标签</span>
+                    <span className="text-muted-foreground w-20 shrink-0">病毒标签</span>
                     <div className="flex flex-wrap gap-1">
                       {data.tags.map((t: string) => (
-                        <Badge key={t} variant="secondary" className="text-xs font-mono">{t}</Badge>
+                        <Badge key={t} variant="outline" className="text-xs font-mono">{t}</Badge>
                       ))}
                     </div>
                   </div>
                 )}
-                {data.file_type && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">文件类型</span>
-                    <span>{data.file_type}</span>
-                  </div>
-                )}
-                {data.file_size && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">文件大小</span>
-                    <span>{Number(data.file_size) ? `${(Number(data.file_size) / 1024).toFixed(1)} KB` : data.file_size}</span>
-                  </div>
-                )}
-                {data.submit_time && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">首次提交</span>
-                    <span>{data.submit_time}</span>
-                  </div>
-                )}
-                {Array.isArray(data.intelligences) && data.intelligences.length > 0 && (
+
+                {/* Threat groups */}
+                {Array.isArray(data.groups) && data.groups.length > 0 && (
                   <div className="flex gap-2 flex-wrap items-start">
-                    <span className="text-muted-foreground w-24 shrink-0">情报来源</span>
-                    <div className="flex flex-col gap-1">
-                      {data.intelligences.map((intel: { Source?: string; Stamp?: string; Time?: string }, i: number) => (
-                        <span key={i} className="text-xs text-muted-foreground">
-                          {[intel.Source, intel.Stamp, intel.Time].filter(Boolean).join(' · ')}
-                        </span>
+                    <span className="text-muted-foreground w-20 shrink-0">威胁组织</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.groups.map((g: string) => (
+                        <Badge key={g} variant="secondary" className="text-xs">{g}</Badge>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* ATT&CK TTPs */}
+                {Array.isArray(data.ttps) && data.ttps.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-20 shrink-0">ATT&CK TTP</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.ttps.map((ttp: { id: string; name: string }) => (
+                        <Badge key={ttp.id} variant="secondary" className="text-xs font-mono">
+                          {ttp.id}{ttp.name ? ` · ${ttp.name}` : ''}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* File metadata */}
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 pt-1">
+                  {data.file_name && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground shrink-0">文件名</span>
+                      <span className="font-mono text-xs truncate" title={data.file_name}>{data.file_name}</span>
+                    </div>
+                  )}
+                  {data.file_type && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground shrink-0">文件类型</span>
+                      <span className="uppercase font-semibold">{data.file_type}</span>
+                    </div>
+                  )}
+                  {data.file_size && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground shrink-0">文件大小</span>
+                      <span>{Number(data.file_size) ? `${(Number(data.file_size) / 1024).toFixed(1)} KB` : data.file_size}</span>
+                    </div>
+                  )}
+                  {data.submit_time && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground shrink-0">首次提交</span>
+                      <span>{data.submit_time}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Intelligence sources table */}
+                {Array.isArray(data.intelligences) && data.intelligences.length > 0 && (
+                  <div className="pt-1">
+                    <p className="text-muted-foreground text-xs mb-1">情报来源</p>
+                    <table className="w-full text-xs border-collapse">
+                      <thead>
+                        <tr className="border-b border-border text-muted-foreground">
+                          <th className="text-left py-1 pr-3 font-normal">来源</th>
+                          <th className="text-left py-1 pr-3 font-normal">标记</th>
+                          <th className="text-left py-1 font-normal">时间</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.intelligences.map((intel: { Source?: string; Stamp?: string; Time?: string }, i: number) => (
+                          <tr key={i} className="border-b border-border/50 last:border-0">
+                            <td className="py-1 pr-3 text-muted-foreground">{intel.Source ?? '—'}</td>
+                            <td className="py-1 pr-3 font-mono">{intel.Stamp ?? '—'}</td>
+                            <td className="py-1 text-muted-foreground">{intel.Time ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>

@@ -76,6 +76,15 @@ class TencentTIXProvider(BaseThreatIntelProvider):
             basicinfo = data.get("basicinfo", {})
             tags = [t.get("tag", "") for t in (data.get("tags") or []) if t.get("tag")]
 
+            # Extract ATT&CK TTPs
+            ttps = []
+            for ttp in data.get("ttps") or []:
+                if isinstance(ttp, dict) and ttp.get("ttp_id"):
+                    ttps.append({"id": ttp.get("ttp_id"), "name": ttp.get("ttp_name", "")})
+
+            # Extract threat groups
+            groups = [g.get("name") for g in (data.get("groups") or []) if g.get("name")]
+
             return ThreatIntelResult(
                 source=self.name,
                 found=threat_level > 0,
@@ -84,10 +93,13 @@ class TencentTIXProvider(BaseThreatIntelProvider):
                     "result": data.get("result", ""),
                     "threat_type": data.get("threat_type") or [],
                     "tags": tags,
+                    "file_name": basicinfo.get("file_name"),
                     "file_type": basicinfo.get("file_type"),
                     "file_size": basicinfo.get("file_size"),
                     "submit_time": basicinfo.get("submit_time"),
                     "intelligences": data.get("intelligences") or [],
+                    "groups": groups,
+                    "ttps": ttps,
                 },
             )
         except httpx.HTTPStatusError as e:
