@@ -35,7 +35,7 @@ class ThreatIntelService:
 
         Returns:
             Dict mapping provider name to ThreatIntelResult.
-            Failed providers appear under an "error_<id>" key.
+            Failed providers appear under an "error_<provider_name>" key.
         """
         if not self.providers:
             return {}
@@ -81,8 +81,10 @@ class ThreatIntelService:
         }
 
         for domain in (domains or [])[:10]:
-            tasks = [(p, p.query_ioc(domain, "domain")) for p in self.providers]
-            raw = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
+            raw = await asyncio.gather(
+                *[p.query_ioc(domain, "domain") for p in self.providers],
+                return_exceptions=True,
+            )
             for provider, r in zip(self.providers, raw):
                 if isinstance(r, ThreatIntelResult):
                     results["domains"].append(r)
@@ -94,8 +96,10 @@ class ThreatIntelService:
                     )
 
         for ip in (ips or [])[:10]:
-            tasks = [(p, p.query_ioc(ip, "ip:port")) for p in self.providers]
-            raw = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
+            raw = await asyncio.gather(
+                *[p.query_ioc(ip, "ip:port") for p in self.providers],
+                return_exceptions=True,
+            )
             for provider, r in zip(self.providers, raw):
                 if isinstance(r, ThreatIntelResult):
                     results["ips"].append(r)
@@ -107,8 +111,10 @@ class ThreatIntelService:
                     )
 
         for url in (urls or [])[:10]:
-            tasks = [(p, p.query_ioc(url, "url")) for p in self.providers]
-            raw = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
+            raw = await asyncio.gather(
+                *[p.query_ioc(url, "url") for p in self.providers],
+                return_exceptions=True,
+            )
             for provider, r in zip(self.providers, raw):
                 if isinstance(r, ThreatIntelResult):
                     results["urls"].append(r)

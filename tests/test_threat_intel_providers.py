@@ -660,6 +660,23 @@ class TestThreatIntelService:
         assert results["ips"] == []
         assert results["urls"] == []
 
+    @pytest.mark.asyncio
+    async def test_query_iocs_provider_failure_captured(self):
+        """一个 provider 在 query_iocs 中抛异常，结果以 error 字段记录。"""
+        from src.threatscope.analysis.services.threat_intel.service import ThreatIntelService
+
+        bad_provider = MagicMock()
+        bad_provider.name = "bad"
+        bad_provider.query_ioc = AsyncMock(side_effect=RuntimeError("ioc provider crashed"))
+
+        service = ThreatIntelService(providers=[bad_provider])
+        results = await service.query_iocs(domains=["evil.com"])
+
+        assert len(results["domains"]) == 1
+        assert results["domains"][0].source == "bad"
+        assert results["domains"][0].error == "ioc provider crashed"
+        assert results["domains"][0].found is False
+
 
 class TestBuildService:
     def test_build_service_with_all_enabled(self):
