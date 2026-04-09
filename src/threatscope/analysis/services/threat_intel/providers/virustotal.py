@@ -51,6 +51,13 @@ class VirusTotalProvider(BaseThreatIntelProvider):
                 known_dist = attrs.get("known_distributors") or {}
                 distributors = known_dist.get("distributors") or []
 
+                # Collect engines that flagged the file as malicious or suspicious
+                detections = [
+                    {"engine": engine, "result": r.get("result") or "", "category": r.get("category", "")}
+                    for engine, r in (attrs.get("last_analysis_results") or {}).items()
+                    if r.get("category") in ("malicious", "suspicious")
+                ]
+
                 return ThreatIntelResult(
                     source=self.name,
                     found=malicious_count > 0,
@@ -63,8 +70,12 @@ class VirusTotalProvider(BaseThreatIntelProvider):
                         "threat_label": (attrs.get("popular_threat_classification", {}) or {}).get(
                             "suggested_threat_label"
                         ),
+                        "type_description": attrs.get("type_description"),
+                        "first_submission_date": attrs.get("first_submission_date"),
+                        "last_submission_date": attrs.get("last_submission_date"),
                         "known_distributors": distributors,
                         "tags": attrs.get("tags") or [],
+                        "detections": detections,
                     },
                 )
         except httpx.HTTPStatusError as e:

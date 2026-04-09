@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 from src.threatscope.analysis.models.report import (
     AnalyzedFunction,
     DataSources,
-    IoCs,
     IoCItem,
+    IoCs,
     KeyFinding,
     MalwareClassification,
     MitreMapping,
@@ -579,10 +579,14 @@ class ReportBuilder:
         yara_matches = static_results.get("yara", {}).get("matches", [])
         has_yara_match = len(yara_matches) > 0
 
-        # Check threat intel
+        # Check threat intel — any source in hash_lookup reporting found=True counts
         ti_found = False
         if threat_intel:
-            ti_found = threat_intel.get("malwarebazaar", {}).get("found", False)
+            hash_lookup = threat_intel.get("hash_lookup", {})
+            ti_found = any(isinstance(v, dict) and v.get("found") for v in hash_lookup.values())
+            # Fallback: legacy flat format (malwarebazaar/threatfox at top level)
+            if not ti_found:
+                ti_found = threat_intel.get("malwarebazaar", {}).get("found", False)
 
         # Calculate verdict and confidence
         if ti_found:
@@ -694,7 +698,16 @@ class ReportBuilder:
 
         family = None
         if threat_intel:
-            family = threat_intel.get("malwarebazaar", {}).get("family")
+            hash_lookup = threat_intel.get("hash_lookup", {})
+            # Priority: MalwareBazaar family > TIX virusname > VT meaningful_name
+            mb = hash_lookup.get("malwarebazaar") or threat_intel.get("malwarebazaar", {})
+            family = mb.get("data", mb).get("family") if isinstance(mb, dict) else None
+            if not family:
+                tix = hash_lookup.get("tencent_tix", {})
+                family = (tix.get("data") or {}).get("virusname") or None
+            if not family:
+                vt = hash_lookup.get("virustotal", {})
+                family = (vt.get("data") or {}).get("meaningful_name") or None
 
         malware_type = "Unknown"
         all_text = " ".join(

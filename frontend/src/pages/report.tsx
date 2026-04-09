@@ -627,8 +627,11 @@ function ThreatIntelTab({ task }: { task: any }) {
               const total = malicious + suspicious + undetected + harmless
               const knownDistributors: string[] = data.known_distributors || []
               const tags: string[] = data.tags || []
+              const detections: { engine: string; result: string; category: string }[] = data.detections || []
+              const fmtTs = (ts: number | null | undefined) =>
+                ts ? new Date(ts * 1000).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) : null
               const hasContent = total > 0 || data.meaningful_name || data.threat_label
-                || knownDistributors.length > 0 || tags.length > 0
+                || knownDistributors.length > 0 || tags.length > 0 || detections.length > 0
               if (!hasContent) return null
               return (
                 <div className="space-y-2 text-sm">
@@ -658,10 +661,60 @@ function ThreatIntelTab({ task }: { task: any }) {
                       <span className="font-mono">{data.meaningful_name}</span>
                     </div>
                   )}
+                  {data.type_description && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-24 shrink-0">文件类型</span>
+                      <span>{data.type_description}</span>
+                    </div>
+                  )}
                   {data.threat_label && (
                     <div className="flex gap-2">
                       <span className="text-muted-foreground w-24 shrink-0">威胁标签</span>
                       <Badge variant="destructive" className="text-xs">{data.threat_label}</Badge>
+                    </div>
+                  )}
+                  {fmtTs(data.first_submission_date) && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-24 shrink-0">首次提交</span>
+                      <span>{fmtTs(data.first_submission_date)}</span>
+                    </div>
+                  )}
+                  {fmtTs(data.last_submission_date) && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-24 shrink-0">最后提交</span>
+                      <span>{fmtTs(data.last_submission_date)}</span>
+                    </div>
+                  )}
+                  {detections.length > 0 && (
+                    <div className="mt-3">
+                      <p className="text-muted-foreground mb-1.5">引擎检测详情 ({detections.length})</p>
+                      <div className="rounded border overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-muted/50 border-b">
+                              <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">引擎</th>
+                              <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">检测名称</th>
+                              <th className="text-left px-3 py-1.5 font-medium text-muted-foreground">类型</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detections.map((d, i) => (
+                              <tr key={d.engine} className={i % 2 === 0 ? '' : 'bg-muted/20'}>
+                                <td className="px-3 py-1.5 font-medium">{d.engine}</td>
+                                <td className="px-3 py-1.5 font-mono text-destructive">{d.result || '—'}</td>
+                                <td className="px-3 py-1.5">
+                                  <Badge
+                                    variant={d.category === 'malicious' ? 'destructive' : 'outline'}
+                                    className="text-xs"
+                                  >
+                                    {d.category === 'malicious' ? '恶意' : '可疑'}
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                   {knownDistributors.length > 0 && (
