@@ -57,9 +57,9 @@ class ThreatIntelSettings(BaseSettings):
     urlhaus_url: str = Field(default="https://urlhaus-api.abuse.ch/v1/")
     urlhaus_enabled: bool = Field(default=True)
     virustotal_enabled: bool = Field(default=False)
-    virustotal_api_key: SecretStr = Field(default=SecretStr(""))
+    virustotal_api_key: SecretStr = Field(default="")
     tix_enabled: bool = Field(default=False)
-    tix_app_key: SecretStr = Field(default=SecretStr(""))
+    tix_app_key: SecretStr = Field(default="")
 
 
 class AgentSettings(BaseSettings):

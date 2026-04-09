@@ -706,6 +706,8 @@ class TestBuildService:
     def test_build_service_skips_disabled(self):
         from unittest.mock import MagicMock
 
+        from pydantic import SecretStr
+
         from src.threatscope.analysis.services.threat_intel.service import build_service
 
         settings = MagicMock()
@@ -714,7 +716,9 @@ class TestBuildService:
         settings.threatfox_enabled = False
         settings.urlhaus_enabled = False
         settings.virustotal_enabled = False
+        settings.virustotal_api_key = SecretStr("")
         settings.tix_enabled = False
+        settings.tix_app_key = SecretStr("")
 
         service = build_service(settings)
         assert len(service.providers) == 1

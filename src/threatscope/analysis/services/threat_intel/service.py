@@ -1,13 +1,7 @@
 # src/threatscope/analysis/services/threat_intel/service.py
 """ThreatIntelService aggregator and build_service factory."""
 
-from __future__ import annotations
-
 import asyncio
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from src.threatscope.core.config import ThreatIntelSettings
 
 from src.threatscope.analysis.services.threat_intel.base import (
     BaseThreatIntelProvider,
@@ -20,6 +14,7 @@ from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import
 from src.threatscope.analysis.services.threat_intel.providers.threatfox import ThreatFoxProvider
 from src.threatscope.analysis.services.threat_intel.providers.urlhaus import URLhausProvider
 from src.threatscope.analysis.services.threat_intel.providers.virustotal import VirusTotalProvider
+from src.threatscope.core.config import ThreatIntelSettings
 
 
 class ThreatIntelService:
