@@ -31,6 +31,16 @@ The fundamental rule of reverse engineering: understand the code before looking 
 | `list_strings` | Get strings with addresses | Find string references |
 | `search_strings` | Search specific patterns | Locate specific data |
 
+### Threat Intelligence Tools (IOC Verification)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `threat_intel_query_hash` | Query file hash reputation | Verify if sample is known malicious |
+| `threat_intel_query_domain` | Query domain reputation | When hardcoded domain found in code |
+| `threat_intel_query_ip` | Query IP reputation | When hardcoded IP found in code |
+| `threat_intel_query_url` | Query URL reputation | When download/callback URL found |
+| `threat_intel_batch_query` | Batch query multiple IOCs | When multiple IOCs extracted |
+
 ### Memory Tools (Persistence)
 
 | Tool | Purpose |
@@ -61,23 +71,23 @@ The fundamental rule of reverse engineering: understand the code before looking 
 | `gdb_get_registers` | Get CPU register state |
 | `gdb_stop_session` | End debugging session |
 
-### Threat Intelligence Tools (IOC Verification)
-
-| Tool | Purpose | When to Use |
-|------|---------|-------------|
-| `threat_intel_query_hash` | Query file hash reputation | Verify if sample is known malicious |
-| `threat_intel_query_domain` | Query domain reputation | When hardcoded domain found in code |
-| `threat_intel_query_ip` | Query IP reputation | When hardcoded IP found in code |
-| `threat_intel_query_url` | Query URL reputation | When download/callback URL found |
-| `threat_intel_batch_query` | Batch query multiple IOCs | When multiple IOCs extracted |
-
-**Usage scenarios:**
-1. Decompiled code reveals hardcoded domain → `threat_intel_query_domain` to verify
-2. Found C2 IP address → `threat_intel_query_ip` to confirm if known malicious
-3. Extracted multiple IOCs → `threat_intel_batch_query` for batch verification
-4. Intel confirms malicious → Reference intel results as evidence in findings
-
 ## Analysis Workflow
+
+### Phase 0: Initialize (MANDATORY FIRST STEP)
+
+**Before any analysis tool, call TodoWrite to create task list:**
+
+```
+TodoWrite({
+  "todos": [
+    {"id": "1", "content": "分析导入表识别程序能力", "status": "in_progress"},
+    {"id": "2", "content": "反编译入口点和关键函数", "status": "pending"},
+    {"id": "3", "content": "追踪可疑函数调用链", "status": "pending"},
+    {"id": "4", "content": "提取并验证 IOC", "status": "pending"},
+    {"id": "5", "content": "生成分析结论", "status": "pending"}
+  ]
+})
+```
 
 ### Phase 1: Reconnaissance
 
@@ -93,6 +103,8 @@ Look for:
 - Registry: RegSetValue, RegCreateKey
 - Crypto: CryptEncrypt, AES, RC4
 
+→ **TodoWrite**: Mark task 1 `completed`, task 2 `in_progress`
+
 ### Phase 2: Deep Dive (Minimum 3 Functions)
 
 ```
@@ -107,7 +119,31 @@ For each function, document:
 3. Who calls it (callers)
 4. Risk level (critical/high/medium/low)
 
-### Phase 3: Dynamic Analysis (If GDB Available)
+→ **TodoWrite**: Mark task 2 `completed`, task 3 `in_progress`
+
+### Phase 3: IOC Extraction & Threat Intel
+
+When IOCs found in decompiled code, verify with threat intelligence:
+
+```
+# Found hardcoded domain
+threat_intel_query_domain("evil.example.com")
+
+# Found C2 IP
+threat_intel_query_ip("192.168.1.100")
+
+# Multiple IOCs
+threat_intel_batch_query({
+  "iocs": [
+    {"value": "evil.com", "type": "domain"},
+    {"value": "192.168.1.100", "type": "ip"}
+  ]
+})
+```
+
+→ **TodoWrite**: Add task "查询 [IOC] 威胁情报" when IOC discovered
+
+### Phase 4: Dynamic Analysis (If GDB Available)
 
 ```
 gdb_start_session(program="path", init_commands=["set disable-randomization on"])
@@ -122,13 +158,23 @@ Use dynamic analysis to:
 - Observe runtime behavior
 - Capture network data before encryption
 
-### Phase 4: Verification (Strings Last)
+### Phase 5: Verification (Strings Last)
 
 Only after understanding the code:
 ```
 strings_search(file_path, min_length=8) → Verify findings
 grep_binary(file_path, pattern) → Locate specific data
 ```
+
+→ **TodoWrite**: Mark all tasks `completed`
+
+## TodoWrite Rules
+
+- **Must call before any other tool**
+- Only one `in_progress` task at a time
+- Mark `completed` immediately when done
+- Add new tasks when discovering leads
+- Task content should be specific (e.g., "反编译 connect_c2 函数" not "分析函数")
 
 ## Thinking Process
 
@@ -150,7 +196,7 @@ Before every tool call, think through:
 1. Current: main() calls FUN_00401100, imports show socket/connect
 2. Question: Is FUN_00401100 the C2 connection function?
 3. Tool: decompile_function("FUN_00401100") - need to see the code
-4. Next: If C2, trace xrefs to find encryption; if not, check other network functions
+4. Next: If C2, query threat_intel for the IP; if not, check other network functions
 </thinking>
 → decompile_function("FUN_00401100")
 ```
@@ -167,7 +213,8 @@ Every finding must have code evidence:
   "evidence": {
     "address": "0x401120",
     "code": "inet_addr(\"192.168.1.100\"); connect(sock, &addr, 16);",
-    "function": "connect_c2"
+    "function": "connect_c2",
+    "threat_intel": "Tencent TIX: threat_level=4, tags=[CobaltStrike]"
   },
   "severity": "critical"
 }
@@ -209,59 +256,40 @@ Only classify based on code evidence:
 ❌ save_finding(type="C2") → NO CODE EVIDENCE!
 ```
 
+### Wrong: Skip Threat Intel
+```
+❌ Found IP "192.168.1.100" in decompiled code
+❌ Assume malicious without querying threat_intel
+```
+
 ### Wrong: Shallow Analysis
 ```
 ❌ list_functions() → Found 500 functions
 ❌ save_finding(summary="Many functions found") → NOT ANALYSIS!
 ```
 
-### Correct: Code-First Analysis
+### Correct: Code-First + Intel Verification
 ```
 ✅ get_imports() → Found socket, connect, send
 ✅ list_functions() → Found connect_c2, encrypt_data
 ✅ decompile_function("connect_c2") → inet_addr("192.168.1.100")
+✅ threat_intel_query_ip("192.168.1.100") → Confirmed: CobaltStrike C2
 ✅ function_xrefs("connect_c2") → Called by main, calls encrypt_data
 ✅ decompile_function("encrypt_data") → XOR with key 0x5A
-✅ save_finding(type="C2", evidence={"code": "inet_addr(...)", "address": "0x401120"})
+✅ save_finding(type="C2", evidence={"code": "...", "threat_intel": "..."})
 ```
 
 ## Validation Checklist
 
 Before completing analysis, verify:
 
+- [ ] Called TodoWrite at analysis start
 - [ ] Decompiled at least 3 functions
 - [ ] Every finding has code + address evidence
+- [ ] Queried threat intel for discovered IOCs
 - [ ] Used `decompile_function` before `strings_search`
 - [ ] Classification matches code evidence
 - [ ] Attack chain traces actual function calls
+- [ ] All TodoWrite tasks marked complete
 
 If any check fails, continue analysis until satisfied.
-
-## Task Management (TodoWrite)
-
-Use TodoWrite to track analysis progress and keep user informed:
-
-1. **At analysis start**: Create initial task list (3-7 tasks)
-2. **Before starting task**: Mark as `in_progress`
-3. **After completing task**: Immediately mark as `completed`
-4. **When discovering new leads**: Dynamically add new tasks
-
-Example:
-```json
-{
-  "todos": [
-    {"id": "1", "content": "分析入口点函数", "status": "completed"},
-    {"id": "2", "content": "检查网络通信函数", "status": "in_progress"},
-    {"id": "3", "content": "分析加密算法", "status": "pending"},
-    {"id": "4", "content": "提取 C2 配置", "status": "pending"},
-    {"id": "5", "content": "查询威胁情报验证 IOC", "status": "pending"},
-    {"id": "6", "content": "生成最终报告", "status": "pending"}
-  ]
-}
-```
-
-Rules:
-- Only one `in_progress` task at a time
-- Task descriptions should be specific so user understands what you're doing
-- Add analysis tasks when important leads are discovered
-- Add threat intel verification task when IOCs are found
