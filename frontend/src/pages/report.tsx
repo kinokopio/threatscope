@@ -161,6 +161,119 @@ function OverviewTab({ task }: { task: any }) {
   )
 }
 
+const NAMESPACE_LABELS: Record<string, string> = {
+  'host-interaction/file-system': '文件系统操作',
+  'host-interaction/file-system/read': '文件读取',
+  'host-interaction/file-system/write': '文件写入',
+  'host-interaction/file-system/delete': '文件删除',
+  'host-interaction/process': '进程操作',
+  'host-interaction/network': '网络通信',
+  'host-interaction/registry': '注册表操作',
+  'linking/runtime-linking': '运行时动态链接',
+  'anti-analysis': '反分析技术',
+  'anti-analysis/anti-debugging': '反调试',
+  'anti-analysis/anti-vm': '反虚拟机',
+  'persistence': '持久化',
+  'collection': '数据收集',
+  'communication': 'C2 通信',
+  'c2': 'C2 通信',
+  'execution': '代码执行',
+  'defense-evasion': '防御规避',
+  'credential-access': '凭据访问',
+  'discovery': '信息发现',
+  'lateral-movement': '横向移动',
+  'exfiltration': '数据外传',
+  'impact': '破坏影响',
+  'cryptography': '加密操作',
+  'data-manipulation': '数据操作',
+}
+
+const MBC_LABELS: Record<string, string> = {
+  'File System': '文件系统',
+  'Process': '进程',
+  'Communication': '通信',
+  'Cryptography': '加密',
+  'Anti-Behavioral Analysis': '反行为分析',
+  'Anti-Static Analysis': '反静态分析',
+  'Collection': '数据收集',
+  'Credential Access': '凭据访问',
+  'Defense Evasion': '防御规避',
+  'Discovery': '信息发现',
+  'Execution': '执行',
+  'Impact': '影响',
+  'Persistence': '持久化',
+}
+
+function getNamespaceLabel(namespace: string): string {
+  if (NAMESPACE_LABELS[namespace]) return NAMESPACE_LABELS[namespace]
+  const parts = namespace.split('/')
+  for (let i = parts.length; i > 0; i--) {
+    const key = parts.slice(0, i).join('/')
+    if (NAMESPACE_LABELS[key]) return NAMESPACE_LABELS[key]
+  }
+  return namespace.split('/').pop() || namespace
+}
+
+function CapaResultsSection({ capabilities }: { capabilities: any[] }) {
+  return (
+    <div>
+      <h3 className="mb-3 text-lg font-semibold">CAPA 能力检测 ({capabilities.length})</h3>
+      <div className="space-y-3">
+        {capabilities.map((cap: any, idx: number) => (
+          <div key={idx} className="rounded-lg border p-4">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <Badge variant="secondary">{cap.name}</Badge>
+              <Badge variant="outline">{getNamespaceLabel(cap.namespace)}</Badge>
+              {cap.matches > 1 && (
+                <Badge variant="outline">{cap.matches} 处匹配</Badge>
+              )}
+            </div>
+            {(cap.attack?.length > 0 || cap.mbc?.length > 0) && (
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                {cap.attack?.map((a: any, i: number) => (
+                  <a
+                    key={`attack-${i}`}
+                    href={`https://attack.mitre.org/techniques/${a.id.replace('.', '/')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Badge variant="destructive" className="hover:bg-red-600">
+                      ATT&CK {a.id}: {a.technique}
+                    </Badge>
+                  </a>
+                ))}
+                {cap.mbc?.map((m: any, i: number) => (
+                  <Badge key={`mbc-${i}`} variant="outline">
+                    MBC {m.id}: {MBC_LABELS[m.objective] || m.objective} - {m.behavior}
+                  </Badge>
+                ))}
+              </div>
+            )}
+            {cap.description && (
+              <p className="text-sm text-muted-foreground">{cap.description}</p>
+            )}
+            {cap.references?.length > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
+                {cap.references.slice(0, 3).map((ref: string, i: number) => (
+                  <a
+                    key={i}
+                    href={ref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    参考链接 {i + 1}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function StaticTab({ task }: { task: any }) {
   const capaResults = task.capa?.capabilities || []
   const yaraMatches = task.yara?.matches || []
@@ -213,19 +326,7 @@ function StaticTab({ task }: { task: any }) {
       )}
 
       {capaResults.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-lg font-semibold">CAPA 能力检测 ({capaResults.length})</h3>
-          <div className="space-y-2">
-            {capaResults.map((cap: any, idx: number) => (
-              <div key={idx} className="rounded-lg border p-3">
-                <div className="font-medium">{cap.name}</div>
-                <div className="text-sm text-muted-foreground">
-                  {cap.namespace}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <CapaResultsSection capabilities={capaResults} />
       )}
 
       {(domains.length > 0 || urls.length > 0 || ips.length > 0 || suspiciousStrings.length > 0) && (

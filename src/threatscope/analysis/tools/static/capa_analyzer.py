@@ -149,20 +149,13 @@ class CapaAnalyzer(AnalysisTool):
             return ToolResult(success=False, error=f"File not found: {file_path}")
 
         try:
-            # Load rules (cached)
             rules = self._load_rules()
 
-            # Run capa in thread pool with timeout
             loop = asyncio.get_event_loop()
-            result = await asyncio.wait_for(
-                loop.run_in_executor(_executor, self._run_capa, file_path, rules),
-                timeout=self.timeout,
-            )
+            result = await loop.run_in_executor(_executor, self._run_capa, file_path, rules)
 
             return ToolResult(success=True, data=result.to_dict())
 
-        except asyncio.TimeoutError:
-            return ToolResult(success=False, error=f"capa analysis timed out after {self.timeout}s")
         except Exception as e:
             return ToolResult(success=False, error=str(e))
 
@@ -235,14 +228,48 @@ class CapaAnalyzer(AnalysisTool):
         subrule_matches = self._find_subrule_matches(doc)
         for rule in rutils.capability_rules(doc):
             if rule.meta.name in subrule_matches:
-                # Skip rules matched as subrules
                 continue
 
-            capability = {
+            capability: dict[str, Any] = {
                 "name": rule.meta.name,
                 "namespace": rule.meta.namespace or "",
                 "matches": len(rule.matches),
             }
+
+            if rule.meta.description:
+                capability["description"] = rule.meta.description
+
+            if rule.meta.references:
+                capability["references"] = list(rule.meta.references)
+
+            if rule.meta.authors:
+                capability["authors"] = list(rule.meta.authors)
+
+            if rule.meta.attack:
+                capability["attack"] = [
+                    {
+                        "tactic": a.tactic,
+                        "technique": a.technique,
+                        "subtechnique": a.subtechnique,
+                        "id": a.id,
+                    }
+                    for a in rule.meta.attack
+                ]
+
+            if rule.meta.mbc:
+                capability["mbc"] = [
+                    {
+                        "objective": m.objective,
+                        "behavior": m.behavior,
+                        "method": m.method,
+                        "id": m.id,
+                    }
+                    for m in rule.meta.mbc
+                ]
+
+            if rule.meta.lib:
+                capability["lib"] = True
+
             result.capabilities.append(capability)
 
         # Extract ATT&CK mapping
