@@ -25,7 +25,7 @@ from src.threatscope.analysis.agents import (
 )
 from src.threatscope.analysis.services.dynamic_analysis import DynamicAnalysisService
 from src.threatscope.analysis.services.report_builder import ReportBuilder
-from src.threatscope.analysis.services.threat_intel import ThreatIntelService
+from src.threatscope.analysis.services.threat_intel import build_service
 from src.threatscope.analysis.task import AnalysisStatus, AnalysisTask
 from src.threatscope.core.config import Settings, get_settings
 
@@ -72,7 +72,7 @@ class AnalysisCoordinator:
         self.dynamic_analysis_service = DynamicAnalysisService(
             timeout=self.settings.analysis.dynamic_analysis_timeout,
         )
-        self.threat_intel = ThreatIntelService()
+        self.threat_intel = build_service(self.settings.threat_intel)
 
         # Initialize agents (lazy - created when needed)
         self._ghidra_agent: GhidraAgent | None = None
