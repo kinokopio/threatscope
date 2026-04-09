@@ -48,6 +48,7 @@ def test_provider_subclass_without_name_raises():
     """Subclass that omits 'name' is rejected at class definition time."""
     with pytest.raises(TypeError, match="must define a 'name'"):
         class NoNameProvider(BaseThreatIntelProvider):
+
             async def query_hash(self, hash_value: str) -> ThreatIntelResult:
                 return ThreatIntelResult(source="x", found=False, data={})
 
@@ -57,5 +58,6 @@ def test_provider_subclass_with_non_str_name_raises():
     with pytest.raises(TypeError, match="must define a 'name'"):
         class IntNameProvider(BaseThreatIntelProvider):
             name = 42  # type: ignore
+
             async def query_hash(self, hash_value: str) -> ThreatIntelResult:
                 return ThreatIntelResult(source="x", found=False, data={})
