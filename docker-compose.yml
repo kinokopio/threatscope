@@ -60,6 +60,9 @@ services:
     image: threatscope/backend:${IMAGE_TAG:-latest}
     container_name: threatscope_backend
     privileged: true
+    env_file:
+      - path: .env
+        required: false
     volumes:
       - threatscope_data:/app/data
       - ./rules:/app/rules:ro
