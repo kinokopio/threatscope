@@ -578,3 +578,142 @@ class TestTencentTIXProvider:
         assert result.found is False
         assert result.error is not None
         assert "503" in result.error
+
+
+class TestThreatIntelService:
+    @pytest.mark.asyncio
+    async def test_query_hash_aggregates_all_providers(self):
+        from src.threatscope.analysis.services.threat_intel.base import ThreatIntelResult
+        from src.threatscope.analysis.services.threat_intel.service import ThreatIntelService
+
+        provider_a = MagicMock()
+        provider_a.name = "source_a"
+        provider_a.query_hash = AsyncMock(
+            return_value=ThreatIntelResult(source="source_a", found=True, data={"x": 1})
+        )
+
+        provider_b = MagicMock()
+        provider_b.name = "source_b"
+        provider_b.query_hash = AsyncMock(
+            return_value=ThreatIntelResult(source="source_b", found=False, data={})
+        )
+
+        service = ThreatIntelService(providers=[provider_a, provider_b])
+        results = await service.query_hash("abc123")
+
+        assert "source_a" in results
+        assert "source_b" in results
+        assert results["source_a"].found is True
+        assert results["source_b"].found is False
+        provider_a.query_hash.assert_called_once_with("abc123")
+        provider_b.query_hash.assert_called_once_with("abc123")
+
+    @pytest.mark.asyncio
+    async def test_query_hash_provider_failure_isolated(self):
+        """一个 provider 抛异常，不影响其他 provider 的结果。"""
+        from src.threatscope.analysis.services.threat_intel.base import ThreatIntelResult
+        from src.threatscope.analysis.services.threat_intel.service import ThreatIntelService
+
+        good_provider = MagicMock()
+        good_provider.name = "good"
+        good_provider.query_hash = AsyncMock(
+            return_value=ThreatIntelResult(source="good", found=True, data={})
+        )
+
+        bad_provider = MagicMock()
+        bad_provider.name = "bad"
+        bad_provider.query_hash = AsyncMock(side_effect=RuntimeError("provider crashed"))
+
+        service = ThreatIntelService(providers=[good_provider, bad_provider])
+        results = await service.query_hash("abc123")
+
+        assert "good" in results
+        assert results["good"].found is True
+        # 失败的 provider 以 error_* key 记录
+        error_keys = [k for k in results if k.startswith("error_")]
+        assert len(error_keys) == 1
+        assert results[error_keys[0]].error == "provider crashed"
+
+    @pytest.mark.asyncio
+    async def test_query_hash_empty_providers(self):
+        from src.threatscope.analysis.services.threat_intel.service import ThreatIntelService
+
+        service = ThreatIntelService(providers=[])
+        results = await service.query_hash("abc123")
+        assert results == {}
+
+    @pytest.mark.asyncio
+    async def test_query_iocs_delegates_to_providers(self):
+        from src.threatscope.analysis.services.threat_intel.base import ThreatIntelResult
+        from src.threatscope.analysis.services.threat_intel.service import ThreatIntelService
+
+        provider = MagicMock()
+        provider.query_ioc = AsyncMock(
+            return_value=ThreatIntelResult(source="p", found=True, data={"ioc": "evil.com"})
+        )
+
+        service = ThreatIntelService(providers=[provider])
+        results = await service.query_iocs(domains=["evil.com"], ips=None, urls=None)
+
+        assert len(results["domains"]) == 1
+        assert results["domains"][0].found is True
+        assert results["ips"] == []
+        assert results["urls"] == []
+
+
+class TestBuildService:
+    def test_build_service_with_all_enabled(self):
+        from unittest.mock import MagicMock
+
+        from src.threatscope.analysis.services.threat_intel.service import build_service
+
+        settings = MagicMock()
+        settings.malwarebazaar_enabled = True
+        settings.malwarebazaar_url = "https://mb-api.abuse.ch/api/v1/"
+        settings.threatfox_enabled = True
+        settings.threatfox_url = "https://threatfox-api.abuse.ch/api/v1/"
+        settings.urlhaus_enabled = True
+        settings.urlhaus_url = "https://urlhaus-api.abuse.ch/v1/"
+        settings.virustotal_enabled = True
+        settings.virustotal_api_key = "vt-key"
+        settings.tix_enabled = True
+        settings.tix_app_key = "tix-key"
+
+        service = build_service(settings)
+        assert len(service.providers) == 5
+        provider_names = {p.name for p in service.providers}
+        assert provider_names == {"malwarebazaar", "threatfox", "urlhaus", "virustotal", "tencent_tix"}
+
+    def test_build_service_skips_disabled(self):
+        from unittest.mock import MagicMock
+
+        from src.threatscope.analysis.services.threat_intel.service import build_service
+
+        settings = MagicMock()
+        settings.malwarebazaar_enabled = True
+        settings.malwarebazaar_url = "https://mb-api.abuse.ch/api/v1/"
+        settings.threatfox_enabled = False
+        settings.urlhaus_enabled = False
+        settings.virustotal_enabled = False
+        settings.tix_enabled = False
+
+        service = build_service(settings)
+        assert len(service.providers) == 1
+        assert service.providers[0].name == "malwarebazaar"
+
+    def test_build_service_skips_vt_without_key(self):
+        from unittest.mock import MagicMock
+
+        from src.threatscope.analysis.services.threat_intel.service import build_service
+
+        settings = MagicMock()
+        settings.malwarebazaar_enabled = False
+        settings.threatfox_enabled = False
+        settings.urlhaus_enabled = False
+        settings.virustotal_enabled = True
+        settings.virustotal_api_key = ""  # 没有 key
+        settings.tix_enabled = True
+        settings.tix_app_key = ""  # 没有 key
+
+        service = build_service(settings)
+        assert len(service.providers) == 0
