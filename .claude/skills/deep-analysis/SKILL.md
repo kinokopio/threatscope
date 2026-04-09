@@ -61,6 +61,22 @@ The fundamental rule of reverse engineering: understand the code before looking 
 | `gdb_get_registers` | Get CPU register state |
 | `gdb_stop_session` | End debugging session |
 
+### Threat Intelligence Tools (IOC Verification)
+
+| Tool | Purpose | When to Use |
+|------|---------|-------------|
+| `threat_intel_query_hash` | Query file hash reputation | Verify if sample is known malicious |
+| `threat_intel_query_domain` | Query domain reputation | When hardcoded domain found in code |
+| `threat_intel_query_ip` | Query IP reputation | When hardcoded IP found in code |
+| `threat_intel_query_url` | Query URL reputation | When download/callback URL found |
+| `threat_intel_batch_query` | Batch query multiple IOCs | When multiple IOCs extracted |
+
+**Usage scenarios:**
+1. Decompiled code reveals hardcoded domain → `threat_intel_query_domain` to verify
+2. Found C2 IP address → `threat_intel_query_ip` to confirm if known malicious
+3. Extracted multiple IOCs → `threat_intel_batch_query` for batch verification
+4. Intel confirms malicious → Reference intel results as evidence in findings
+
 ## Analysis Workflow
 
 ### Phase 1: Reconnaissance
@@ -220,3 +236,32 @@ Before completing analysis, verify:
 - [ ] Attack chain traces actual function calls
 
 If any check fails, continue analysis until satisfied.
+
+## Task Management (TodoWrite)
+
+Use TodoWrite to track analysis progress and keep user informed:
+
+1. **At analysis start**: Create initial task list (3-7 tasks)
+2. **Before starting task**: Mark as `in_progress`
+3. **After completing task**: Immediately mark as `completed`
+4. **When discovering new leads**: Dynamically add new tasks
+
+Example:
+```json
+{
+  "todos": [
+    {"id": "1", "content": "分析入口点函数", "status": "completed"},
+    {"id": "2", "content": "检查网络通信函数", "status": "in_progress"},
+    {"id": "3", "content": "分析加密算法", "status": "pending"},
+    {"id": "4", "content": "提取 C2 配置", "status": "pending"},
+    {"id": "5", "content": "查询威胁情报验证 IOC", "status": "pending"},
+    {"id": "6", "content": "生成最终报告", "status": "pending"}
+  ]
+}
+```
+
+Rules:
+- Only one `in_progress` task at a time
+- Task descriptions should be specific so user understands what you're doing
+- Add analysis tasks when important leads are discovered
+- Add threat intel verification task when IOCs are found

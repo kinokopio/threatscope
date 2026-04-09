@@ -28,7 +28,9 @@ from pydantic import BaseModel, Field
 
 from src.threatscope.analysis.agents.base import AgentConfig, AgentResult, BaseAgent
 from src.threatscope.analysis.agents.memory_store import MemoryStore
+from src.threatscope.analysis.agents.threat_intel_tools import create_threat_intel_mcp_server
 from src.threatscope.analysis.agents.utils_tools import create_utils_mcp_server
+from src.threatscope.analysis.services.threat_intel.service import ThreatIntelService
 from src.threatscope.ghidra.client import GhidraClient
 
 # Try to import Langfuse observe decorator
@@ -360,12 +362,14 @@ class GhidraAgent(BaseAgent):
         ghidra_url: str = "http://localhost:8000",
         ai_timeout: int = DEFAULT_AI_TIMEOUT,
         enable_gdb: bool = False,
+        threat_intel_service: ThreatIntelService | None = None,
     ):
         super().__init__(config)
         self.project_dir = Path(project_dir)
         self.ghidra_url = ghidra_url
         self.ai_timeout = ai_timeout
         self.enable_gdb = enable_gdb
+        self.threat_intel_service = threat_intel_service
         self.memory_store: MemoryStore | None = None
         self.ghidra_client: GhidraClient | None = None
         self._progress_callback: Callable | None = None
@@ -746,6 +750,13 @@ class GhidraAgent(BaseAgent):
             "mcp__memory__*",
         ]
 
+        # Add threat intelligence MCP server if service is available
+        if self.threat_intel_service:
+            threat_intel_server = create_threat_intel_mcp_server(self.threat_intel_service)
+            mcp_servers["threat_intel"] = threat_intel_server
+            allowed_tools.append("mcp__threat_intel__*")
+            logger.info("Threat intelligence tools enabled")
+
         # Add GDB MCP server if enabled
         gdb_enabled = False
         if self.enable_gdb:
@@ -788,6 +799,8 @@ class GhidraAgent(BaseAgent):
                     }
                 allowed_tools.append("mcp__gdb__*")
                 logger.info(f"GDB dynamic analysis enabled (mode: {gdb_settings.service_mode})")
+
+        allowed_tools.append("TodoWrite")
 
         # Configure agent options with structured output
         options = ClaudeAgentOptions(
@@ -951,6 +964,19 @@ class GhidraAgent(BaseAgent):
                                     if address:
                                         description = f"{description}: {address}"
                                         preview_data["address"] = address
+                                elif tool_name == "TodoWrite":
+                                    todos = tool_input.get("todos", [])
+                                    if self._progress_callback and todos:
+                                        try:
+                                            await self._progress_callback(
+                                                "todos",
+                                                "Analysis Plan",
+                                                "updated",
+                                                {"todos": todos},
+                                            )
+                                        except Exception as e:
+                                            logger.debug(f"Todo progress callback failed: {e}")
+                                    description = f"Updating analysis plan ({len(todos)} tasks)"
 
                                 # Detailed logging
                                 logger.info("-" * 50)

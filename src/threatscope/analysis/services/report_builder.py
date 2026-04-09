@@ -237,6 +237,12 @@ class ReportBuilder:
             technical_details=technical_details,
             classification=classification,
             iocs=iocs,
+            static_results=static_results,
+            ghidra_results=ghidra_results,
+            dynamic_results=dynamic_results,
+            threat_intel=threat_intel,
+            mitre_mapping=mitre_mapping,
+            analyzed_functions=analyzed_functions,
         )
 
         # 10. Build data sources info
@@ -736,6 +742,12 @@ class ReportBuilder:
         technical_details: TechnicalDetails,
         classification: MalwareClassification,
         iocs: IoCs,
+        static_results: dict[str, Any],
+        ghidra_results: dict[str, Any],
+        dynamic_results: dict[str, Any] | None,
+        threat_intel: dict[str, Any] | None,
+        mitre_mapping: list[MitreMapping],
+        analyzed_functions: list[AnalyzedFunction],
     ) -> tuple[str, str, list[Recommendation]]:
         """Generate AI summary and recommendations.
 
@@ -755,12 +767,58 @@ class ReportBuilder:
         Returns:
             Tuple of (summary, executive_summary, recommendations)
         """
-        # Build context for AI
+        # Build comprehensive context for AI
         findings_summary = "\n".join(
-            f"- [{f.severity}] {f.title}: {f.description[:100]}..." for f in findings[:5]
+            f"- [{f.severity}] {f.title}: {f.description}" for f in findings[:10]
+        )
+
+        functions_summary = "\n".join(
+            f"- [{f.risk}] {f.name} @ {f.address}: {f.purpose}" for f in analyzed_functions[:10]
         )
 
         c2_domains = [d.value for d in iocs.domains if d.context == "C2 Server"]
+        all_domains = [d.value for d in iocs.domains[:10]]
+        all_ips = [i.value for i in iocs.ips[:10]]
+        all_urls = [u.value for u in iocs.urls[:5]]
+
+        # CAPA capabilities
+        capa_data = static_results.get("capa", {})
+        capa_caps = capa_data.get("capabilities", [])
+        capa_summary = ", ".join(c.get("name", "") for c in capa_caps[:15])
+        capa_attack = capa_data.get("attack", {}).get("techniques", [])
+        capa_attack_summary = ", ".join(f"{t.get('id')}: {t.get('name')}" for t in capa_attack[:10])
+
+        # YARA matches
+        yara_data = static_results.get("yara", {})
+        yara_matches = yara_data.get("matches", [])
+        yara_summary = ", ".join(m.get("rule", "") for m in yara_matches[:10])
+
+        # Threat intelligence
+        ti_summary = ""
+        if threat_intel:
+            hash_lookup = threat_intel.get("hash_lookup", {})
+            for source, data in hash_lookup.items():
+                if isinstance(data, dict) and data.get("found"):
+                    ti_data = data.get("data", {})
+                    if source == "virustotal":
+                        malicious = ti_data.get("malicious", 0)
+                        label = ti_data.get("threat_label", "")
+                        ti_summary += f"VirusTotal: {malicious}个引擎检测为恶意, 标签={label}; "
+                    elif source == "malwarebazaar":
+                        family = ti_data.get("family", "")
+                        ti_summary += f"MalwareBazaar: 家族={family}; "
+
+        # Dynamic analysis
+        dynamic_summary = ""
+        if dynamic_results and not dynamic_results.get("skipped", True):
+            syscalls = dynamic_results.get("syscalls", [])
+            network = dynamic_results.get("network_connections", [])
+            dynamic_summary = f"系统调用: {len(syscalls)}个, 网络连接: {len(network)}个"
+
+        # MITRE ATT&CK
+        mitre_summary = ", ".join(
+            f"{m.technique_id}: {m.technique_name}" for m in mitre_mapping[:10]
+        )
 
         prompt = f"""基于以下恶意软件分析结果，生成中文摘要和安全建议。
 
@@ -773,7 +831,10 @@ class ReportBuilder:
 - Family: {classification.family or "未知"}
 
 ## 关键发现 ({len(findings)} 个)
-{findings_summary}
+{findings_summary if findings_summary else "无"}
+
+## 分析的函数 ({len(analyzed_functions)} 个)
+{functions_summary if functions_summary else "无"}
 
 ## 攻击链
 {attack_chain or "未识别"}
@@ -784,10 +845,35 @@ class ReportBuilder:
 - 平台: {technical_details.platform}
 - C2协议: {technical_details.c2_protocol or "未知"}
 - 加密: {technical_details.encryption or "未知"}
+- 编译器: {technical_details.compiler or "未知"}
+- 加壳: {", ".join(technical_details.packers) if technical_details.packers else "无"}
+
+## CAPA 能力检测 ({len(capa_caps)} 个)
+{capa_summary if capa_summary else "无"}
+
+## CAPA ATT&CK 映射
+{capa_attack_summary if capa_attack_summary else "无"}
+
+## YARA 规则匹配 ({len(yara_matches)} 个)
+{yara_summary if yara_summary else "无"}
+
+## 威胁情报
+{ti_summary if ti_summary else "无匹配"}
+
+## 动态分析
+{dynamic_summary if dynamic_summary else "未执行或无结果"}
+
+## MITRE ATT&CK 映射 ({len(mitre_mapping)} 个)
+{mitre_summary if mitre_summary else "无"}
+
+## IOC 指标
 - C2域名: {", ".join(c2_domains) if c2_domains else "未发现"}
+- 可疑域名: {", ".join(all_domains) if all_domains else "无"}
+- 可疑IP: {", ".join(all_ips[:5]) if all_ips else "无"}{f" (共{len(all_ips)}个)" if len(all_ips) > 5 else ""}
+- 可疑URL: {", ".join(all_urls) if all_urls else "无"}
 
 请生成:
-1. summary: 3-5句详细中文摘要，只描述上述分析中明确发现的功能和行为，不要推测或添加未发现的功能
+1. summary: 3-5句详细中文摘要，综合上述所有分析结果，描述恶意软件的类型、主要功能、攻击技术和威胁程度
 2. executive_summary: 1句话摘要给管理层
 3. recommendations: 具体可操作的安全建议列表，每个建议包含 priority (immediate/high/medium/low), category (containment/eradication/recovery/prevention), action, details
 

@@ -47,6 +47,7 @@ import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
 import { useTasks, useTask, useDeleteTask, useCancelTask } from '@/hooks/use-tasks'
+import { TodoList } from '@/components/analysis/TodoList'
 import type { TaskListItem, AILogEntry } from '@/lib/api'
 
 const RUNNING_STATUSES = ['static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation', 'queued']
@@ -390,6 +391,10 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
                     })}
                   </div>
                 </div>
+
+                {(task.steps_progress as any)?.todos?.todos && (
+                  <TodoList todos={(task.steps_progress as any).todos.todos} />
+                )}
 
                 <AILogsSection logs={(task.steps_progress as any)?.ai_logs} />
 

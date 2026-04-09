@@ -639,6 +639,7 @@ class AnalysisCoordinator:
                 self.project_dir,
                 ghidra_url=ghidra_url,
                 enable_gdb=enable_gdb,
+                threat_intel_service=self.threat_intel,
             )
 
             result = await agent.analyze(
