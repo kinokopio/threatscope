@@ -267,3 +267,14 @@ class TestURLhausProvider:
             result = await provider.query_ioc("http://clean.com", "url")
 
         assert result.found is False
+
+    @pytest.mark.asyncio
+    async def test_query_ioc_non_url_not_supported(self):
+        from src.threatscope.analysis.services.threat_intel.providers.urlhaus import (
+            URLhausProvider,
+        )
+
+        provider = URLhausProvider()
+        result = await provider.query_ioc("192.168.1.1", "ip:port")
+        assert result.found is False
+        assert result.source == "urlhaus"
