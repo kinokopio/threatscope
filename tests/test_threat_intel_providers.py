@@ -207,3 +207,63 @@ class TestThreatFoxProvider:
 
         assert result.found is True
         assert result.data["ioc"] == "evil.com"
+
+
+class TestURLhausProvider:
+    @pytest.mark.asyncio
+    async def test_query_hash_not_supported(self):
+        """URLhaus 不支持 hash 查询，返回 found=False。"""
+        from src.threatscope.analysis.services.threat_intel.providers.urlhaus import (
+            URLhausProvider,
+        )
+
+        provider = URLhausProvider()
+        result = await provider.query_hash("abc123sha256")
+        assert result.found is False
+        assert result.source == "urlhaus"
+
+    @pytest.mark.asyncio
+    async def test_query_ioc_url_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.urlhaus import (
+            URLhausProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "query_status": "ok",
+            "threat": "malware_download",
+            "tags": ["emotet"],
+            "urlhaus_reference": "https://urlhaus.abuse.ch/url/123/",
+            "date_added": "2023-01-01 00:00:00 UTC",
+        }
+
+        provider = URLhausProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_ioc("http://evil.com/payload.exe", "url")
+
+        assert result.found is True
+        assert result.data["threat"] == "malware_download"
+        assert result.data["url"] == "http://evil.com/payload.exe"
+
+    @pytest.mark.asyncio
+    async def test_query_ioc_url_not_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.urlhaus import (
+            URLhausProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"query_status": "no_results"}
+
+        provider = URLhausProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_ioc("http://clean.com", "url")
+
+        assert result.found is False
