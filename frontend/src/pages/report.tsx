@@ -11,6 +11,7 @@ import {
   Activity,
   Code,
   Target,
+  Database,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -569,6 +570,260 @@ function GhidraTab({ task }: { task: any }) {
   )
 }
 
+function ThreatIntelTab({ task }: { task: any }) {
+  const hashLookup: Record<string, any> = task.threat_intel?.hash_lookup || {}
+
+  const PROVIDER_LABELS: Record<string, string> = {
+    virustotal: 'VirusTotal',
+    malwarebazaar: 'MalwareBazaar',
+    threatfox: 'ThreatFox',
+    urlhaus: 'URLhaus',
+    tencent_tix: 'Tencent TIX',
+  }
+
+  const providerOrder = ['virustotal', 'malwarebazaar', 'tencent_tix', 'threatfox', 'urlhaus']
+  const providers = providerOrder.filter(k => k in hashLookup)
+    .concat(Object.keys(hashLookup).filter(k => !providerOrder.includes(k)))
+
+  if (providers.length === 0) {
+    return (
+      <div className="py-8 text-center text-muted-foreground">暂无威胁情报数据</div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {providers.map(provider => {
+        const result = hashLookup[provider]
+        const label = PROVIDER_LABELS[provider] || provider
+        const found: boolean = result?.found === true
+        const data: Record<string, any> = result?.data || {}
+        const error: string | null = result?.error || null
+
+        return (
+          <div key={provider} className="rounded-lg border p-4">
+            <div className="mb-3 flex items-center gap-3">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              <span className="font-semibold">{label}</span>
+              {error ? (
+                <Badge variant="outline" className="text-yellow-600 border-yellow-400">查询失败</Badge>
+              ) : found ? (
+                <Badge variant="destructive">检测到威胁</Badge>
+              ) : (
+                <Badge variant="outline" className="text-green-600 border-green-400">未检测</Badge>
+              )}
+            </div>
+
+            {error && (
+              <p className="text-sm text-muted-foreground">错误: {error}</p>
+            )}
+
+            {!error && found && provider === 'virustotal' && (
+              <div className="space-y-2 text-sm">
+                {data.positives != null && data.total != null && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">检测比率</span>
+                    <span className="font-mono font-semibold text-destructive">
+                      {data.positives} / {data.total}
+                    </span>
+                    <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-2 rounded-full bg-destructive"
+                        style={{ width: `${Math.min(100, (data.positives / data.total) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+                {data.meaningful_name && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">名称</span>
+                    <span className="font-mono">{data.meaningful_name}</span>
+                  </div>
+                )}
+                {data.scan_date && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">扫描日期</span>
+                    <span>{data.scan_date}</span>
+                  </div>
+                )}
+                {Array.isArray(data.tags) && data.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">标签</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.tags.map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {Array.isArray(data.threat_categories) && data.threat_categories.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">威胁类别</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.threat_categories.map((t: string) => (
+                        <Badge key={t} variant="destructive" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {data.permalink && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">报告链接</span>
+                    <a
+                      href={data.permalink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline truncate"
+                    >
+                      {data.permalink}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!error && found && provider === 'malwarebazaar' && (
+              <div className="space-y-2 text-sm">
+                {data.family && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">家族</span>
+                    <span className="font-mono font-semibold">{data.family}</span>
+                  </div>
+                )}
+                {data.signature && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">签名</span>
+                    <span className="font-mono">{data.signature}</span>
+                  </div>
+                )}
+                {data.file_type && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">文件类型</span>
+                    <span>{data.file_type}</span>
+                  </div>
+                )}
+                {Array.isArray(data.tags) && data.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">标签</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.tags.map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {data.first_seen && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">首次发现</span>
+                    <span>{data.first_seen}</span>
+                  </div>
+                )}
+                {data.last_seen && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">最后发现</span>
+                    <span>{data.last_seen}</span>
+                  </div>
+                )}
+                {data.reporter && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">上报者</span>
+                    <span>{data.reporter}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!error && found && provider === 'tencent_tix' && (
+              <div className="space-y-2 text-sm">
+                {data.risk_level != null && (
+                  <div className="flex gap-2 items-center">
+                    <span className="text-muted-foreground w-24 shrink-0">风险等级</span>
+                    <Badge
+                      variant={data.risk_level >= 3 ? 'destructive' : data.risk_level >= 2 ? 'default' : 'secondary'}
+                    >
+                      {data.risk_level === 4 ? '高危' : data.risk_level === 3 ? '中危' : data.risk_level === 2 ? '低危' : `${data.risk_level}`}
+                    </Badge>
+                  </div>
+                )}
+                {data.virusname && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">病毒名称</span>
+                    <span className="font-mono font-semibold">{data.virusname}</span>
+                  </div>
+                )}
+                {data.file_type && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">文件类型</span>
+                    <span>{data.file_type}</span>
+                  </div>
+                )}
+                {data.tag_info && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">标签信息</span>
+                    <span className="text-xs text-muted-foreground">{JSON.stringify(data.tag_info)}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!error && found && provider === 'threatfox' && (
+              <div className="space-y-2 text-sm">
+                {data.malware && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">恶意软件</span>
+                    <span className="font-mono">{data.malware}</span>
+                  </div>
+                )}
+                {data.malware_family && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">家族</span>
+                    <span className="font-mono font-semibold">{data.malware_family}</span>
+                  </div>
+                )}
+                {Array.isArray(data.tags) && data.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">标签</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.tags.map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!error && found && provider === 'urlhaus' && (
+              <div className="space-y-2 text-sm">
+                {data.signature && (
+                  <div className="flex gap-2">
+                    <span className="text-muted-foreground w-24 shrink-0">签名</span>
+                    <span className="font-mono">{data.signature}</span>
+                  </div>
+                )}
+                {Array.isArray(data.tags) && data.tags.length > 0 && (
+                  <div className="flex gap-2 flex-wrap items-start">
+                    <span className="text-muted-foreground w-24 shrink-0">标签</span>
+                    <div className="flex flex-wrap gap-1">
+                      {data.tags.map((t: string) => (
+                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!error && !found && (
+              <p className="text-sm text-muted-foreground">该提供商未检测到威胁</p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function IOCTab({ task }: { task: any }) {
   const unifiedReport = task.unified_report || {}
   const mitreMapping = unifiedReport.mitre_mapping || []
@@ -873,6 +1128,13 @@ export function ReportPage() {
                 <Target className="mr-2 h-4 w-4" />
                 IOC & MITRE
               </TabsTrigger>
+              <TabsTrigger
+                value="threat_intel"
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              >
+                <Database className="mr-2 h-4 w-4" />
+                威胁情报
+              </TabsTrigger>
             </TabsList>
           </CardHeader>
           <CardContent className="p-6">
@@ -890,6 +1152,9 @@ export function ReportPage() {
             </TabsContent>
             <TabsContent value="ioc" className="m-0">
               <IOCTab task={task} />
+            </TabsContent>
+            <TabsContent value="threat_intel" className="m-0">
+              <ThreatIntelTab task={task} />
             </TabsContent>
           </CardContent>
         </Tabs>

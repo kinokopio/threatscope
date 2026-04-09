@@ -541,6 +541,66 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
                   </div>
                 )}
 
+                {task.threat_intel?.hash_lookup && Object.keys(task.threat_intel.hash_lookup).length > 0 && (
+                  <div className="pt-4 border-t">
+                    <h4 className="text-sm font-medium mb-3">威胁情报</h4>
+                    <div className="space-y-2">
+                      {Object.entries(task.threat_intel.hash_lookup as Record<string, any>).map(([provider, result]) => {
+                        const found: boolean = result?.found === true
+                        const data: Record<string, any> = result?.data || {}
+                        const error: string | null = result?.error || null
+                        const LABELS: Record<string, string> = {
+                          virustotal: 'VirusTotal',
+                          malwarebazaar: 'MalwareBazaar',
+                          threatfox: 'ThreatFox',
+                          urlhaus: 'URLhaus',
+                          tencent_tix: 'Tencent TIX',
+                        }
+                        const label = LABELS[provider] || provider
+                        return (
+                          <div key={provider} className="flex items-start gap-2 p-2 bg-muted/30 rounded text-sm">
+                            <span className="text-muted-foreground w-28 shrink-0">{label}</span>
+                            <div className="flex-1 min-w-0">
+                              {error ? (
+                                <span className="text-yellow-600 text-xs">查询失败</span>
+                              ) : found ? (
+                                <div className="flex flex-wrap gap-x-3 gap-y-1 items-center">
+                                  <span className="text-destructive font-medium text-xs">检测到威胁</span>
+                                  {provider === 'virustotal' && data.positives != null && data.total != null && (
+                                    <span className="font-mono text-xs text-destructive">{data.positives}/{data.total}</span>
+                                  )}
+                                  {provider === 'virustotal' && data.meaningful_name && (
+                                    <span className="font-mono text-xs truncate">{data.meaningful_name}</span>
+                                  )}
+                                  {provider === 'malwarebazaar' && data.family && (
+                                    <span className="font-mono text-xs font-semibold">{data.family}</span>
+                                  )}
+                                  {provider === 'malwarebazaar' && data.signature && !data.family && (
+                                    <span className="font-mono text-xs">{data.signature}</span>
+                                  )}
+                                  {provider === 'tencent_tix' && data.virusname && (
+                                    <span className="font-mono text-xs font-semibold">{data.virusname}</span>
+                                  )}
+                                  {provider === 'tencent_tix' && data.risk_level != null && (
+                                    <span className="text-xs text-destructive">
+                                      风险: {data.risk_level === 4 ? '高危' : data.risk_level === 3 ? '中危' : data.risk_level === 2 ? '低危' : data.risk_level}
+                                    </span>
+                                  )}
+                                  {provider === 'threatfox' && data.malware_family && (
+                                    <span className="font-mono text-xs font-semibold">{data.malware_family}</span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-green-600 text-xs">未检测</span>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {task.error && (
                   <div className="pt-4 border-t">
                     <h4 className="text-sm font-medium text-destructive mb-2">错误信息</h4>
