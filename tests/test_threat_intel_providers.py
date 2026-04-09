@@ -282,3 +282,123 @@ class TestURLhausProvider:
         assert result.found is False
         assert result.source == "urlhaus"
         assert result.data.get("ioc") == "192.168.1.1"
+
+
+class TestVirusTotalProvider:
+    @pytest.mark.asyncio
+    async def test_query_hash_found_malicious(self):
+        from src.threatscope.analysis.services.threat_intel.providers.virustotal import (
+            VirusTotalProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "attributes": {
+                    "last_analysis_stats": {
+                        "malicious": 45,
+                        "suspicious": 2,
+                        "undetected": 10,
+                        "harmless": 0,
+                    },
+                    "meaningful_name": "emotet.exe",
+                    "popular_threat_classification": {
+                        "suggested_threat_label": "trojan.emotet/generic"
+                    },
+                }
+            }
+        }
+
+        provider = VirusTotalProvider(api_key="test-key")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = await provider.query_hash(
+                "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+            )
+
+        assert result.source == "virustotal"
+        assert result.found is True
+        assert result.data["malicious"] == 45
+        assert result.data["meaningful_name"] == "emotet.exe"
+        assert result.error is None
+
+        # 确认 Header 包含 API Key
+        call_kwargs = mock_client.get.call_args
+        assert call_kwargs is not None
+
+    @pytest.mark.asyncio
+    async def test_query_hash_found_but_clean(self):
+        """HTTP 200 但 malicious=0，返回 found=False。"""
+        from src.threatscope.analysis.services.threat_intel.providers.virustotal import (
+            VirusTotalProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "data": {
+                "attributes": {
+                    "last_analysis_stats": {
+                        "malicious": 0,
+                        "suspicious": 0,
+                        "undetected": 70,
+                        "harmless": 5,
+                    },
+                    "meaningful_name": "putty.exe",
+                    "popular_threat_classification": None,
+                }
+            }
+        }
+
+        provider = VirusTotalProvider(api_key="test-key")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert result.data["malicious"] == 0
+
+    @pytest.mark.asyncio
+    async def test_query_hash_not_in_vt(self):
+        """HTTP 404 表示 VT 中无记录。"""
+        from src.threatscope.analysis.services.threat_intel.providers.virustotal import (
+            VirusTotalProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+
+        provider = VirusTotalProvider(api_key="test-key")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.get.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_query_hash_network_error(self):
+        from src.threatscope.analysis.services.threat_intel.providers.virustotal import (
+            VirusTotalProvider,
+        )
+
+        provider = VirusTotalProvider(api_key="test-key")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.get.side_effect = Exception("SSL error")
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert "SSL error" in result.error
