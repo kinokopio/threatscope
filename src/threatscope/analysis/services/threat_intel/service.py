@@ -46,12 +46,12 @@ class ThreatIntelService:
         )
 
         output: dict[str, ThreatIntelResult] = {}
-        for result in raw:
+        for provider, result in zip(self.providers, raw):
             if isinstance(result, ThreatIntelResult):
                 output[result.source] = result
             elif isinstance(result, Exception):
-                output[f"error_{id(result)}"] = ThreatIntelResult(
-                    source="unknown", found=False, data={}, error=str(result)
+                output[f"error_{provider.name}"] = ThreatIntelResult(
+                    source=provider.name, found=False, data={}, error=str(result)
                 )
         return output
 
@@ -81,25 +81,43 @@ class ThreatIntelService:
         }
 
         for domain in (domains or [])[:10]:
-            tasks = [p.query_ioc(domain, "domain") for p in self.providers]
-            raw = await asyncio.gather(*tasks, return_exceptions=True)
-            for r in raw:
+            tasks = [(p, p.query_ioc(domain, "domain")) for p in self.providers]
+            raw = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
+            for provider, r in zip(self.providers, raw):
                 if isinstance(r, ThreatIntelResult):
                     results["domains"].append(r)
+                elif isinstance(r, Exception):
+                    results["domains"].append(
+                        ThreatIntelResult(
+                            source=provider.name, found=False, data={}, error=str(r)
+                        )
+                    )
 
         for ip in (ips or [])[:10]:
-            tasks = [p.query_ioc(ip, "ip:port") for p in self.providers]
-            raw = await asyncio.gather(*tasks, return_exceptions=True)
-            for r in raw:
+            tasks = [(p, p.query_ioc(ip, "ip:port")) for p in self.providers]
+            raw = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
+            for provider, r in zip(self.providers, raw):
                 if isinstance(r, ThreatIntelResult):
                     results["ips"].append(r)
+                elif isinstance(r, Exception):
+                    results["ips"].append(
+                        ThreatIntelResult(
+                            source=provider.name, found=False, data={}, error=str(r)
+                        )
+                    )
 
         for url in (urls or [])[:10]:
-            tasks = [p.query_ioc(url, "url") for p in self.providers]
-            raw = await asyncio.gather(*tasks, return_exceptions=True)
-            for r in raw:
+            tasks = [(p, p.query_ioc(url, "url")) for p in self.providers]
+            raw = await asyncio.gather(*[t for _, t in tasks], return_exceptions=True)
+            for provider, r in zip(self.providers, raw):
                 if isinstance(r, ThreatIntelResult):
                     results["urls"].append(r)
+                elif isinstance(r, Exception):
+                    results["urls"].append(
+                        ThreatIntelResult(
+                            source=provider.name, found=False, data={}, error=str(r)
+                        )
+                    )
 
         return results
 

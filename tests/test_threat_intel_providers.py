@@ -629,10 +629,10 @@ class TestThreatIntelService:
 
         assert "good" in results
         assert results["good"].found is True
-        # 失败的 provider 以 error_* key 记录
-        error_keys = [k for k in results if k.startswith("error_")]
-        assert len(error_keys) == 1
-        assert results[error_keys[0]].error == "provider crashed"
+        # 失败的 provider 以 error_<name> key 记录
+        assert "error_bad" in results
+        assert results["error_bad"].error == "provider crashed"
+        assert results["error_bad"].source == "bad"
 
     @pytest.mark.asyncio
     async def test_query_hash_empty_providers(self):
