@@ -311,14 +311,14 @@ function TaskDetailSheet({ taskId, open, onOpenChange }: { taskId: string | null
               <div className="flex items-center justify-between mb-2">
                 <span className="text-sm font-medium">分析进度</span>
                 <span className="text-sm text-muted-foreground">
-                  {Object.values(task.steps_progress || {}).filter((s: any) => s.status === 'completed').length}/
-                  {Object.keys(task.steps_progress || {}).length || 1}
+                  {Object.entries(task.steps_progress || {}).filter(([k, s]: [string, any]) => k !== 'ai_logs' && s.status === 'completed').length}/
+                  {Object.keys(task.steps_progress || {}).filter(k => k !== 'ai_logs').length || 1}
                 </span>
               </div>
               <Progress 
                 value={Math.round(
-                  (Object.values(task.steps_progress || {}).filter((s: any) => s.status === 'completed').length / 
-                  (Object.keys(task.steps_progress || {}).length || 1)) * 100
+                  (Object.entries(task.steps_progress || {}).filter(([k, s]: [string, any]) => k !== 'ai_logs' && s.status === 'completed').length / 
+                  (Object.keys(task.steps_progress || {}).filter(k => k !== 'ai_logs').length || 1)) * 100
                 )} 
                 className="h-2" 
               />
