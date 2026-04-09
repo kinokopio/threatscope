@@ -429,3 +429,122 @@ class TestVirusTotalProvider:
         assert result.found is False
         assert result.error is not None
         assert "500" in result.error
+
+
+class TestTencentTIXProvider:
+    @pytest.mark.asyncio
+    async def test_query_hash_found_malicious(self):
+        from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import (
+            TencentTIXProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "return_code": 0,
+            "return_msg": "success",
+            "ver": "3.0",
+            "data": {
+                "summary": {
+                    "risk_level": 4,
+                    "md5": "bd5818a8eb45efa6dbf3f16890bcd636",
+                    "file_type": "exe",
+                    "taskid": "20241128000394442",
+                },
+                "vdc_infos": {
+                    "virusname": "Trojan.Win32.Emotet",
+                    "threat_level": 4,
+                    "scan_modi_time": "2024-11-28 11:53:24",
+                },
+                "tag_info": [{"tag": "远控木马", "confidence": 90}],
+            },
+        }
+
+        provider = TencentTIXProvider(app_key="test-appkey")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("bd5818a8eb45efa6dbf3f16890bcd636")
+
+        assert result.source == "tencent_tix"
+        assert result.found is True
+        assert result.data["risk_level"] == 4
+        assert result.data["virusname"] == "Trojan.Win32.Emotet"
+        assert result.error is None
+
+        # 确认 appkey 在请求 body 中，而非 header
+        call_kwargs = mock_client.post.call_args
+        assert "c_appkey" in str(call_kwargs)
+
+    @pytest.mark.asyncio
+    async def test_query_hash_found_but_clean(self):
+        """risk_level=0 返回 found=False。"""
+        from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import (
+            TencentTIXProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "return_code": 0,
+            "return_msg": "success",
+            "ver": "3.0",
+            "data": {
+                "summary": {"risk_level": 0, "md5": "abc123", "file_type": "exe"},
+                "vdc_infos": {"virusname": "", "threat_level": 0},
+                "tag_info": None,
+            },
+        }
+
+        provider = TencentTIXProvider(app_key="test-appkey")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert result.data["risk_level"] == 0
+
+    @pytest.mark.asyncio
+    async def test_query_hash_api_error(self):
+        """return_code != 0 返回 found=False，error 含 return_msg。"""
+        from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import (
+            TencentTIXProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "return_code": 1001,
+            "return_msg": "invalid appkey",
+            "ver": "3.0",
+        }
+
+        provider = TencentTIXProvider(app_key="bad-key")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert "invalid appkey" in result.error
+
+    @pytest.mark.asyncio
+    async def test_query_hash_network_error(self):
+        from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import (
+            TencentTIXProvider,
+        )
+
+        provider = TencentTIXProvider(app_key="test-appkey")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = Exception("connection timeout")
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert "connection timeout" in result.error
