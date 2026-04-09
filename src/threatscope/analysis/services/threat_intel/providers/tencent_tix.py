@@ -72,20 +72,22 @@ class TencentTIXProvider(BaseThreatIntelProvider):
                     error=data.get("return_msg", "unknown error"),
                 )
 
-            report = data.get("data", {})
-            summary = report.get("summary", {})
-            vdc = report.get("vdc_infos", {})
-            risk_level = summary.get("risk_level", 0)
+            threat_level = data.get("threat_level", 0)
+            basicinfo = data.get("basicinfo", {})
+            tags = [t.get("tag", "") for t in (data.get("tags") or []) if t.get("tag")]
 
             return ThreatIntelResult(
                 source=self.name,
-                found=risk_level > 0,
+                found=threat_level > 0,
                 data={
-                    "risk_level": risk_level,
-                    "virusname": vdc.get("virusname", ""),
-                    "file_type": summary.get("file_type"),
-                    "tag_info": report.get("tag_info"),
-                    "task_id": summary.get("taskid"),
+                    "threat_level": threat_level,
+                    "result": data.get("result", ""),
+                    "threat_type": data.get("threat_type") or [],
+                    "tags": tags,
+                    "file_type": basicinfo.get("file_type"),
+                    "file_size": basicinfo.get("file_size"),
+                    "submit_time": basicinfo.get("submit_time"),
+                    "intelligences": data.get("intelligences") or [],
                 },
             )
         except httpx.HTTPStatusError as e:
