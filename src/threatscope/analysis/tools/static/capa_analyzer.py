@@ -15,9 +15,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Suppress verbose Vivisect logs
+# Suppress verbose/noisy Vivisect logs.
+# vivisect.analysis.elf.elfplt logs logger.error() for known upstream bugs
+# (e.g. "Invalid File: None" in analyzePLT) — raise to CRITICAL to silence them.
 logging.getLogger("vivisect").setLevel(logging.WARNING)
 logging.getLogger("vivisect.analysis").setLevel(logging.WARNING)
+logging.getLogger("vivisect.analysis.elf.elfplt").setLevel(logging.CRITICAL)
 logging.getLogger("envi").setLevel(logging.WARNING)
 from src.threatscope.analysis.tools.base import AnalysisTool, ToolResult
 
