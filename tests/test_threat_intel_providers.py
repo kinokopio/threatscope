@@ -139,3 +139,71 @@ class TestMalwareBazaarProvider:
 
         assert result.found is False
         assert "connection refused" in result.error
+
+
+class TestThreatFoxProvider:
+    @pytest.mark.asyncio
+    async def test_query_hash_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.threatfox import (
+            ThreatFoxProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "query_status": "ok",
+            "data": [{"ioc": "abc123", "malware": "Emotet", "confidence_level": 90}],
+        }
+
+        provider = ThreatFoxProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.source == "threatfox"
+        assert result.found is True
+        assert len(result.data["iocs"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_query_hash_not_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.threatfox import (
+            ThreatFoxProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"query_status": "no_result"}
+
+        provider = ThreatFoxProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+
+    @pytest.mark.asyncio
+    async def test_query_ioc_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.threatfox import (
+            ThreatFoxProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "query_status": "ok",
+            "data": [{"ioc": "evil.com", "ioc_type": "domain"}],
+        }
+
+        provider = ThreatFoxProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_ioc("evil.com", "domain")
+
+        assert result.found is True
+        assert result.data["ioc"] == "evil.com"
