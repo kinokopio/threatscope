@@ -166,6 +166,7 @@ class TestThreatFoxProvider:
         assert result.source == "threatfox"
         assert result.found is True
         assert len(result.data["iocs"]) == 1
+        assert result.error is None
 
     @pytest.mark.asyncio
     async def test_query_hash_not_found(self):
@@ -185,6 +186,7 @@ class TestThreatFoxProvider:
             result = await provider.query_hash("abc123")
 
         assert result.found is False
+        assert result.error is None
 
     @pytest.mark.asyncio
     async def test_query_ioc_found(self):
@@ -208,6 +210,45 @@ class TestThreatFoxProvider:
 
         assert result.found is True
         assert result.data["ioc"] == "evil.com"
+        assert result.data["type"] == "domain"
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_query_hash_network_error(self):
+        from src.threatscope.analysis.services.threat_intel.providers.threatfox import (
+            ThreatFoxProvider,
+        )
+
+        provider = ThreatFoxProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = Exception("connection refused")
+            result = await provider.query_hash("abc123")
+
+        assert result.source == "threatfox"
+        assert result.found is False
+        assert result.error == "connection refused"
+
+    @pytest.mark.asyncio
+    async def test_query_ioc_not_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.threatfox import (
+            ThreatFoxProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"query_status": "no_result"}
+        provider = ThreatFoxProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+            result = await provider.query_ioc("evil.com", "domain")
+
+        assert result.found is False
+        assert result.data["ioc"] == "evil.com"
+        assert result.data["type"] == "domain"
+        assert result.error is None
 
 
 class TestURLhausProvider:
@@ -701,7 +742,13 @@ class TestBuildService:
         service = build_service(settings)
         assert len(service.providers) == 5
         provider_names = {p.name for p in service.providers}
-        assert provider_names == {"malwarebazaar", "threatfox", "urlhaus", "virustotal", "tencent_tix"}
+        assert provider_names == {
+            "malwarebazaar",
+            "threatfox",
+            "urlhaus",
+            "virustotal",
+            "tencent_tix",
+        }
 
     def test_build_service_skips_disabled(self):
         from unittest.mock import MagicMock

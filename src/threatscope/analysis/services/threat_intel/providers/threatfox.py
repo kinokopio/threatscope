@@ -21,43 +21,40 @@ class ThreatFoxProvider(BaseThreatIntelProvider):
         self.base_url = base_url
         self.timeout = timeout
 
+    async def _post(self, payload: dict) -> dict:
+        """POST JSON payload to the ThreatFox API and return the parsed response."""
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            response = await client.post(self.base_url, json=payload)
+            return response.json()
+
     async def query_hash(self, hash_value: str) -> ThreatIntelResult:
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    self.base_url,
-                    json={"query": "search_hash", "hash": hash_value},
-                )
-                data = response.json()
+            data = await self._post({"query": "search_hash", "hash": hash_value})
 
-                if data.get("query_status") == "ok":
-                    return ThreatIntelResult(
-                        source=self.name,
-                        found=True,
-                        data={"iocs": data.get("data", [])},
-                    )
-                return ThreatIntelResult(source=self.name, found=False, data={})
+            if data.get("query_status") == "ok":
+                return ThreatIntelResult(
+                    source=self.name,
+                    found=True,
+                    data={"iocs": data.get("data", [])},
+                )
+            return ThreatIntelResult(source=self.name, found=False, data={})
         except Exception as e:
             return ThreatIntelResult(source=self.name, found=False, data={}, error=str(e))
 
     async def query_ioc(self, ioc: str, ioc_type: str) -> ThreatIntelResult:
+        # Return ioc/type in data even on failure for context in debugging failed lookups.
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    self.base_url,
-                    json={"query": "search_ioc", "search_term": ioc},
-                )
-                data = response.json()
+            data = await self._post({"query": "search_ioc", "search_term": ioc})
 
-                if data.get("query_status") == "ok":
-                    return ThreatIntelResult(
-                        source=self.name,
-                        found=True,
-                        data={"ioc": ioc, "type": ioc_type, "matches": data.get("data", [])},
-                    )
+            if data.get("query_status") == "ok":
                 return ThreatIntelResult(
-                    source=self.name, found=False, data={"ioc": ioc, "type": ioc_type}
+                    source=self.name,
+                    found=True,
+                    data={"ioc": ioc, "type": ioc_type, "matches": data.get("data", [])},
                 )
+            return ThreatIntelResult(
+                source=self.name, found=False, data={"ioc": ioc, "type": ioc_type}
+            )
         except Exception as e:
             return ThreatIntelResult(
                 source=self.name, found=False, data={"ioc": ioc, "type": ioc_type}, error=str(e)
