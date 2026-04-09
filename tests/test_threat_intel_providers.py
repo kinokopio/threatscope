@@ -42,3 +42,20 @@ def test_abstract_provider_cannot_instantiate():
     """未实现 query_hash 的子类无法实例化。"""
     with pytest.raises(TypeError):
         BaseThreatIntelProvider()  # type: ignore
+
+
+def test_provider_subclass_without_name_raises():
+    """Subclass that omits 'name' is rejected at class definition time."""
+    with pytest.raises(TypeError, match="must define a 'name'"):
+        class NoNameProvider(BaseThreatIntelProvider):
+            async def query_hash(self, hash_value: str) -> ThreatIntelResult:
+                return ThreatIntelResult(source="x", found=False, data={})
+
+
+def test_provider_subclass_with_non_str_name_raises():
+    """Subclass that sets name to a non-str is rejected at class definition time."""
+    with pytest.raises(TypeError, match="must define a 'name'"):
+        class IntNameProvider(BaseThreatIntelProvider):
+            name = 42  # type: ignore
+            async def query_hash(self, hash_value: str) -> ThreatIntelResult:
+                return ThreatIntelResult(source="x", found=False, data={})
