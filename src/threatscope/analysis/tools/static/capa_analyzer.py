@@ -5,6 +5,7 @@ Analyzes PE/ELF binaries to detect capabilities, ATT&CK techniques, and MBC beha
 """
 
 import asyncio
+import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -12,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import logging
+logger = logging.getLogger(__name__)
 
 # Suppress verbose Vivisect logs
 logging.getLogger("vivisect").setLevel(logging.WARNING)
@@ -164,7 +165,18 @@ class CapaAnalyzer(AnalysisTool):
         except asyncio.TimeoutError:
             return ToolResult(success=False, error=f"capa analysis timed out after {self.timeout}s")
         except Exception as e:
-            return ToolResult(success=False, error=str(e))
+            err_str = str(e)
+            # Vivisect ELF parsing bugs (e.g. "Invalid File: None") are upstream
+            # issues that affect specific binaries. Degrade gracefully so the
+            # rest of the pipeline continues.
+            if "Invalid File" in err_str or "vivisect" in type(e).__module__:
+                logger.warning("capa/vivisect non-fatal error for %s: %s", file_path, err_str)
+                return ToolResult(
+                    success=True,
+                    data=CapaResult(format="", arch="", os="").to_dict(),
+                    error=f"capa partial failure (vivisect): {err_str}",
+                )
+            return ToolResult(success=False, error=err_str)
 
     def _run_capa(self, file_path: Path, rules: Any) -> CapaResult:
         """
