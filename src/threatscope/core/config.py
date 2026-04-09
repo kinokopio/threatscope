@@ -59,6 +59,7 @@ class ThreatIntelSettings(BaseSettings):
     virustotal_enabled: bool = Field(default=False)
     virustotal_api_key: SecretStr = Field(default="")
     tix_enabled: bool = Field(default=False)
+    tix_app_id: str = Field(default="")
     tix_app_key: SecretStr = Field(default="")
 
 

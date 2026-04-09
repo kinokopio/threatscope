@@ -148,7 +148,12 @@ def build_service(settings: Any) -> ThreatIntelService:
     if settings.virustotal_enabled and settings.virustotal_api_key.get_secret_value():
         providers.append(VirusTotalProvider(api_key=settings.virustotal_api_key.get_secret_value()))
 
-    if settings.tix_enabled and settings.tix_app_key.get_secret_value():
-        providers.append(TencentTIXProvider(app_key=settings.tix_app_key.get_secret_value()))
+    if settings.tix_enabled and settings.tix_app_id and settings.tix_app_key.get_secret_value():
+        providers.append(
+            TencentTIXProvider(
+                app_id=settings.tix_app_id,
+                app_key=settings.tix_app_key.get_secret_value(),
+            )
+        )
 
     return ThreatIntelService(providers=providers)

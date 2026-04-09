@@ -500,7 +500,7 @@ class TestTencentTIXProvider:
             },
         }
 
-        provider = TencentTIXProvider(app_key="test-appkey")
+        provider = TencentTIXProvider(app_id="test-appid", app_key="test-appkey")
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -515,10 +515,11 @@ class TestTencentTIXProvider:
         assert result.error is None
         assert result.data["task_id"] == "20241128000394442"
 
-        # 确认 appkey 在请求 body 中，而非 header
+        # 确认 appkey 不在请求 body 中，而是通过 c_signature 签名
         call_kwargs = mock_client.post.call_args
-        assert call_kwargs.kwargs["json"]["c_appkey"] == "test-appkey"
-        assert "c_appkey" not in str(call_kwargs.kwargs.get("params", {}))
+        assert "c_appkey" not in call_kwargs.kwargs["json"]
+        assert "c_signature" in call_kwargs.kwargs["json"]
+        assert call_kwargs.kwargs["json"]["c_appid"] == "test-appid"
 
     @pytest.mark.asyncio
     async def test_query_hash_found_but_clean(self):
@@ -539,7 +540,7 @@ class TestTencentTIXProvider:
             },
         }
 
-        provider = TencentTIXProvider(app_key="test-appkey")
+        provider = TencentTIXProvider(app_id="test-appid", app_key="test-appkey")
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -564,7 +565,7 @@ class TestTencentTIXProvider:
             "ver": "3.0",
         }
 
-        provider = TencentTIXProvider(app_key="bad-key")
+        provider = TencentTIXProvider(app_id="test-appid", app_key="bad-key")
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -581,7 +582,7 @@ class TestTencentTIXProvider:
             TencentTIXProvider,
         )
 
-        provider = TencentTIXProvider(app_key="test-appkey")
+        provider = TencentTIXProvider(app_id="test-appid", app_key="test-appkey")
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -608,7 +609,7 @@ class TestTencentTIXProvider:
             "503 Service Unavailable", request=MagicMock(), response=mock_response
         )
 
-        provider = TencentTIXProvider(app_key="test-appkey")
+        provider = TencentTIXProvider(app_id="test-appid", app_key="test-appkey")
         with patch("httpx.AsyncClient") as mock_client_class:
             mock_client = AsyncMock()
             mock_client_class.return_value.__aenter__.return_value = mock_client
@@ -619,6 +620,21 @@ class TestTencentTIXProvider:
         assert result.found is False
         assert result.error is not None
         assert "503" in result.error
+
+    def test_build_payload_signature(self):
+        from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import (
+            TencentTIXProvider,
+        )
+
+        provider = TencentTIXProvider(app_id="myappid", app_key="myappkey")
+        payload = provider._build_payload("FileInfo", "abc123", "md5")
+        assert payload["c_appid"] == "myappid"
+        assert payload["c_action"] == "FileInfo"
+        assert payload["key"] == "abc123"
+        assert payload["type"] == "md5"
+        assert "c_signature" in payload
+        assert len(payload["c_signature"]) == 64  # SHA256 hex = 64 chars
+        assert "myappkey" not in payload  # appkey must NOT appear in payload
 
 
 class TestThreatIntelService:
@@ -737,6 +753,7 @@ class TestBuildService:
         settings.virustotal_enabled = True
         settings.virustotal_api_key = SecretStr("vt-key")
         settings.tix_enabled = True
+        settings.tix_app_id = "test-appid"
         settings.tix_app_key = SecretStr("tix-key")
 
         service = build_service(settings)
@@ -785,6 +802,7 @@ class TestBuildService:
         settings.virustotal_enabled = True
         settings.virustotal_api_key = SecretStr("")  # 没有 key
         settings.tix_enabled = True
+        settings.tix_app_id = ""  # 没有 app_id
         settings.tix_app_key = SecretStr("")  # 没有 key
 
         service = build_service(settings)
