@@ -1,5 +1,8 @@
 # tests/test_threat_intel_providers.py
 """Unit tests for threat intel provider architecture."""
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from src.threatscope.analysis.services.threat_intel.base import (
@@ -47,8 +50,8 @@ def test_abstract_provider_cannot_instantiate():
 def test_provider_subclass_without_name_raises():
     """Subclass that omits 'name' is rejected at class definition time."""
     with pytest.raises(TypeError, match="must define a 'name'"):
-        class NoNameProvider(BaseThreatIntelProvider):
 
+        class NoNameProvider(BaseThreatIntelProvider):
             async def query_hash(self, hash_value: str) -> ThreatIntelResult:
                 return ThreatIntelResult(source="x", found=False, data={})
 
@@ -56,8 +59,83 @@ def test_provider_subclass_without_name_raises():
 def test_provider_subclass_with_non_str_name_raises():
     """Subclass that sets name to a non-str is rejected at class definition time."""
     with pytest.raises(TypeError, match="must define a 'name'"):
+
         class IntNameProvider(BaseThreatIntelProvider):
             name = 42  # type: ignore
 
             async def query_hash(self, hash_value: str) -> ThreatIntelResult:
                 return ThreatIntelResult(source="x", found=False, data={})
+
+
+class TestMalwareBazaarProvider:
+    @pytest.mark.asyncio
+    async def test_query_hash_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.malwarebazaar import (
+            MalwareBazaarProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {
+            "query_status": "ok",
+            "data": [
+                {
+                    "signature": "Emotet",
+                    "tags": ["emotet", "trojan"],
+                    "first_seen": "2023-01-01 00:00:00",
+                    "file_type": "exe",
+                    "delivery_method": "email",
+                    "intelligence": {"downloads": 5},
+                }
+            ],
+        }
+
+        provider = MalwareBazaarProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.source == "malwarebazaar"
+        assert result.found is True
+        assert result.data["family"] == "Emotet"
+        assert result.data["tags"] == ["emotet", "trojan"]
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_query_hash_not_found(self):
+        from src.threatscope.analysis.services.threat_intel.providers.malwarebazaar import (
+            MalwareBazaarProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"query_status": "hash_not_found"}
+
+        provider = MalwareBazaarProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert result.error is None
+
+    @pytest.mark.asyncio
+    async def test_query_hash_network_error(self):
+        from src.threatscope.analysis.services.threat_intel.providers.malwarebazaar import (
+            MalwareBazaarProvider,
+        )
+
+        provider = MalwareBazaarProvider()
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.side_effect = Exception("connection refused")
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert "connection refused" in result.error
