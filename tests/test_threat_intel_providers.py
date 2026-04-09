@@ -328,7 +328,7 @@ class TestVirusTotalProvider:
 
         # 确认 Header 包含 API Key
         call_kwargs = mock_client.get.call_args
-        assert call_kwargs is not None
+        assert call_kwargs.kwargs["headers"]["x-apikey"] == "test-key"
 
     @pytest.mark.asyncio
     async def test_query_hash_found_but_clean(self):

@@ -62,5 +62,12 @@ class VirusTotalProvider(BaseThreatIntelProvider):
                         ),
                     },
                 )
+        except httpx.HTTPStatusError as e:
+            return ThreatIntelResult(
+                source=self.name,
+                found=False,
+                data={},
+                error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+            )
         except Exception as e:
             return ThreatIntelResult(source=self.name, found=False, data={}, error=str(e))
