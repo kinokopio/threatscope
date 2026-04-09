@@ -25,6 +25,13 @@ class BaseThreatIntelProvider(ABC):
 
     name: str  # Identifier string, e.g. "virustotal", "tencent_tix"
 
+    def __init_subclass__(cls, **kwargs: object) -> None:
+        super().__init_subclass__(**kwargs)
+        if not hasattr(cls, "name") or not isinstance(cls.name, str):
+            raise TypeError(
+                f"{cls.__name__} must define a 'name' class attribute of type str"
+            )
+
     @abstractmethod
     async def query_hash(self, hash_value: str) -> ThreatIntelResult:
         """Query provider for a file hash (SHA256, SHA1, or MD5).
