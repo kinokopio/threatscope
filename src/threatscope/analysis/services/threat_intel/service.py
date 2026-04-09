@@ -2,6 +2,7 @@
 """ThreatIntelService aggregator and build_service factory."""
 
 import asyncio
+from typing import Any
 
 from src.threatscope.analysis.services.threat_intel.base import (
     BaseThreatIntelProvider,
@@ -14,7 +15,6 @@ from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import
 from src.threatscope.analysis.services.threat_intel.providers.threatfox import ThreatFoxProvider
 from src.threatscope.analysis.services.threat_intel.providers.urlhaus import URLhausProvider
 from src.threatscope.analysis.services.threat_intel.providers.virustotal import VirusTotalProvider
-from src.threatscope.core.config import ThreatIntelSettings
 
 
 class ThreatIntelService:
@@ -90,9 +90,7 @@ class ThreatIntelService:
                     results["domains"].append(r)
                 elif isinstance(r, Exception):
                     results["domains"].append(
-                        ThreatIntelResult(
-                            source=provider.name, found=False, data={}, error=str(r)
-                        )
+                        ThreatIntelResult(source=provider.name, found=False, data={}, error=str(r))
                     )
 
         for ip in (ips or [])[:10]:
@@ -105,9 +103,7 @@ class ThreatIntelService:
                     results["ips"].append(r)
                 elif isinstance(r, Exception):
                     results["ips"].append(
-                        ThreatIntelResult(
-                            source=provider.name, found=False, data={}, error=str(r)
-                        )
+                        ThreatIntelResult(source=provider.name, found=False, data={}, error=str(r))
                     )
 
         for url in (urls or [])[:10]:
@@ -120,22 +116,20 @@ class ThreatIntelService:
                     results["urls"].append(r)
                 elif isinstance(r, Exception):
                     results["urls"].append(
-                        ThreatIntelResult(
-                            source=provider.name, found=False, data={}, error=str(r)
-                        )
+                        ThreatIntelResult(source=provider.name, found=False, data={}, error=str(r))
                     )
 
         return results
 
 
-def build_service(settings: ThreatIntelSettings) -> ThreatIntelService:
+def build_service(settings: Any) -> ThreatIntelService:
     """Construct a ThreatIntelService from application settings.
 
     Only providers with enabled=True (and a non-empty API key where required)
     are included. Providers with missing keys are silently skipped.
 
     Args:
-        settings: ThreatIntelSettings instance from core.config.
+        settings: Duck-typed settings object with threat intelligence configuration.
 
     Returns:
         Configured ThreatIntelService ready for use.
