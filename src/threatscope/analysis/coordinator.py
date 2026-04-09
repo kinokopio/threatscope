@@ -140,6 +140,7 @@ class AnalysisCoordinator:
         enable_yara: bool = True,
         progress_callback: ProgressCallback = None,
         skills: list[str] | None = None,
+        cancel_event: asyncio.Event | None = None,
     ) -> dict[str, Any]:
         """Run complete analysis pipeline on a file.
 
@@ -157,6 +158,10 @@ class AnalysisCoordinator:
         file_path = Path(file_path)
         if not file_path.exists():
             return {"error": f"File not found: {file_path}"}
+
+        def _check_cancelled():
+            if cancel_event and cancel_event.is_set():
+                raise asyncio.CancelledError("Analysis cancelled by user")
 
         # Create task
         task = AnalysisTask(file_path=str(file_path))
@@ -198,6 +203,7 @@ class AnalysisCoordinator:
             # Phase 2: Deep Analysis (ALL parallel)
             # capa + strings + yara + threat_intel + dynamic
             # ========================================
+            _check_cancelled()
             task.update_status(AnalysisStatus.STATIC_ANALYSIS)
 
             capa_enabled = enable_capa and self.settings.capa.enabled
@@ -246,6 +252,7 @@ class AnalysisCoordinator:
                 return result
 
             parallel_tasks = []
+            _async_tasks: list[asyncio.Task] = []
 
             if enable_strings:
                 parallel_tasks.append(run_and_process_strings())
@@ -271,12 +278,20 @@ class AnalysisCoordinator:
             if enable_dynamic:
                 parallel_tasks.append(run_and_process_dynamic())
 
-            await asyncio.gather(*parallel_tasks)
+            _async_tasks = [asyncio.ensure_future(t) for t in parallel_tasks]
+            try:
+                await asyncio.gather(*_async_tasks)
+            except asyncio.CancelledError:
+                for t in _async_tasks:
+                    if not t.done():
+                        t.cancel()
+                raise
             task.static_results = results
 
             # ========================================
             # Phase 3: Ghidra Deep Analysis
             # ========================================
+            _check_cancelled()
             ghidra_results = {}
             if enable_ghidra:
                 task.update_status(AnalysisStatus.GHIDRA_ANALYSIS)
@@ -302,6 +317,7 @@ class AnalysisCoordinator:
             # ========================================
             # Phase 4: Report Generation
             # ========================================
+            _check_cancelled()
             task.update_status(AnalysisStatus.REPORT_GENERATION)
             if progress_callback:
                 await progress_callback("report", "Report Generation", "running", None, results)

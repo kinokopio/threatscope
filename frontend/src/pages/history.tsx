@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { type ColumnDef } from '@tanstack/react-table'
-import { Search, Eye, Download, RotateCcw, Trash2, MoreHorizontal } from 'lucide-react'
+import { Search, Eye, Download, RotateCcw, Trash2, MoreHorizontal, StopCircle } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,7 +23,7 @@ import {
 import { DataTable } from '@/components/ui/data-table'
 import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
-import { useTasks, useDeleteTask, useExportTask } from '@/hooks/use-tasks'
+import { useTasks, useDeleteTask, useExportTask, useCancelTask } from '@/hooks/use-tasks'
 import type { TaskListItem, TaskListParams } from '@/lib/api'
 
 function formatDate(dateString: string) {
@@ -86,9 +86,13 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
+const RUNNING_STATUSES = ['pending', 'queued', 'static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation']
+
 function TaskActions({ task }: { task: TaskListItem }) {
   const deleteTask = useDeleteTask()
   const exportTask = useExportTask()
+  const cancelTask = useCancelTask()
+  const isRunning = RUNNING_STATUSES.includes(task.status)
 
   const handleExport = async () => {
     const blob = await exportTask.mutateAsync(task.id)
@@ -124,6 +128,16 @@ function TaskActions({ task }: { task: TaskListItem }) {
           重新分析
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        {isRunning && (
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() => cancelTask.mutate(task.id)}
+            disabled={cancelTask.isPending}
+          >
+            <StopCircle className="mr-2 h-4 w-4" />
+            停止分析
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
           className="text-destructive"
           onClick={() => deleteTask.mutate(task.id)}

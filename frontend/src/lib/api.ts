@@ -250,6 +250,11 @@ export async function deleteTask(id: string): Promise<void> {
   await api.delete(`/tasks/${id}`)
 }
 
+export async function cancelTask(id: string): Promise<{ task_id: string; status: string }> {
+  const response = await api.post(`/tasks/${id}/cancel`)
+  return response.data
+}
+
 export async function reanalyzeTask(id: string, options?: TaskCreateOptions): Promise<Task> {
   const response = await api.post(`/tasks/${id}/reanalyze`, options)
   return response.data

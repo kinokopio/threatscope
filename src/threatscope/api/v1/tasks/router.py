@@ -218,6 +218,42 @@ async def delete_task(
 
 
 @router.post(
+    "/{task_id}/cancel",
+    status_code=200,
+    summary="Cancel running task",
+    description="Cancel a running analysis task",
+)
+async def cancel_task(
+    task: Annotated[dict, Depends(valid_task_id)],
+    db: DatabaseDep,
+    service: TaskService = Depends(get_task_service),
+) -> dict:
+    from fastapi import HTTPException
+
+    running_statuses = {
+        TaskStatus.PENDING.value,
+        TaskStatus.QUEUED.value,
+        TaskStatus.STATIC_ANALYSIS.value,
+        TaskStatus.DYNAMIC_ANALYSIS.value,
+        TaskStatus.GHIDRA_ANALYSIS.value,
+        TaskStatus.REPORT_GENERATION.value,
+    }
+
+    if task["status"] not in running_statuses:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Task is not running (status: {task['status']})",
+        )
+
+    cancelled = service.cancel_task(task["id"])
+    if not cancelled:
+        # asyncio.Task 已结束但 DB 状态还是 running，直接更新 DB
+        db.update_task_status(task["id"], TaskStatus.FAILED.value, error="用户取消分析")
+
+    return {"task_id": task["id"], "status": "cancelled"}
+
+
+@router.post(
     "/{task_id}/reanalyze",
     response_model=TaskResponse,
     status_code=202,

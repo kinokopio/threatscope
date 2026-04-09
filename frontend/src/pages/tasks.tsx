@@ -17,6 +17,7 @@ import {
   ChevronDown,
   Bot,
   Wrench,
+  StopCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -45,7 +46,7 @@ import { DataTable } from '@/components/ui/data-table'
 import { DataTableColumnHeader } from '@/components/ui/data-table-column-header'
 import { DataTablePagination } from '@/components/ui/data-table-pagination'
 import { DataTableToolbar } from '@/components/ui/data-table-toolbar'
-import { useTasks, useTask, useDeleteTask } from '@/hooks/use-tasks'
+import { useTasks, useTask, useDeleteTask, useCancelTask } from '@/hooks/use-tasks'
 import type { TaskListItem, AILogEntry } from '@/lib/api'
 
 const RUNNING_STATUSES = ['static_analysis', 'dynamic_analysis', 'ghidra_analysis', 'report_generation', 'queued']
@@ -651,6 +652,8 @@ function TaskStatusBadge({ status }: { status: string }) {
 
 function TaskActions({ task, onViewDetail }: { task: TaskListItem; onViewDetail: () => void }) {
   const deleteTask = useDeleteTask()
+  const cancelTask = useCancelTask()
+  const isRunning = RUNNING_STATUSES.includes(task.status)
 
   return (
     <DropdownMenu>
@@ -674,6 +677,16 @@ function TaskActions({ task, onViewDetail }: { task: TaskListItem; onViewDetail:
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
+        {isRunning && (
+          <DropdownMenuItem
+            className="text-destructive"
+            onClick={() => cancelTask.mutate(task.id)}
+            disabled={cancelTask.isPending}
+          >
+            <StopCircle className="mr-2 h-4 w-4" />
+            停止分析
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem
           className="text-destructive"
           onClick={() => deleteTask.mutate(task.id)}

@@ -1,8 +1,8 @@
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Path
+from fastapi import Depends, Path
 
-from src.threatscope.api.schemas import TaskStatus
+from src.threatscope.api.v1.tasks.service import TaskService
 from src.threatscope.core.dependencies import DatabaseDep
 from src.threatscope.shared.exceptions import TaskNotFoundError
 
@@ -20,13 +20,16 @@ async def valid_task_id(
 async def valid_task_for_delete(
     task: Annotated[dict, Depends(valid_task_id)],
 ) -> dict:
-    if task["status"] in (
-        TaskStatus.STATIC_ANALYSIS.value,
-        TaskStatus.GHIDRA_ANALYSIS.value,
-        TaskStatus.REPORT_GENERATION.value,
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail=f"Cannot delete running task: {task['id']}",
-        )
+    running_statuses = {
+        "pending",
+        "queued",
+        "static_analysis",
+        "dynamic_analysis",
+        "ghidra_analysis",
+        "report_generation",
+    }
+
+    if task["status"] in running_statuses:
+        TaskService.cancel_task_by_id(task["id"])
+
     return task

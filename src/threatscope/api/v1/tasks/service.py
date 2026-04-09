@@ -9,6 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class TaskService:
+    # Class-level registry of running background tasks: task_id -> asyncio.Task
+    _running_tasks: dict[str, asyncio.Task] = {}
+    _cancel_events: dict[str, asyncio.Event] = {}
+
     def __init__(self, coordinator, db):
         self.coordinator = coordinator
         self.db = db
@@ -29,15 +33,57 @@ class TaskService:
             options=options,
         )
 
-        asyncio.create_task(self._run_analysis_background(task_id, file_path, options))
+        cancel_event = asyncio.Event()
+        bg_task = asyncio.create_task(
+            self._run_analysis_background(task_id, file_path, options, cancel_event)
+        )
+        TaskService._running_tasks[task_id] = bg_task
+        TaskService._cancel_events[task_id] = cancel_event
 
         return task_id
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a running analysis task.
+
+        Returns True if the task was found and cancelled, False otherwise.
+        """
+        event = TaskService._cancel_events.get(task_id)
+        if event:
+            event.set()
+
+        bg_task = TaskService._running_tasks.get(task_id)
+        if bg_task is None or bg_task.done():
+            return False
+
+        bg_task.cancel()
+        logger.info(f"Cancelled background task {task_id}")
+        return True
+
+    @classmethod
+    def is_task_running(cls, task_id: str) -> bool:
+        """Check if a background asyncio.Task is still running for this task_id."""
+        bg_task = cls._running_tasks.get(task_id)
+        return bg_task is not None and not bg_task.done()
+
+    @classmethod
+    def cancel_task_by_id(cls, task_id: str) -> bool:
+        event = cls._cancel_events.get(task_id)
+        if event:
+            event.set()
+
+        bg_task = cls._running_tasks.get(task_id)
+        if bg_task is None or bg_task.done():
+            return False
+        bg_task.cancel()
+        logger.info(f"Cancelled background task {task_id} (class method)")
+        return True
 
     async def _run_analysis_background(
         self,
         task_id: str,
         file_path: Path,
         options: dict,
+        cancel_event: asyncio.Event,
     ) -> None:
         if self.coordinator is None:
             logger.error(f"Coordinator is None for task {task_id}")
@@ -120,6 +166,7 @@ class TaskService:
                 enable_yara=to_bool(options.get("enable_yara"), True),
                 progress_callback=save_progress,
                 skills=options.get("skills"),
+                cancel_event=cancel_event,
             )
 
             if "error" in result:
@@ -147,11 +194,17 @@ class TaskService:
 
                 self.db.update_task_status(task_id, TaskStatus.COMPLETED.value)
 
+        except asyncio.CancelledError:
+            logger.info(f"Analysis task {task_id} was cancelled")
+            self.db.update_task_status(task_id, TaskStatus.FAILED.value, error="用户取消分析")
+
         except Exception as e:
             logger.exception(f"Background analysis failed for {task_id}")
             self.db.update_task_status(task_id, TaskStatus.FAILED.value, error=str(e))
 
         finally:
+            TaskService._running_tasks.pop(task_id, None)
+            TaskService._cancel_events.pop(task_id, None)
             try:
                 file_path.unlink()
             except Exception:

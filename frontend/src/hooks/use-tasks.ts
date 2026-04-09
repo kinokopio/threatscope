@@ -4,6 +4,7 @@ import {
   getTask,
   createTask,
   deleteTask,
+  cancelTask,
   reanalyzeTask,
   exportTask,
   type Task,
@@ -53,6 +54,18 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: deleteTask,
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
+
+export function useCancelTask() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: cancelTask,
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['task', id] })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
     },

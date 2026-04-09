@@ -71,3 +71,5 @@ tasks.db-wal
 
 # YARA compiled rules (platform-specific, auto-generated)
 *.yarc
+
+rules/capa
