@@ -682,6 +682,8 @@ class TestBuildService:
     def test_build_service_with_all_enabled(self):
         from unittest.mock import MagicMock
 
+        from pydantic import SecretStr
+
         from src.threatscope.analysis.services.threat_intel.service import build_service
 
         settings = MagicMock()
@@ -692,9 +694,9 @@ class TestBuildService:
         settings.urlhaus_enabled = True
         settings.urlhaus_url = "https://urlhaus-api.abuse.ch/v1/"
         settings.virustotal_enabled = True
-        settings.virustotal_api_key = "vt-key"
+        settings.virustotal_api_key = SecretStr("vt-key")
         settings.tix_enabled = True
-        settings.tix_app_key = "tix-key"
+        settings.tix_app_key = SecretStr("tix-key")
 
         service = build_service(settings)
         assert len(service.providers) == 5
@@ -721,6 +723,8 @@ class TestBuildService:
     def test_build_service_skips_vt_without_key(self):
         from unittest.mock import MagicMock
 
+        from pydantic import SecretStr
+
         from src.threatscope.analysis.services.threat_intel.service import build_service
 
         settings = MagicMock()
@@ -728,9 +732,9 @@ class TestBuildService:
         settings.threatfox_enabled = False
         settings.urlhaus_enabled = False
         settings.virustotal_enabled = True
-        settings.virustotal_api_key = ""  # 没有 key
+        settings.virustotal_api_key = SecretStr("")  # 没有 key
         settings.tix_enabled = True
-        settings.tix_app_key = ""  # 没有 key
+        settings.tix_app_key = SecretStr("")  # 没有 key
 
         service = build_service(settings)
         assert len(service.providers) == 0

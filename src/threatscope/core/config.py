@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,13 +45,6 @@ class GhidraSettings(BaseSettings):
         return f"http://{self.service_host}:{self.base_http_port}"
 
 
-class ThreatIntelSourceSettings(BaseSettings):
-    """Individual threat intel source configuration."""
-
-    enabled: bool = True
-    base_url: str = ""
-
-
 class ThreatIntelSettings(BaseSettings):
     """Threat intelligence services configuration."""
 
@@ -64,9 +57,9 @@ class ThreatIntelSettings(BaseSettings):
     urlhaus_url: str = Field(default="https://urlhaus-api.abuse.ch/v1/")
     urlhaus_enabled: bool = Field(default=True)
     virustotal_enabled: bool = Field(default=False)
-    virustotal_api_key: str = Field(default="")
+    virustotal_api_key: SecretStr = Field(default=SecretStr(""))
     tix_enabled: bool = Field(default=False)
-    tix_app_key: str = Field(default="")
+    tix_app_key: SecretStr = Field(default=SecretStr(""))
 
 
 class AgentSettings(BaseSettings):

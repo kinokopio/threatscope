@@ -1,8 +1,13 @@
 # src/threatscope/analysis/services/threat_intel/service.py
 """ThreatIntelService aggregator and build_service factory."""
 
+from __future__ import annotations
+
 import asyncio
-from typing import Any
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from src.threatscope.core.config import ThreatIntelSettings
 
 from src.threatscope.analysis.services.threat_intel.base import (
     BaseThreatIntelProvider,
@@ -128,7 +133,7 @@ class ThreatIntelService:
         return results
 
 
-def build_service(settings: Any) -> ThreatIntelService:
+def build_service(settings: ThreatIntelSettings) -> ThreatIntelService:
     """Construct a ThreatIntelService from application settings.
 
     Only providers with enabled=True (and a non-empty API key where required)
@@ -151,10 +156,10 @@ def build_service(settings: Any) -> ThreatIntelService:
     if settings.urlhaus_enabled:
         providers.append(URLhausProvider(base_url=settings.urlhaus_url))
 
-    if settings.virustotal_enabled and settings.virustotal_api_key:
-        providers.append(VirusTotalProvider(api_key=settings.virustotal_api_key))
+    if settings.virustotal_enabled and settings.virustotal_api_key.get_secret_value():
+        providers.append(VirusTotalProvider(api_key=settings.virustotal_api_key.get_secret_value()))
 
-    if settings.tix_enabled and settings.tix_app_key:
-        providers.append(TencentTIXProvider(app_key=settings.tix_app_key))
+    if settings.tix_enabled and settings.tix_app_key.get_secret_value():
+        providers.append(TencentTIXProvider(app_key=settings.tix_app_key.get_secret_value()))
 
     return ThreatIntelService(providers=providers)
