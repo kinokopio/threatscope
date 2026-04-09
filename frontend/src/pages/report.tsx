@@ -618,69 +618,50 @@ function ThreatIntelTab({ task }: { task: any }) {
               <p className="text-sm text-muted-foreground">错误: {error}</p>
             )}
 
-            {!error && found && provider === 'virustotal' && (
-              <div className="space-y-2 text-sm">
-                {data.positives != null && data.total != null && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">检测比率</span>
-                    <span className="font-mono font-semibold text-destructive">
-                      {data.positives} / {data.total}
-                    </span>
-                    <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
-                      <div
-                        className="h-2 rounded-full bg-destructive"
-                        style={{ width: `${Math.min(100, (data.positives / data.total) * 100)}%` }}
-                      />
+            {!error && found && provider === 'virustotal' && (() => {
+              // VT v3 API returns: malicious, suspicious, undetected, harmless counts
+              const malicious = data.malicious ?? 0
+              const suspicious = data.suspicious ?? 0
+              const undetected = data.undetected ?? 0
+              const harmless = data.harmless ?? 0
+              const total = malicious + suspicious + undetected + harmless
+              return (
+                <div className="space-y-2 text-sm">
+                  {total > 0 && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-muted-foreground w-24 shrink-0">检测比率</span>
+                      <span className="font-mono font-semibold text-destructive">
+                        {malicious} / {total}
+                      </span>
+                      <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-2 rounded-full bg-destructive"
+                          style={{ width: `${Math.min(100, (malicious / total) * 100)}%` }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                )}
-                {data.meaningful_name && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">名称</span>
-                    <span className="font-mono">{data.meaningful_name}</span>
-                  </div>
-                )}
-                {data.scan_date && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">扫描日期</span>
-                    <span>{data.scan_date}</span>
-                  </div>
-                )}
-                {Array.isArray(data.tags) && data.tags.length > 0 && (
-                  <div className="flex gap-2 flex-wrap items-start">
-                    <span className="text-muted-foreground w-24 shrink-0">标签</span>
-                    <div className="flex flex-wrap gap-1">
-                      {data.tags.map((t: string) => (
-                        <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
-                      ))}
+                  )}
+                  {suspicious > 0 && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-24 shrink-0">可疑引擎</span>
+                      <span className="font-mono text-amber-600">{suspicious}</span>
                     </div>
-                  </div>
-                )}
-                {Array.isArray(data.threat_categories) && data.threat_categories.length > 0 && (
-                  <div className="flex gap-2 flex-wrap items-start">
-                    <span className="text-muted-foreground w-24 shrink-0">威胁类别</span>
-                    <div className="flex flex-wrap gap-1">
-                      {data.threat_categories.map((t: string) => (
-                        <Badge key={t} variant="destructive" className="text-xs">{t}</Badge>
-                      ))}
+                  )}
+                  {data.meaningful_name && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-24 shrink-0">文件名</span>
+                      <span className="font-mono">{data.meaningful_name}</span>
                     </div>
-                  </div>
-                )}
-                {data.permalink && (
-                  <div className="flex gap-2">
-                    <span className="text-muted-foreground w-24 shrink-0">报告链接</span>
-                    <a
-                      href={data.permalink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-500 hover:underline truncate"
-                    >
-                      {data.permalink}
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                  {data.threat_label && (
+                    <div className="flex gap-2">
+                      <span className="text-muted-foreground w-24 shrink-0">威胁标签</span>
+                      <Badge variant="destructive" className="text-xs">{data.threat_label}</Badge>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
 
             {!error && found && provider === 'malwarebazaar' && (
               <div className="space-y-2 text-sm">
@@ -1012,7 +993,11 @@ export function ReportPage() {
     )
   }
 
-  const verdict = task.unified_report?.verdict
+  const rawVerdict = task.unified_report?.verdict
+  // Override: if any threat intel provider found a threat, always show malicious
+  const tiFound = Object.values((task.threat_intel?.hash_lookup || {}) as Record<string, any>)
+    .some((v: any) => v?.found === true)
+  const verdict = tiFound ? 'malicious' : rawVerdict
   const md5 = task.hashes?.md5 || ''
   const fileType = task.file_type?.format || task.file_type?.category || '-'
 
