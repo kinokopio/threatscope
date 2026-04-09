@@ -48,6 +48,9 @@ class VirusTotalProvider(BaseThreatIntelProvider):
                 stats = attrs.get("last_analysis_stats", {})
                 malicious_count = stats.get("malicious", 0)
 
+                known_dist = attrs.get("known_distributors") or {}
+                distributors = known_dist.get("distributors") or []
+
                 return ThreatIntelResult(
                     source=self.name,
                     found=malicious_count > 0,
@@ -60,6 +63,8 @@ class VirusTotalProvider(BaseThreatIntelProvider):
                         "threat_label": (attrs.get("popular_threat_classification", {}) or {}).get(
                             "suggested_threat_label"
                         ),
+                        "known_distributors": distributors,
+                        "tags": attrs.get("tags") or [],
                     },
                 )
         except httpx.HTTPStatusError as e:

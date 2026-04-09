@@ -618,24 +618,29 @@ function ThreatIntelTab({ task }: { task: any }) {
               <p className="text-sm text-muted-foreground">错误: {error}</p>
             )}
 
-            {!error && found && provider === 'virustotal' && (() => {
+            {!error && provider === 'virustotal' && (() => {
               // VT v3 API returns: malicious, suspicious, undetected, harmless counts
               const malicious = data.malicious ?? 0
               const suspicious = data.suspicious ?? 0
               const undetected = data.undetected ?? 0
               const harmless = data.harmless ?? 0
               const total = malicious + suspicious + undetected + harmless
+              const knownDistributors: string[] = data.known_distributors || []
+              const tags: string[] = data.tags || []
+              const hasContent = total > 0 || data.meaningful_name || data.threat_label
+                || knownDistributors.length > 0 || tags.length > 0
+              if (!hasContent) return null
               return (
                 <div className="space-y-2 text-sm">
                   {total > 0 && (
                     <div className="flex items-center gap-3">
                       <span className="text-muted-foreground w-24 shrink-0">检测比率</span>
-                      <span className="font-mono font-semibold text-destructive">
+                      <span className={`font-mono font-semibold ${malicious > 0 ? 'text-destructive' : 'text-green-600'}`}>
                         {malicious} / {total}
                       </span>
                       <div className="h-2 flex-1 rounded-full bg-muted overflow-hidden">
                         <div
-                          className="h-2 rounded-full bg-destructive"
+                          className={`h-2 rounded-full ${malicious > 0 ? 'bg-destructive' : 'bg-green-500'}`}
                           style={{ width: `${Math.min(100, (malicious / total) * 100)}%` }}
                         />
                       </div>
@@ -657,6 +662,26 @@ function ThreatIntelTab({ task }: { task: any }) {
                     <div className="flex gap-2">
                       <span className="text-muted-foreground w-24 shrink-0">威胁标签</span>
                       <Badge variant="destructive" className="text-xs">{data.threat_label}</Badge>
+                    </div>
+                  )}
+                  {knownDistributors.length > 0 && (
+                    <div className="flex gap-2 items-start">
+                      <span className="text-muted-foreground w-24 shrink-0">已知分发商</span>
+                      <div className="flex flex-wrap gap-1">
+                        {knownDistributors.map((d: string) => (
+                          <Badge key={d} variant="outline" className="text-xs text-green-600 border-green-400">{d}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {tags.length > 0 && (
+                    <div className="flex gap-2 flex-wrap items-start">
+                      <span className="text-muted-foreground w-24 shrink-0">标签</span>
+                      <div className="flex flex-wrap gap-1">
+                        {tags.map((t: string) => (
+                          <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -795,7 +820,7 @@ function ThreatIntelTab({ task }: { task: any }) {
               </div>
             )}
 
-            {!error && !found && (
+            {!error && !found && provider !== 'virustotal' && (
               <p className="text-sm text-muted-foreground">该提供商未检测到威胁</p>
             )}
           </div>
