@@ -347,6 +347,51 @@ def create_post_tool_use_hook():
     return post_tool_use_hook
 
 
+def create_todo_enforcement_hook():
+    """Create PreToolUse hook to enforce TodoWrite as the first tool call.
+
+    This hook tracks whether TodoWrite has been called and blocks other tools
+    until TodoWrite is executed first, ensuring the AI follows the analysis
+    workflow defined in the skill.
+
+    Returns:
+        Tuple of (hook function, state dict) - state dict tracks todo_written flag.
+    """
+    # Shared state to track if TodoWrite has been called
+    state = {"todo_written": False, "tool_count": 0}
+
+    async def pre_tool_use_hook(input_data, tool_use_id, context):
+        tool_name = input_data.get("tool_name", "")
+        state["tool_count"] += 1
+
+        # If TodoWrite is called, mark it and allow
+        if tool_name == "TodoWrite":
+            state["todo_written"] = True
+            logger.info("[TodoEnforcement] TodoWrite called - analysis plan created")
+            return {}
+
+        # If TodoWrite hasn't been called yet and this is an early tool call
+        if not state["todo_written"] and state["tool_count"] <= 3:
+            logger.warning(
+                f"[TodoEnforcement] Tool '{tool_name}' called before TodoWrite "
+                f"(call #{state['tool_count']})"
+            )
+            # Inject a system message reminding the AI to use TodoWrite first
+            # but allow the tool to proceed (don't block, just remind)
+            return {
+                "systemMessage": (
+                    "⚠️ REMINDER: You MUST call TodoWrite FIRST to create your analysis plan "
+                    "before using any other tools. This is a mandatory requirement from your "
+                    "skill instructions. Please call TodoWrite immediately with your analysis "
+                    "tasks, then continue with your current tool."
+                ),
+            }
+
+        return {}
+
+    return pre_tool_use_hook, state
+
+
 class GhidraAgent(BaseAgent):
     """AI agent for deep binary analysis using Ghidra and claude-agent-sdk.
 
@@ -803,6 +848,9 @@ class GhidraAgent(BaseAgent):
         allowed_tools.append("TodoWrite")
 
         # Configure agent options with structured output
+        # Note: Do NOT use setting_sources=["project"] as it loads CLAUDE.md which is for
+        # developers, not for the AI analysis agent. Our system_prompt already contains
+        # the skill content we need.
         options = ClaudeAgentOptions(
             tools=[],
             system_prompt=system_prompt,
@@ -810,7 +858,6 @@ class GhidraAgent(BaseAgent):
             mcp_servers=mcp_servers,
             allowed_tools=allowed_tools,
             max_turns=self.config.max_iterations,
-            setting_sources=["project"],
             cwd=str(self.project_dir),
             output_format={
                 "type": "json_schema",
@@ -821,6 +868,9 @@ class GhidraAgent(BaseAgent):
                     HookMatcher(matcher=None, hooks=[create_pre_compact_hook(self.memory_store)])
                 ],
                 "PostToolUse": [HookMatcher(matcher=None, hooks=[create_post_tool_use_hook()])],
+                "PreToolUse": [
+                    HookMatcher(matcher=None, hooks=[create_todo_enforcement_hook()[0]])
+                ],
             },
         )
 
