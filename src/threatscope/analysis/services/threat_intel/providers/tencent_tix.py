@@ -47,6 +47,7 @@ class TencentTIXProvider(BaseThreatIntelProvider):
                         "c_appkey": self._app_key,
                     },
                 )
+                response.raise_for_status()
                 data = response.json()
 
                 if data.get("return_code") != 0:
@@ -73,5 +74,12 @@ class TencentTIXProvider(BaseThreatIntelProvider):
                         "task_id": summary.get("taskid"),
                     },
                 )
+        except httpx.HTTPStatusError as e:
+            return ThreatIntelResult(
+                source=self.name,
+                found=False,
+                data={},
+                error=f"HTTP {e.response.status_code}: {e.response.text[:200]}",
+            )
         except Exception as e:
             return ThreatIntelResult(source=self.name, found=False, data={}, error=str(e))

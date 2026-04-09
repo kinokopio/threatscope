@@ -472,10 +472,12 @@ class TestTencentTIXProvider:
         assert result.data["risk_level"] == 4
         assert result.data["virusname"] == "Trojan.Win32.Emotet"
         assert result.error is None
+        assert result.data["task_id"] == "20241128000394442"
 
         # 确认 appkey 在请求 body 中，而非 header
         call_kwargs = mock_client.post.call_args
-        assert "c_appkey" in str(call_kwargs)
+        assert call_kwargs.kwargs["json"]["c_appkey"] == "test-appkey"
+        assert "c_appkey" not in str(call_kwargs.kwargs.get("params", {}))
 
     @pytest.mark.asyncio
     async def test_query_hash_found_but_clean(self):
@@ -548,3 +550,31 @@ class TestTencentTIXProvider:
 
         assert result.found is False
         assert "connection timeout" in result.error
+
+    @pytest.mark.asyncio
+    async def test_query_hash_server_error(self):
+        """HTTP 5xx 返回 found=False，error 包含状态码。"""
+        import httpx as httpx_module
+
+        from src.threatscope.analysis.services.threat_intel.providers.tencent_tix import (
+            TencentTIXProvider,
+        )
+
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.text = "Service Unavailable"
+        mock_response.raise_for_status.side_effect = httpx_module.HTTPStatusError(
+            "503 Service Unavailable", request=MagicMock(), response=mock_response
+        )
+
+        provider = TencentTIXProvider(app_key="test-appkey")
+        with patch("httpx.AsyncClient") as mock_client_class:
+            mock_client = AsyncMock()
+            mock_client_class.return_value.__aenter__.return_value = mock_client
+            mock_client.post.return_value = mock_response
+
+            result = await provider.query_hash("abc123")
+
+        assert result.found is False
+        assert result.error is not None
+        assert "503" in result.error
