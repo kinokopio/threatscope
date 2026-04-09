@@ -46,7 +46,7 @@ class StaticAnalysisService:
         yara_rules_path: str | Path | None = None,
         diec_url: str | None = None,
         capa_rules_path: str | Path | None = None,
-        capa_timeout: int = 60,
+        capa_timeout: int = 300,
     ):
         """
         Initialize StaticAnalysisService.

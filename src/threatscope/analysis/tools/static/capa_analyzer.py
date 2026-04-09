@@ -5,7 +5,6 @@ Analyzes PE/ELF binaries to detect capabilities, ATT&CK techniques, and MBC beha
 """
 
 import asyncio
-import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -13,15 +12,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
+import logging
 
-# Suppress verbose/noisy Vivisect logs.
-# vivisect.analysis.elf.elfplt logs logger.error() for known upstream bugs
-# (e.g. "Invalid File: None" in analyzePLT) — raise to CRITICAL to silence them.
-logging.getLogger("vivisect").setLevel(logging.WARNING)
-logging.getLogger("vivisect.analysis").setLevel(logging.WARNING)
-logging.getLogger("vivisect.analysis.elf.elfplt").setLevel(logging.CRITICAL)
-logging.getLogger("envi").setLevel(logging.WARNING)
+# Suppress verbose Vivisect logs
+# logging.getLogger("vivisect").setLevel(logging.WARNING)
+# logging.getLogger("vivisect.analysis").setLevel(logging.WARNING)
+# logging.getLogger("envi").setLevel(logging.WARNING)
 from src.threatscope.analysis.tools.base import AnalysisTool, ToolResult
 
 # capa imports - optional to allow graceful degradation
@@ -168,18 +164,7 @@ class CapaAnalyzer(AnalysisTool):
         except asyncio.TimeoutError:
             return ToolResult(success=False, error=f"capa analysis timed out after {self.timeout}s")
         except Exception as e:
-            err_str = str(e)
-            # Vivisect ELF parsing bugs (e.g. "Invalid File: None") are upstream
-            # issues that affect specific binaries. Degrade gracefully so the
-            # rest of the pipeline continues.
-            if "Invalid File" in err_str or "vivisect" in type(e).__module__:
-                logger.warning("capa/vivisect non-fatal error for %s: %s", file_path, err_str)
-                return ToolResult(
-                    success=True,
-                    data=CapaResult(format="", arch="", os="").to_dict(),
-                    error=f"capa partial failure (vivisect): {err_str}",
-                )
-            return ToolResult(success=False, error=err_str)
+            return ToolResult(success=False, error=str(e))
 
     def _run_capa(self, file_path: Path, rules: Any) -> CapaResult:
         """

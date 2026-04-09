@@ -99,8 +99,8 @@ setup_capa_rules() {
     # 解压到临时目录
     unzip -q -o "$RULES_ZIP" -d "$TEMP_DIR"
     
-    # 移动规则文件（去掉 capa-rules-master 目录层级）
-    mv "$TEMP_DIR"/capa-rules-master/* "$RULES_DIR/"
+    # 移动规则文件（去掉 capa 目录层级）
+    mv "$TEMP_DIR"/capa/* "$RULES_DIR/"
     
     # 清理
     rm -rf "$RULES_ZIP" "$TEMP_DIR"
