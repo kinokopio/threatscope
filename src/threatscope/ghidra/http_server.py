@@ -250,10 +250,10 @@ def get_functions_with_callers(min_callers: int = 1, limit: int = 100) -> list[d
 
 
 @app.get("/strings")
-def list_strings(min_length: int = 4) -> list[dict[str, Any]]:
+def list_strings(min_length: int = 4, limit: int = 1000) -> list[dict[str, Any]]:
     """Get strings from binary."""
     with analyzer_lock:
-        return require_analyzer().get_strings(min_length)
+        return require_analyzer().get_strings(min_length, limit)
 
 
 @app.get("/strings/search")

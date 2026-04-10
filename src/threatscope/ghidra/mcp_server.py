@@ -146,16 +146,17 @@ def get_callgraph(target: str, depth: int = 3) -> dict[str, Any]:
 
 
 @mcp.tool()
-def list_strings(min_length: int = 4) -> list[dict[str, Any]]:
+def list_strings(min_length: int = 4, limit: int = 1000) -> list[dict[str, Any]]:
     """Get strings from the binary.
 
     Args:
         min_length: Minimum string length to include
+        limit: Maximum number of strings to return (default 1000, 0 = no limit)
 
     Returns:
         List of strings with address, value, type, length
     """
-    return _request("GET", "/strings", params={"min_length": min_length})
+    return _request("GET", "/strings", params={"min_length": min_length, "limit": limit})
 
 
 @mcp.tool()

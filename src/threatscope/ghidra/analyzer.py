@@ -170,8 +170,16 @@ class GhidraAnalyzer:
             logger.error(f"Error getting function details: {e}")
             return None
 
-    def get_strings(self, min_length: int = 4) -> list[dict[str, Any]]:
-        """Get strings from the binary."""
+    def get_strings(self, min_length: int = 4, limit: int = 1000) -> list[dict[str, Any]]:
+        """Get strings from the binary.
+
+        Args:
+            min_length: Minimum string length to include
+            limit: Maximum number of strings to return (0 = no limit)
+
+        Returns:
+            List of strings with address, value, type, length
+        """
         if not self._program:
             return []
 
@@ -198,7 +206,12 @@ class GhidraAnalyzer:
                     }
                 )
 
-            logger.info(f"Found {len(strings)} strings")
+                # Check limit (0 means no limit)
+                if limit > 0 and len(strings) >= limit:
+                    logger.info(f"Reached string limit ({limit}), stopping enumeration")
+                    break
+
+            logger.info(f"Found {len(strings)} strings (limit={limit})")
             return strings
 
         except Exception as e:

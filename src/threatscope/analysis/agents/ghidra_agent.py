@@ -803,7 +803,7 @@ class GhidraAgent(BaseAgent):
                 "status": "fallback",
                 "ghidra_available": True,
                 "ghidra_info": ghidra_info,
-                "analysis_results": results,
+                "ai_analysis": results,
                 "message": f"Used rule-based fallback: {error_message}",
             },
         )

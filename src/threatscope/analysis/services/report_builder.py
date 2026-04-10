@@ -951,10 +951,11 @@ class ReportBuilder:
     ) -> str:
         """Generate fallback summary without AI."""
         finding_titles = [f.title for f in findings[:3]]
+        findings_text = ", ".join(finding_titles) if finding_titles else "无明显恶意行为"
         return (
             f"该样本被判定为{verdict}，类型为{classification.type}"
             f"{'，家族为' + classification.family if classification.family else ''}。"
-            f"主要发现包括：{', '.join(finding_titles)}。"
+            f"主要发现包括：{findings_text}。"
             f"共检测到{len(findings)}个安全问题。"
         )
 

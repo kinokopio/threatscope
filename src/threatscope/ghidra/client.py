@@ -59,7 +59,7 @@ class GhidraClient:
 
     def upload(self, file_path: str, timeout: float | None = None) -> dict:
         """Upload binary file for analysis.
-        
+
         Args:
             file_path: Path to binary file
             timeout: Custom timeout (default: 300s for large files)
@@ -80,13 +80,14 @@ class GhidraClient:
                 raise RuntimeError(f"Ghidra error: {e.response.text}") from e
             except httpx.HTTPError as e:
                 raise RuntimeError(f"Connection error: {e}") from e
+
     def close(self) -> dict:
         """Close current binary."""
         return self._request("POST", "/close")
 
     def analyze(self, timeout: float | None = None) -> dict:
         """Run Ghidra auto-analysis.
-        
+
         Args:
             timeout: Custom timeout for analysis (default: 600s for large binaries)
         """
@@ -105,6 +106,7 @@ class GhidraClient:
             raise RuntimeError(f"Ghidra error: {e.response.text}") from e
         except httpx.HTTPError as e:
             raise RuntimeError(f"Connection error: {e}") from e
+
     def get_info(self) -> dict:
         """Get binary metadata."""
         return self._request("GET", "/info")
@@ -147,9 +149,9 @@ class GhidraClient:
 
     # --- Strings ---
 
-    def list_strings(self, min_length: int = 4) -> list[dict]:
+    def list_strings(self, min_length: int = 4, limit: int = 1000) -> list[dict]:
         """Get strings from binary."""
-        return self._request("GET", "/strings", params={"min_length": min_length})
+        return self._request("GET", "/strings", params={"min_length": min_length, "limit": limit})
 
     def search_strings(self, pattern: str, max_results: int = 100) -> list[dict]:
         """Search strings by pattern."""
