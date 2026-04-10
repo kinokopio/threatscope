@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/collapsible'
 
 import { useStats } from '@/hooks/use-stats'
-import { useCreateTask } from '@/hooks/use-tasks'
+import { useCreateTask, useCreateTaskFromUrl } from '@/hooks/use-tasks'
 import { useSkills } from '@/hooks/use-skills'
 import { toast } from 'sonner'
 
@@ -37,9 +37,14 @@ export function HomePage() {
   const navigate = useNavigate()
   const { data: stats } = useStats()
   const createTask = useCreateTask()
+  const createTaskFromUrl = useCreateTaskFromUrl()
   const { data: skills = [] } = useSkills()
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [activeTab, setActiveTab] = useState('file')
   const [isDragging, setIsDragging] = useState(false)
   const [advancedOpen, setAdvancedOpen] = useState(true)
   const [selectedSkills, setSelectedSkills] = useState<string[]>([])
@@ -56,6 +61,10 @@ export function HomePage() {
     setIsDragging(false)
     const files = e.dataTransfer.files
     if (files.length > 0) {
+      if (files[0].size > MAX_FILE_SIZE) {
+        toast.error('文件大小超过 10MB 限制')
+        return
+      }
       setSelectedFile(files[0])
     }
   }, [])
@@ -64,6 +73,11 @@ export function HomePage() {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = e.target.files
       if (files && files.length > 0) {
+        if (files[0].size > MAX_FILE_SIZE) {
+          toast.error('文件大小超过 10MB 限制')
+          e.target.value = ''
+          return
+        }
         setSelectedFile(files[0])
       }
     },
@@ -71,6 +85,47 @@ export function HomePage() {
   )
 
   const handleSubmit = async () => {
+    const taskOptions = {
+      ...options,
+      skills: selectedSkills.length > 0 ? selectedSkills : undefined,
+    }
+
+    if (activeTab === 'url') {
+      const trimmed = urlInput.trim()
+      if (!trimmed) {
+        toast.error('请输入 URL 地址')
+        return
+      }
+      if (!/^https?:\/\/.+/.test(trimmed)) {
+        toast.error('请输入有效的 HTTP/HTTPS 地址')
+        return
+      }
+
+      try {
+        toast.info('正在下载文件，请稍候...')
+        const result = await createTaskFromUrl.mutateAsync({
+          url: trimmed,
+          options: taskOptions,
+        })
+        toast.success('文件下载完成，分析任务已创建')
+        setUrlInput('')
+        navigate('/tasks', {
+          state: {
+            newTask: {
+              id: result.task_id,
+              status: 'pending',
+              file_name: trimmed.split('/').pop() || 'downloaded_file',
+              created_at: new Date().toISOString(),
+            }
+          }
+        })
+      } catch (err: any) {
+        const detail = err?.response?.data?.detail
+        toast.error(detail || '下载或创建任务失败')
+      }
+      return
+    }
+
     if (!selectedFile) {
       toast.error('请选择要分析的文件')
       return
@@ -79,10 +134,7 @@ export function HomePage() {
     try {
       const result = await createTask.mutateAsync({
         file: selectedFile,
-        options: {
-          ...options,
-          skills: selectedSkills.length > 0 ? selectedSkills : undefined,
-        },
+        options: taskOptions,
       })
       toast.success('分析任务已创建')
       const fileName = selectedFile.name
@@ -190,7 +242,7 @@ export function HomePage() {
       </div>
 
       <Card>
-        <Tabs defaultValue="file" className="w-full">
+        <Tabs defaultValue="file" className="w-full" onValueChange={setActiveTab}>
           <div className="border-b bg-muted/50">
             <TabsList className="ml-4 mt-2 h-auto gap-0 bg-transparent p-0">
               <TabsTrigger
@@ -242,7 +294,7 @@ export function HomePage() {
                     </div>
                     <p className="mb-1 font-medium">拖拽文件到此处，或点击选择</p>
                     <p className="text-sm text-muted-foreground">
-                      支持 PE、ELF、Mach-O、APK、脚本等格式，最大 64MB
+                      支持 PE（.exe/.dll）和 ELF（.so/.out）格式，最大 10MB
                     </p>
                   </div>
                   <input
@@ -281,9 +333,13 @@ export function HomePage() {
             <TabsContent value="url" className="m-0">
               <div className="space-y-2">
                 <Label>URL 地址</Label>
-                <Input placeholder="https://example.com/suspicious-file.exe" />
+                <Input
+                  placeholder="https://example.com/suspicious-file.exe"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                />
                 <p className="text-xs text-muted-foreground">
-                  输入完整的 URL 地址，系统将下载并分析目标文件
+                  输入完整的 URL 地址，系统将下载并分析目标文件（最大 10MB）
                 </p>
               </div>
             </TabsContent>
@@ -457,10 +513,14 @@ export function HomePage() {
               className="mt-4 w-full"
               size="lg"
               onClick={handleSubmit}
-              disabled={createTask.isPending}
+              disabled={createTask.isPending || createTaskFromUrl.isPending}
             >
               <Search className="mr-2 h-5 w-5" />
-              {createTask.isPending ? '正在创建...' : '开始分析'}
+              {createTask.isPending
+                ? '正在创建...'
+                : createTaskFromUrl.isPending
+                  ? '正在下载...'
+                  : '开始分析'}
             </Button>
           </CardContent>
         </Tabs>

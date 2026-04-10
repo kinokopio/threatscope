@@ -2,6 +2,7 @@ import tempfile
 from pathlib import Path
 from typing import Annotated
 
+import aiofiles
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 
 from src.threatscope.api.schemas import TaskStatus
@@ -15,6 +16,7 @@ from src.threatscope.api.v1.tasks.schemas import (
     TaskDetailResponse,
     TaskListItem,
     TaskResponse,
+    UrlCreateRequest,
 )
 from src.threatscope.api.v1.tasks.service import TaskService
 from src.threatscope.core.dependencies import (
@@ -24,6 +26,8 @@ from src.threatscope.core.dependencies import (
 )
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 
 def get_task_service(
@@ -50,14 +54,23 @@ async def create_task(
     enable_yara: bool = Form(default=True, description="Enable YARA scanning"),
     service: TaskService = Depends(get_task_service),
 ) -> TaskResponse:
-    import aiofiles
+    from fastapi import HTTPException
 
     temp_dir = Path(tempfile.gettempdir()) / "threatscope"
     temp_dir.mkdir(exist_ok=True)
     file_path = temp_dir / f"{file.filename}"
 
+    downloaded = 0
     async with aiofiles.open(file_path, "wb") as out_file:
         while chunk := await file.read(1024 * 1024):
+            downloaded += len(chunk)
+            if downloaded > MAX_FILE_SIZE:
+                await out_file.close()
+                file_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"File too large: exceeded {MAX_FILE_SIZE // (1024 * 1024)}MB limit",
+                )
             await out_file.write(chunk)
 
     task_id = await service.create_task_async(
@@ -78,6 +91,124 @@ async def create_task(
         status=TaskStatus.PENDING,
         message="Analysis task created",
     )
+
+
+@router.post(
+    "/url",
+    response_model=TaskResponse,
+    status_code=202,
+    summary="Create analysis task from URL",
+    description="Download a file from URL and start asynchronous malware analysis",
+)
+async def create_task_from_url(
+    request: UrlCreateRequest,
+    service: TaskService = Depends(get_task_service),
+) -> TaskResponse:
+    import logging
+    import uuid
+    from urllib.parse import urlparse
+
+    import httpx
+    from fastapi import HTTPException
+
+    logger = logging.getLogger(__name__)
+
+    parsed = urlparse(request.url)
+    if parsed.scheme not in ("http", "https"):
+        raise HTTPException(status_code=400, detail="Only HTTP/HTTPS URLs are supported")
+
+    if not parsed.hostname:
+        raise HTTPException(status_code=400, detail="Invalid URL")
+
+    temp_dir = Path(tempfile.gettempdir()) / "threatscope"
+    temp_dir.mkdir(exist_ok=True)
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=120.0) as client:
+            async with client.stream("GET", request.url) as response:
+                response.raise_for_status()
+
+                content_type = response.headers.get("content-type", "").split(";")[0].strip()
+                non_binary_types = (
+                    "text/html",
+                    "text/plain",
+                    "text/css",
+                    "text/javascript",
+                    "application/json",
+                    "application/xml",
+                )
+                if content_type in non_binary_types:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"URL returned non-binary content ({content_type}), expected a downloadable file",
+                    )
+
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"File too large: {int(content_length)} bytes (max {MAX_FILE_SIZE})",
+                    )
+
+                file_name = _extract_filename(response, parsed.path)
+                short_id = uuid.uuid4().hex[:8]
+                file_path = temp_dir / f"{short_id}_{file_name}"
+
+                downloaded = 0
+                async with aiofiles.open(file_path, "wb") as f:
+                    async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
+                        downloaded += len(chunk)
+                        if downloaded > MAX_FILE_SIZE:
+                            await f.close()
+                            file_path.unlink(missing_ok=True)
+                            raise HTTPException(
+                                status_code=400,
+                                detail=f"File too large: exceeded {MAX_FILE_SIZE} bytes",
+                            )
+                        await f.write(chunk)
+
+        if not file_path.exists() or file_path.stat().st_size == 0:
+            file_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="Downloaded file is empty")
+
+        logger.info(f"Downloaded {request.url} -> {file_path} ({file_path.stat().st_size} bytes)")
+
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(
+            status_code=502, detail=f"Download failed: HTTP {e.response.status_code}"
+        )
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Download failed: {e}")
+
+    options = request.options.model_dump()
+    task_id = await service.create_task_async(
+        file_path=file_path,
+        file_name=file_name,
+        options=options,
+    )
+
+    return TaskResponse(
+        task_id=task_id,
+        status=TaskStatus.PENDING,
+        message=f"Downloaded and queued for analysis: {file_name}",
+    )
+
+
+def _extract_filename(response, url_path: str) -> str:
+    cd = response.headers.get("content-disposition", "")
+    if "filename=" in cd:
+        for part in cd.split(";"):
+            part = part.strip()
+            if part.startswith("filename="):
+                name = part[len("filename=") :].strip().strip('"').strip("'")
+                if name:
+                    return name
+
+    name = Path(url_path).name
+    if name and "." in name:
+        return name
+
+    return "downloaded_file"
 
 
 @router.get(

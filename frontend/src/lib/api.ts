@@ -246,6 +246,11 @@ export async function createTask(file: File, options?: TaskCreateOptions): Promi
   return response.data
 }
 
+export async function createTaskFromUrl(url: string, options?: TaskCreateOptions): Promise<TaskCreateResponse> {
+  const response = await api.post<TaskCreateResponse>('/tasks/url', { url, options })
+  return response.data
+}
+
 export async function deleteTask(id: string): Promise<void> {
   await api.delete(`/tasks/${id}`)
 }

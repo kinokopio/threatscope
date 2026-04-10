@@ -97,3 +97,8 @@ class QueueStats(BaseModel):
     total_tasks: int = 0
     completed: int = 0
     failed: int = 0
+
+
+class UrlCreateRequest(BaseModel):
+    url: str = Field(description="URL to download and analyze")
+    options: TaskCreateOptions = Field(default_factory=TaskCreateOptions)

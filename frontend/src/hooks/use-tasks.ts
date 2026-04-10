@@ -3,6 +3,7 @@ import {
   getTasks,
   getTask,
   createTask,
+  createTaskFromUrl,
   deleteTask,
   cancelTask,
   reanalyzeTask,
@@ -42,6 +43,18 @@ export function useCreateTask() {
   return useMutation({
     mutationFn: ({ file, options }: { file: File; options?: TaskCreateOptions }) =>
       createTask(file, options),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['stats'] })
+    },
+  })
+}
+
+export function useCreateTaskFromUrl() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ url, options }: { url: string; options?: TaskCreateOptions }) =>
+      createTaskFromUrl(url, options),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['stats'] })
