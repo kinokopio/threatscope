@@ -55,7 +55,6 @@ COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/rules/capa /app/rules/capa
 COPY src /app/src
 COPY prompts /app/prompts
-COPY .claude /app/.claude
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH="/app" \

@@ -14,7 +14,11 @@ class Skill:
 
     @classmethod
     def from_directory(cls, skill_dir: Path) -> "Skill":
-        skill_md = skill_dir / "SKILL.md"
+        # Plugin format: skills/<name>/skills/<name>/SKILL.md
+        skill_md = skill_dir / "skills" / skill_dir.name / "SKILL.md"
+        if not skill_md.exists():
+            # Legacy format: skills/<name>/SKILL.md
+            skill_md = skill_dir / "SKILL.md"
         if not skill_md.exists():
             raise FileNotFoundError(f"SKILL.md not found in {skill_dir}")
 
@@ -59,7 +63,11 @@ class SkillLoader:
         for skill_dir in self.skills_dir.iterdir():
             if not skill_dir.is_dir():
                 continue
-            skill_md = skill_dir / "SKILL.md"
+            # Plugin format: skills/<name>/skills/<name>/SKILL.md
+            skill_md = skill_dir / "skills" / skill_dir.name / "SKILL.md"
+            if not skill_md.exists():
+                # Legacy format: skills/<name>/SKILL.md
+                skill_md = skill_dir / "SKILL.md"
             if not skill_md.exists():
                 continue
             try:

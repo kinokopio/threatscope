@@ -1,13 +1,13 @@
 """Skills API router for managing Claude Skills."""
 
-import os
+import json
 import shutil
 from datetime import datetime
 from pathlib import Path
 
 import yaml
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -75,9 +75,22 @@ def _get_file_info(file_path: Path, include_content: bool = False) -> FileInfo:
     )
 
 
+def _find_skill_md(skill_dir: Path) -> Path | None:
+    """Find SKILL.md in plugin or legacy format."""
+    # Plugin format: <skill_dir>/skills/<name>/SKILL.md
+    plugin_path = skill_dir / "skills" / skill_dir.name / "SKILL.md"
+    if plugin_path.exists():
+        return plugin_path
+    # Legacy format: <skill_dir>/SKILL.md
+    legacy_path = skill_dir / "SKILL.md"
+    if legacy_path.exists():
+        return legacy_path
+    return None
+
+
 def _parse_skill_folder(skill_dir: Path, include_content: bool = False) -> dict | None:
-    skill_md = skill_dir / "SKILL.md"
-    if not skill_md.exists():
+    skill_md = _find_skill_md(skill_dir)
+    if not skill_md:
         return None
 
     text = skill_md.read_text(encoding="utf-8")
@@ -121,8 +134,22 @@ def _parse_skill_folder(skill_dir: Path, include_content: bool = False) -> dict 
 
 
 def _write_skill(skill_dir: Path, name: str, description: str, content: str) -> None:
+    """Create a new skill in plugin format."""
     skill_dir.mkdir(parents=True, exist_ok=True)
-    skill_md = skill_dir / "SKILL.md"
+
+    # Create plugin manifest
+    plugin_dir = skill_dir / ".claude-plugin"
+    plugin_dir.mkdir(parents=True, exist_ok=True)
+    plugin_json = plugin_dir / "plugin.json"
+    plugin_json.write_text(
+        json.dumps({"name": name, "version": "1.0.0", "description": description}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    # Create SKILL.md in plugin format
+    skill_content_dir = skill_dir / "skills" / name
+    skill_content_dir.mkdir(parents=True, exist_ok=True)
+    skill_md = skill_content_dir / "SKILL.md"
 
     frontmatter = {"name": name, "description": description}
     yaml_content = yaml.dump(frontmatter, allow_unicode=True, default_flow_style=False)

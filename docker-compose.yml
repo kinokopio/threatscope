@@ -67,6 +67,7 @@ services:
       - threatscope_data:/app/data
       - ./rules:/app/rules:ro
       - ./prompts:/app/prompts:ro
+      - ./.claude:/app/.claude:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - THREATSCOPE_ENVIRONMENT=production
