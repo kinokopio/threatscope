@@ -56,18 +56,23 @@ tmp/
 temp/
 *.tmp
 
-# OpenCode / Sisyphus
+# AI tools & dev planning
 .opencode/
 .sisyphus/
+.claude/skills/
+docs/superpowers/
 
 # Node modules (frontend)
 node_modules/
 
 # Frontend build
 frontend/dist/
-tasks.db
-tasks.db-shm
-tasks.db-wal
+frontend/README.md
+
+# Database
+tasks*.db
+tasks*.db-shm
+tasks*.db-wal
 
 # YARA compiled rules (platform-specific, auto-generated)
 *.yarc

@@ -1,132 +1,85 @@
 # ThreatScope
 
-AI-driven malware analysis framework with Ghidra integration.
+AI-driven malware analysis framework — upload a PE/ELF binary, run it through a multi-phase analysis pipeline powered by Claude AI + Ghidra, and view results in a React dashboard.
 
 ## Features
 
-- **Static Analysis**: Hash calculation, string extraction, ELF parsing, YARA scanning
-- **Dynamic Analysis**: Syscall tracing with Tracee, network monitoring
-- **AI-Powered Analysis**: Claude-based agents for deep binary analysis
-- **Ghidra Integration**: Automated reverse engineering and decompilation
-- **MITRE ATT&CK Mapping**: Automatic technique identification
-- **Modern Web UI**: React-based dashboard for analysis management
+- Multi-phase analysis pipeline (file ID → static/dynamic → Ghidra reverse engineering → AI report)
+- Claude AI agents for automated binary reverse engineering
+- Static analysis: CAPA, YARA, string extraction, threat intelligence
+- Dynamic analysis: Tracee syscall tracing, GDB debugging
+- MITRE ATT&CK mapping
+- MCP server for external AI agent integration
+- React dashboard with real-time task tracking
+
+![Dashboard](docs/images/dashboard.png)
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+ (for frontend)
-- [uv](https://github.com/astral-sh/uv) (recommended) or pip
-
-### Installation
+### Docker (Recommended)
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/threatscope.git
-cd threatscope
+cp .env.example .env   # Set ANTHROPIC_API_KEY
+docker-compose up -d
+```
 
-# Install Python dependencies
+Access at http://localhost
+
+### Local Development
+
+```bash
+# Backend
 uv sync --extra api --extra ai
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
-```
-
-### Running
-
-**Start the API server:**
-
-```bash
 uv run uvicorn src.threatscope.api:app --host 0.0.0.0 --port 8000 --reload
+
+# Frontend
+cd frontend && npm install && npm run dev
 ```
-
-**Start the frontend (in a separate terminal):**
-
-```bash
-cd frontend && npm run dev
-```
-
-**Access the application:**
 
 - Frontend: http://localhost:5173
 - API Docs: http://localhost:8000/docs
 
-### Configuration
-
-Create a `.env` file in the project root:
-
-```env
-# Anthropic API Key (required for AI analysis)
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional: Ghidra settings
-THREATSCOPE_GHIDRA_BASE_URL=http://localhost:8000
-THREATSCOPE_GHIDRA_POOL_SIZE=1
-
-# Optional: Analysis settings
-THREATSCOPE_ANALYSIS_ENABLE_DYNAMIC_ANALYSIS=true
-THREATSCOPE_ANALYSIS_ENABLE_GHIDRA_ANALYSIS=true
-```
-
-## Project Structure
+## Architecture
 
 ```
-threatscope/
-├── src/threatscope/          # Main Python package
-│   ├── api/                  # FastAPI REST API
-│   ├── analysis/             # Analysis engine
-│   │   ├── agents/           # AI agents (Ghidra, Malware)
-│   │   ├── services/         # Analysis services
-│   │   ├── tools/            # Static & dynamic analysis tools
-│   │   ├── coordinator.py    # Analysis orchestration
-│   │   ├── repository.py     # Database operations
-│   │   └── scheduler.py      # Task scheduling
-│   ├── core/                 # Configuration & dependencies
-│   ├── ghidra/               # Ghidra service integration
-│   └── shared/               # Shared utilities & exceptions
-├── frontend/                 # React frontend
-│   ├── src/
-│   │   ├── pages/            # Page components
-│   │   ├── features/         # Feature modules
-│   │   └── shared/           # Shared components & hooks
-│   └── package.json
-├── rules/                    # YARA rules
-├── docker/                   # Docker configurations
-├── tests/                    # Test suite
-└── pyproject.toml            # Python project config
+Upload → Phase 1 (File ID) → Phase 2 (Static + Dynamic) → Phase 3 (Ghidra AI) → Phase 4 (Report)
 ```
 
-## API Endpoints
+| Service | Role |
+|---------|------|
+| nginx | Reverse proxy |
+| backend | FastAPI + analysis engine |
+| frontend | React SPA |
+| ghidra | Headless Ghidra + MCP |
+| diec | File type detection |
+| gdb / gdb-target | Dynamic debugging sandbox |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/analyze` | Submit file for analysis |
-| GET | `/tasks` | List all analysis tasks |
-| GET | `/tasks/{id}` | Get task status and results |
-| DELETE | `/tasks/{id}` | Delete a task |
-| GET | `/health` | Health check |
+## Screenshots
+
+![Tasks](docs/images/tasks.png)
+
+![Report](docs/images/report.png)
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| AI | Claude Agent SDK |
+| Backend | FastAPI, SQLite |
+| Frontend | React 19, TanStack Query, Tailwind, shadcn/ui |
+| RE | Ghidra (headless) |
+| Deployment | Docker Compose, Nginx |
+| Observability | Langfuse |
 
 ## Development
 
 ```bash
-# Run tests
-uv run pytest
-
-# Format code
-uv run ruff format .
-
-# Lint code
-uv run ruff check .
-```
-
-## Docker Deployment
-
-```bash
-# Build and run with Docker Compose
-docker-compose up -d
+uv run pytest              # Tests
+uv run ruff check .        # Lint
+uv run ruff format .       # Format
+cd frontend && npm run lint
 ```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT

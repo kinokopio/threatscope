@@ -1,5 +1,0 @@
-{
-  "name": "deep-analysis",
-  "version": "1.0.0",
-  "description": "Deep binary reverse engineering and malware analysis using Ghidra decompilation"
-}
